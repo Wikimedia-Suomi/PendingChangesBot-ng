@@ -34,17 +34,25 @@ Before installing or running the application, ensure you have:
 
 ### Installation
 
-1. **Clone the repository**
+1. **Fork the repository**
+   A fork is a new repository that shares code and visibility settings with the original “upstream” repository. Forks are often used to iterate on ideas or changes before they are proposed back to the upstream repository. For more details about how to fork a repository, please check out the [github docs](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo) for it.
+2. **Clone the repository**
+   * Using SSH ([requires setup of ssh keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
    ```bash
    git clone git@github.com:Wikimedia-Suomi/PendingChangesBot-ng.git
    cd PendingChangesBot-ng
    ```
-2. **Create and activate a virtual environment** (recommended)
+   * Using HTTPS
+    ```bash
+   git clone https://github.com/Wikimedia-Suomi/PendingChangesBot-ng.git
+   cd PendingChangesBot-ng
+   ```
+3. **Create and activate a virtual environment** (recommended)
    ```bash
    python3 -m venv venv
    source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
    ```
-3. **Install Python dependencies**
+4. **Install Python dependencies**
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
@@ -197,13 +205,15 @@ Each commit message should follow this structure:
 * **Description** (Optional, recommended for anything non-trivial. Add 1–3 lines explaining what and why, not how)
 * **Reference issues or tasks** (e.g., Fixes #42, Related to #101)
 
-### Opening a Pull Request:
-Before opening a PR:
+### Creating a Pull Request:
+Before creating a PR:
 * Rebase or merge latest main
 * Ensure no merge conflicts
 * Run and pass all tests
 * Remove dead code & logs
 * Follow branch naming rules
+
+To learn how to create a pull request or to learn more about pull requests in general, please follow this official [Pull request documentation](https://docs.github.com/en/pull-requests) by github.
 
 Make sure to use the following format in your pull request:
 * **Title** (should be clear and concise. Include issue number as well. (example: Add bulk editing UI for category selections (#128))): 
