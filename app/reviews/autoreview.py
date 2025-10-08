@@ -226,10 +226,6 @@ def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bo
     superset = revision.superset_data or {}
     if superset.get("rc_bot"):
         return True
-    groups = superset.get("user_groups") or []
-    for group in groups:
-        if isinstance(group, str) and group.casefold() == "bot":
-            return True
     return False
 
 
@@ -276,11 +272,11 @@ def _blocking_category_hits(
             matched.add(blocking_lookup[normalized])
     return matched
 
+
 def is_bot_edit(revision: PendingRevision) -> bool:
     """Check if a revision was made by a bot or former bot."""
     if not revision.user_name:
         return False
-    
     try:
         profile = EditorProfile.objects.get(
             wiki=revision.page.wiki,

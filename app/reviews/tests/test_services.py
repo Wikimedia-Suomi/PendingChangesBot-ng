@@ -230,64 +230,65 @@ class RefreshWorkflowTests(TestCase):
         self.assertEqual(fake_site.requests, [])
         self.assertEqual(PendingRevision.objects.count(), 1)
 
+
 def test_ensure_editor_profile_with_former_bot_group(self):
     """Test that former bot group is properly detected."""
     wiki = Wiki.objects.create(code="fi", family="wikipedia")
     client = WikiClient(wiki)
-    
+
     superset_data = {
         "user_groups": ["autoconfirmed"],
         "user_former_groups": ["bot"],
         "rc_bot": False,
     }
-    
+
     profile = client.ensure_editor_profile("FormerBotUser", superset_data)
-    
-    assert profile.is_bot is False
-    assert profile.is_former_bot is True
-    assert profile.username == "FormerBotUser"
+
+    self.assertFalse(profile.is_bot)
+    self.assertTrue(profile.is_former_bot)
+    self.assertEqual(profile.username, "FormerBotUser")
 
 
 def test_ensure_editor_profile_with_current_and_former_bot(self):
     """Test user who is both current and former bot (edge case)."""
     wiki = Wiki.objects.create(code="fi", family="wikipedia")
     client = WikiClient(wiki)
-    
+
     superset_data = {
         "user_groups": ["bot", "autoconfirmed"],
         "user_former_groups": ["bot"],  # Can happen if removed and re-added
         "rc_bot": True,
     }
-    
-    profile = client.ensure_editor_profile("ReinstatiedBot", superset_data)
-    
-    assert profile.is_bot is True
-    assert profile.is_former_bot is True
+
+    profile = client.ensure_editor_profile("ReinstatedBot", superset_data)
+
+    self.assertTrue(profile.is_bot)
+    self.assertTrue(profile.is_former_bot)
 
 
 def test_ensure_editor_profile_without_former_groups(self):
     """Test that missing former groups doesn't cause issues."""
     wiki = Wiki.objects.create(code="fi", family="wikipedia")
     client = WikiClient(wiki)
-    
+
     superset_data = {
         "user_groups": ["autoconfirmed"],
         "user_former_groups": [],
         "rc_bot": False,
     }
-    
+
     profile = client.ensure_editor_profile("RegularUser", superset_data)
-    
-    assert profile.is_bot is False
-    assert profile.is_former_bot is False
+
+    self.assertFalse(profile.is_bot)
+    self.assertFalse(profile.is_former_bot)
 
 
 def test_ensure_editor_profile_former_bot_no_superset_data(self):
     """Test that profile defaults work when no superset data provided."""
     wiki = Wiki.objects.create(code="fi", family="wikipedia")
     client = WikiClient(wiki)
-    
+
     profile = client.ensure_editor_profile("SomeUser", None)
-    
-    assert profile.is_bot is False
-    assert profile.is_former_bot is False
+
+    self.assertFalse(profile.is_bot)
+    self.assertFalse(profile.is_former_bot)
