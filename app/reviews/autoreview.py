@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from .models import EditorProfile, PendingPage, PendingRevision
+from app.meta_bots import (
+    is_in_quarry_current,
+    is_in_quarry_former,   
+    is_global_bot_via_api,   
+)
 
 
 @dataclass(frozen=True)
@@ -220,18 +225,26 @@ def _normalize_to_lookup(values: Iterable[str] | None) -> dict[str, str]:
     return lookup
 
 
-def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bool:
-    if profile and profile.is_bot:
-        return True
-    superset = revision.superset_data or {}
-    if superset.get("rc_bot"):
-        return True
-    groups = superset.get("user_groups") or []
-    for group in groups:
-        if isinstance(group, str) and group.casefold() == "bot":
-            return True
-    return False
-
+def _is_bot_user(username, user_obj=None):
+    """
+    Centralized bot-detection logic.
+    Returns: dict with flags for types found (local, global, former_global)
+    """
+    result = {"local": False, "global": False, "former_global": False}
+    if user_obj is not None and getattr(user_obj, "is_bot", False):
+        result["local"] = True    
+    try:
+        if is_global_bot_via_api(username):
+            result["global"] = True
+    except Exception:
+         # API call failed fall back to quarry cache
+        pass
+    #check quarry cache for a batched authoritative list (current/former)
+    if is_in_quarry_current(username):
+        result["global"] = True 
+    if is_in_quarry_former(username):
+        result["former_global"] = True
+    return result
 
 def _matched_user_groups(
     revision: PendingRevision,
