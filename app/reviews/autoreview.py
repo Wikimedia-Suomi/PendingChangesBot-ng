@@ -97,6 +97,24 @@ def _evaluate_revision(
         }
     )
 
+    if profile and getattr(profile, "is_blocked", False):
+        tests.append(
+            {
+                "id": "blocked-user",
+                "title": "Blocked user",
+                "status": "fail",
+                "message": "The user is currently blocked and cannot be auto-approved.",
+            }
+        )
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="blocked",
+                label="Cannot be auto-approved",
+                reason="The user is currently blocked.",
+            ),
+        }
+
     # Test 2: Editors in the allow-list can be auto-approved.
     if auto_groups:
         matched_groups = _matched_user_groups(
