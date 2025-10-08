@@ -1,3 +1,5 @@
+Please check out the contribution guide ([CONTRIBUTION.md](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md)) before making any contributions.
+
 # PendingChangesBot
 
 PendingChangesBot is a Django application that inspects pending changes on Wikimedia

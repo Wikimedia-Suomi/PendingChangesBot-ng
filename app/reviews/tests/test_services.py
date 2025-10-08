@@ -96,7 +96,7 @@ class WikiClientTests(TestCase):
         self.assertEqual(page.stable_revid, 10)
         self.assertIsNotNone(page.pending_since)
         sql_argument = self.mock_superset.query.call_args[0][0]
-        self.assertIn("LIMIT 10) AS FP", sql_argument.upper())
+        self.assertIn("LIMIT 10) AS fp", sql_argument)
         self.assertIn("r.rev_id>=fp_stable", sql_argument)
         revision = PendingRevision.objects.get()
         self.assertEqual(revision.revid, 11)

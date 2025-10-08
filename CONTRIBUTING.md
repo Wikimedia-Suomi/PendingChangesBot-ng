@@ -2,6 +2,32 @@
 
 Thank you for expressing interest in contributing to PendingChangesBot! Please be sure to read this guide thoroughly before contributing as it will lessen the chances of any issues arising during the contribution process.
 
+Of course\! Here is a table of contents for the provided guide.
+
+# Table of Contents
+
+1.  [Code of Conduct](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CODE_OF_CONDUCT.MD)
+2.  [Communication](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#communication)
+3.  [Prerequisites](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#prerequisites)
+4.  [Setup Instructions](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#setup-instructions)
+    1.  [Installation](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#installation)
+    2.  [Configuring Pywikibot Superset OAuth](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#configuring-pywikibot-superset-oauth)
+    3.  [Running the database migrations](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-the-database-migrations)
+    4.  [Running the application](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-the-application)
+    5.  [Running unit tests](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-unit-tests)
+    6.  [Running Flake8](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-flake8)
+5.  [Label Meanings](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#label-meanings)
+    1.  [Status Labels](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#status-labels)
+    2.  [Type Labels](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#type-labels)
+6.  [How to Contribute](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#how-to-contribute)
+    1.  [Check Before Doing Anything](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#check-before-doing-anything)
+    2.  [Being Assigned an Issue](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#being-assigned-an-issue)
+    3.  [Branching Strategy](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#branching-strategy)
+    4.  [Commit messages](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#commit-messages)
+    5.  [Creating a Pull Request](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#creating-a-pull-request)
+    6.  [Opening an issue](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#opening-an-issue)
+7.  [Further Help](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#further-help)
+
 ## Code of Conduct
 
 All contributors must follow the project’s [Code of Conduct](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CODE_OF_CONDUCT.MD).
