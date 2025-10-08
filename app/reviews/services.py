@@ -12,6 +12,7 @@ import pywikibot
 from pywikibot.data.superset import SupersetQuery
 from django.db import transaction
 from django.utils import timezone as dj_timezone
+from django.conf import settings
 
 from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 
@@ -92,6 +93,8 @@ WHERE
    AND r.rev_id>=fp_stable
    AND r.rev_actor=a.actor_id
    AND r.rev_comment_id=comment_id
+   AND (ctd_name IN ("mw-manual-revert", "mw-reverted", "mw-rollback", "mw-undo")
+   OR ctd_name IS NULL)
 GROUP BY r.rev_id
 ORDER BY fp_pending_since, rev_id DESC
 """
@@ -158,6 +161,28 @@ ORDER BY fp_pending_since, rev_id DESC
 
         return pages
 
+    def _is_revert_to_reviewed_content(self, page: PendingPage, payload: RevisionPayload) -> bool:
+        """
+        This function checks if the older version was already reviewed/approved
+        by the system before.
+        """
+
+        # To check if the feature is enabled in the settings
+        if not getattr(settings, 'ENABLE_REVERT_DETECTION', True):
+            return False
+
+        revert_tags = {"mw-manual-revert", "mw-reverted", "mw-rollback", "mw-undo"}
+        if not any(tag in payload.tags for tag in revert_tags):
+            return False
+        reviewed_revisions = PendingRevision.objects.filter(
+            page__wiki=self.wiki,
+            page__pageid=page.pageid,
+            sha1=payload.sha1,
+            revid__lt=payload.revid
+        ).exclude(revid=payload.revid)
+
+        return reviewed_revisions.exists()
+
     def _save_revision(
         self, page: PendingPage, payload: RevisionPayload
     ) -> PendingRevision | None:
@@ -172,6 +197,9 @@ ORDER BY fp_pending_since, rev_id DESC
             )
             return None
 
+        # checks if this is a "revert to reviewed" content
+        is_revert_to_reviewed = self._is_revert_to_reviewed_content(page, payload)
+
         age = dj_timezone.now() - payload.timestamp
         defaults = {
             "parentid": payload.parentid,
@@ -183,6 +211,7 @@ ORDER BY fp_pending_since, rev_id DESC
             "comment": payload.comment,
             "change_tags": payload.tags,
             "wikitext": "",
+            "is_revert_to_reviewed": is_revert_to_reviewed,  # the new field
         }
         if payload.superset_data is not None:
             defaults["superset_data"] = payload.superset_data
