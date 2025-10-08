@@ -206,6 +206,7 @@ ORDER BY fp_pending_since, rev_id DESC
                 "usergroups": [],
                 "is_blocked": False,
                 "is_bot": False,
+                "is_former_bot": False,
                 "is_autopatrolled": False,
                 "is_autoreviewed": False,
             },
@@ -215,8 +216,11 @@ ORDER BY fp_pending_since, rev_id DESC
 
         autoreviewed_groups = {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
         groups = sorted(superset_data.get("user_groups") or [])
+        former_groups = sorted(superset_data.get("user_former_groups") or [])
+
         profile.usergroups = groups
         profile.is_bot = "bot" in groups or bool(superset_data.get("rc_bot"))
+        profile.is_former_bot = "bot" in former_groups
         profile.is_autopatrolled = "autopatrolled" in groups
         profile.is_autoreviewed = bool(autoreviewed_groups & set(groups))
         profile.is_blocked = bool(superset_data.get("user_blocked", False))
@@ -225,6 +229,7 @@ ORDER BY fp_pending_since, rev_id DESC
                 "usergroups",
                 "is_blocked",
                 "is_bot",
+                "is_former_bot",
                 "is_autopatrolled",
                 "is_autoreviewed",
                 "fetched_at",

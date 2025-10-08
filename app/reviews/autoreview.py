@@ -275,3 +275,18 @@ def _blocking_category_hits(
         if normalized in blocking_lookup:
             matched.add(blocking_lookup[normalized])
     return matched
+
+def is_bot_edit(revision: PendingRevision) -> bool:
+    """Check if a revision was made by a bot or former bot."""
+    if not revision.user_name:
+        return False
+    
+    try:
+        profile = EditorProfile.objects.get(
+            wiki=revision.page.wiki,
+            username=revision.user_name
+        )
+        # Check both current bot status and former bot status
+        return profile.is_bot or profile.is_former_bot
+    except EditorProfile.DoesNotExist:
+        return False
