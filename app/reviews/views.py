@@ -406,7 +406,13 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
                     validated_ids.append(cleaned)
             configuration.test_revision_ids = validated_ids
         configuration.save(
-            update_fields=["blocking_categories", "auto_approved_groups", "updated_at"]
+            update_fields=[
+                "blocking_categories",
+                "auto_approved_groups",
+                "test_mode",
+                "test_revision_ids",
+                "updated_at",
+            ]
         )
     return JsonResponse(
         {
