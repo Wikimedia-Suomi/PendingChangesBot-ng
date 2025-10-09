@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -197,6 +198,38 @@ def _evaluate_revision(
         }
     )
 
+    # Test 4: Invalid ISBN checksums prevent automatic approval.
+    wikitext = revision.get_wikitext()
+    invalid_isbns = _find_invalid_isbns(wikitext)
+    if invalid_isbns:
+        tests.append(
+            {
+                "id": "invalid-isbn",
+                "title": "ISBN checksum validation",
+                "status": "fail",
+                "message": "The edit contains invalid ISBN(s): {}.".format(
+                    ", ".join(invalid_isbns)
+                ),
+            }
+        )
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="blocked",
+                label="Cannot be auto-approved",
+                reason="The edit contains ISBN(s) with invalid checksums.",
+            ),
+        }
+
+    tests.append(
+        {
+            "id": "invalid-isbn",
+            "title": "ISBN checksum validation",
+            "status": "ok",
+            "message": "No invalid ISBNs detected.",
+        }
+    )
+
     return {
         "tests": tests,
         "decision": AutoreviewDecision(
@@ -275,3 +308,72 @@ def _blocking_category_hits(
         if normalized in blocking_lookup:
             matched.add(blocking_lookup[normalized])
     return matched
+
+
+def _validate_isbn_10(isbn: str) -> bool:
+    """Validate ISBN-10 checksum."""
+    if len(isbn) != 10:
+        return False
+
+    total = 0
+    for i in range(9):
+        if not isbn[i].isdigit():
+            return False
+        total += int(isbn[i]) * (10 - i)
+    if isbn[9] == 'X' or isbn[9] == 'x':
+        total += 10
+    elif isbn[9].isdigit():
+        total += int(isbn[9])
+    else:
+        return False
+
+    return total % 11 == 0
+
+
+def _validate_isbn_13(isbn: str) -> bool:
+    """Validate ISBN-13 checksum."""
+    if len(isbn) != 13:
+        return False
+
+    if not isbn.startswith('978') and not isbn.startswith('979'):
+        return False
+
+    if not isbn.isdigit():
+        return False
+
+    total = 0
+    for i in range(12):
+        if i % 2 == 0:
+            total += int(isbn[i])
+        else:
+            total += int(isbn[i]) * 3
+
+    check_digit = (10 - (total % 10)) % 10
+    return int(isbn[12]) == check_digit
+
+
+def _find_invalid_isbns(text: str) -> list[str]:
+    """Find all ISBNs in text and return list of invalid ones."""
+    isbn_pattern = re.compile(r'isbn\s*[=:]?\s*([0-9Xx\-\s]+)', re.IGNORECASE)
+
+    invalid_isbns = []
+    for match in isbn_pattern.finditer(text):
+        isbn_raw = match.group(1)
+        isbn_clean = re.sub(r'[\s\-]', '', isbn_raw)
+
+        if not isbn_clean:
+            continue
+
+        # Try to validate as ISBN-10 or ISBN-13
+        is_valid = False
+        if len(isbn_clean) == 10:
+            is_valid = _validate_isbn_10(isbn_clean)
+        elif len(isbn_clean) == 13:
+            is_valid = _validate_isbn_13(isbn_clean)
+        else:
+            is_valid = False
+
+        if not is_valid:
+            invalid_isbns.append(isbn_raw.strip())
+
+    return invalid_isbns
