@@ -223,22 +223,22 @@ def _normalize_to_lookup(values: Iterable[str] | None) -> dict[str, str]:
 def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bool:
     """
     Check if a user is a bot or former bot.
-    
+
     Args:
         revision: The pending revision to check
         profile: The editor profile if available
-        
+
     Returns:
         True if the user is a current bot or former bot, False otherwise
     """
     superset = revision.superset_data or {}
     if superset.get("rc_bot"):
         return True
-    
+
     # Check if we have is_bot_edit result (checks both current and former bot status)
     if is_bot_edit(revision):
         return True
-    
+
     return False
 
 

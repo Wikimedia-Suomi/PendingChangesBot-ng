@@ -233,7 +233,7 @@ class RefreshWorkflowTests(TestCase):
 
 class FormerBotTests(TestCase):
     """Test cases for former bot detection and handling."""
-    
+
     def test_ensure_editor_profile_with_former_bot_group(self):
         """Test that former bot group is properly detected."""
         wiki = Wiki.objects.create(code="fi", family="wikipedia")
