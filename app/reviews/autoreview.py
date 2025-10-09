@@ -97,23 +97,49 @@ def _evaluate_revision(
         }
     )
 
-    if profile and getattr(profile, "is_blocked", False):
-        tests.append(
-            {
+    try:
+        from reviews.services import WikiClient
+        wiki_client = WikiClient(revision.page.wiki)
+        
+        if wiki_client.is_user_blocked_after_edit(revision.user_name, revision.timestamp):
+            tests.append({
                 "id": "blocked-user",
-                "title": "Blocked user",
+                "title": "User blocked after edit",
                 "status": "fail",
-                "message": "The user is currently blocked and cannot be auto-approved.",
+                "message": "User was blocked after making this edit.",
+            })
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="blocked",
+                    label="Cannot be auto-approved",
+                    reason="User was blocked after making this edit.",
+                ),
             }
-        )
+        else:
+            tests.append({
+                "id": "blocked-user",
+                "title": "User block status",
+                "status": "ok",
+                "message": "User has not been blocked since making this edit.",
+            })
+    except Exception as e:
+        logger.error(f"Error checking blocks for {revision.user_name}: {e}")
+        tests.append({
+            "id": "blocked-user",
+            "title": "Block check failed",
+            "status": "fail",
+            "message": "Could not verify user block status.",
+        })
         return {
             "tests": tests,
             "decision": AutoreviewDecision(
-                status="blocked",
+                status="error",
                 label="Cannot be auto-approved",
-                reason="The user is currently blocked.",
+                reason="Unable to verify user was not blocked.",
             ),
         }
+
 
     # Test 2: Editors in the allow-list can be auto-approved.
     if auto_groups:

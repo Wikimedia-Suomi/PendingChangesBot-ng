@@ -6,6 +6,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 
 import mwparserfromhell
 import pywikibot
@@ -40,6 +41,12 @@ class WikiClient:
     def __init__(self, wiki: Wiki):
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
+
+    def is_user_blocked_after_edit(self, username: str, edit_timestamp: datetime) -> bool:
+        """Check if user was blocked after making an edit."""
+        site_key = f"{self.wiki.code}:{self.wiki.family}"
+        timestamp_iso = edit_timestamp.isoformat()
+        return was_user_blocked_after(site_key, username, timestamp_iso)
 
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
         """Fetch the pending pages using Superset and cache them in the database."""
@@ -322,3 +329,46 @@ def _parse_superset_bool(value) -> bool | None:
         if normalized in {"0", "false", "f", "no", "n"}:
             return False
     return bool(value)
+
+# Simple in-memory cache using Python's built-in LRU cache
+@lru_cache(maxsize=1000)
+def was_user_blocked_after(site_key: str, username: str, timestamp_iso: str) -> bool:
+    """
+    Check if user was blocked after a timestamp.
+    Uses @lru_cache for automatic caching.
+    
+    Args:
+        site_key: String like "fi:wikipedia" for cache key
+        username: Username to check
+        timestamp_iso: ISO format timestamp string
+    
+    Returns:
+        True if user was blocked after the timestamp
+    """
+    try:
+        code, family = site_key.split(":")
+        site = pywikibot.Site(code, family)
+        timestamp = pywikibot.Timestamp.fromISOformat(timestamp_iso)
+        
+        # Get block events after the timestamp
+        block_events = site.logevents(
+            logtype='block',
+            page=f'User:{username}',
+            start=timestamp,
+            reverse=False
+        )
+        
+        # Check if any 'block' action exists
+        for event in block_events:
+            if event.action() == 'block':
+                return True
+        
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error checking blocks for {username}: {e}")
+        # Fail safe: assume blocked if we can't verify
+        return True
+
+
+

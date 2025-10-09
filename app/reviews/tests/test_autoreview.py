@@ -1,24 +1,31 @@
+from datetime import datetime
 from unittest import TestCase
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from reviews import autoreview
 
 class AutoreviewBlockedUserTests(TestCase):
-    def test_blocked_user_not_auto_approved(self):
-        blocked_profile = MagicMock()
-        blocked_profile.is_blocked = True
-        blocked_profile.is_bot = False
-        blocked_profile.is_autopatrolled = False
-        blocked_profile.is_autoreviewed = False
-        blocked_profile.usergroups = []
+
+    @patch('reviews.services.was_user_blocked_after')
+    def test_blocked_user_not_auto_approved(self, mock_block_check):
+        """Test that user blocked after edit is not auto-approved."""
+        mock_block_check.return_value = True
+
+        profile = MagicMock()
+        profile.usergroups = []
 
         revision = MagicMock()
         revision.user_name = "BlockedUser"
-        revision.superset_data = {}
+        # Correct datetime assignment
+        revision.timestamp = datetime.fromisoformat("2024-01-15T10:00:00")
         revision.page.categories = []
+
+        revision.page.wiki = MagicMock()
+        revision.page.wiki.code = "fi"
+        revision.page.wiki.family = "wikipedia"
 
         result = autoreview._evaluate_revision(
             revision,
-            blocked_profile,
+            profile,
             auto_groups={},
             blocking_categories={},
         )
