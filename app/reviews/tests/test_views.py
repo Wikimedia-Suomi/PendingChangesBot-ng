@@ -20,9 +20,10 @@ class ViewTests(TestCase):
     def setUp(self):
         self.client = Client()
         self.wiki = Wiki.objects.create(
-            name="Example Wiki",
-            code="ex",
-            api_endpoint="https://example.org/api.php",
+            name="Test Wiki",
+            code="test",
+            family="wikipedia",
+            api_endpoint="https://test.wikipedia.org/w/api.php",
         )
         WikiConfiguration.objects.create(wiki=self.wiki)
 
@@ -292,9 +293,9 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 2)
-        self.assertEqual(result["tests"][1]["status"], "ok")
-        self.assertIn("Autopatrolled", result["tests"][1]["message"])
+        self.assertEqual(len(result["tests"]), 3)
+        self.assertEqual(result["tests"][1]["status"], "not_ok")
+        self.assertEqual(result["tests"][2]["status"], "ok")
 
     @mock.patch("reviews.models.pywikibot.Site")
     def test_api_autoreview_blocks_on_blocking_categories(self, mock_site):
@@ -356,6 +357,20 @@ class ViewTests(TestCase):
 
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
+
+                # Check if this is a request for magic words
+                if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
+                    return FakeRequest({
+                        "query": {
+                            "magicwords": [
+                                {
+                                    "name": "redirect",
+                                    "aliases": ["#REDIRECT"]
+                                }
+                            ]
+                        }
+                    })
+
                 return FakeRequest(wikitext_response)
 
         fake_site = FakeSite()
@@ -366,18 +381,21 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 3)
-        self.assertEqual(result["tests"][2]["status"], "fail")
-        self.assertEqual(result["tests"][2]["id"], "blocking-categories")
+        self.assertEqual(len(result["tests"]), 4)
+        self.assertEqual(result["tests"][3]["status"], "fail")
+        self.assertEqual(result["tests"][3]["id"], "blocking-categories")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
         self.assertEqual(revision.categories, ["Secret"])
-        self.assertEqual(len(fake_site.requests), 1)
+        # 2 requests: 1 for redirect aliases, 1 for wikitext
+        self.assertEqual(len(fake_site.requests), 2)
 
         second_response = self.client.post(url)
         self.assertEqual(second_response.status_code, 200)
-        self.assertEqual(len(fake_site.requests), 1)
+        # redirect aliases are now cached, wikitext was already cached
+        # No new API calls are made on the second request
+        self.assertEqual(len(fake_site.requests), 2)
 
     def test_api_autoreview_requires_manual_review_when_no_rules_apply(self):
         page = PendingPage.objects.create(
@@ -408,8 +426,8 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 3)
-        self.assertEqual(result["tests"][2]["status"], "ok")
+        self.assertEqual(len(result["tests"]), 4)
+        self.assertEqual(result["tests"][3]["status"], "ok")
 
     def test_api_autoreview_orders_revisions_from_oldest_to_newest(self):
         page = PendingPage.objects.create(
