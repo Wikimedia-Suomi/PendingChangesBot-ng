@@ -45,6 +45,12 @@ class WikiConfiguration(models.Model):
     auto_approved_groups = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    revertrisk_threshold = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Revert risk threshold (0.0-1.0). Set to None to disable check."
+    )
+
     def __str__(self) -> str:  # pragma: no cover - debug helper
         return f"Configuration for {self.wiki.code}"
 
