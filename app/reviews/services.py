@@ -56,7 +56,6 @@ class WikiClient:
             html = response.get("parse", {}).get("text", "")
             return html if isinstance(html, str) else ""
         except Exception:
-            logger.exception("Failed to fetch rendered HTML for revision %s", revid)
             return ""
 
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
