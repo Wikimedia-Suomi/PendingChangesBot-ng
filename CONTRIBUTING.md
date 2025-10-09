@@ -279,7 +279,7 @@ After creating the issue, make sure to announce it on the [main phabricator boar
 * **Benefits** (why should this be implemented?):
 * **Screenshots/logs if applicable** : 
 * **Any additional details** :
-* **Will you be working on this issue yourself?** : Yes or No
+* **Will you be working on this issue yourself?** : Yes or No?
 
 ## Further Help
 Feel free to contact the mentors through slack or email if you need further help. 
