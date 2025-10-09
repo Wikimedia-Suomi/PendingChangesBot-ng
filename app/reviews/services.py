@@ -6,6 +6,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import site
 
 import mwparserfromhell
 import pywikibot
@@ -234,7 +235,20 @@ ORDER BY fp_pending_since, rev_id DESC
 
     def refresh(self) -> list[PendingPage]:
         return self.fetch_pending_pages()
+    
+site = pywikibot.Site("meta", "meta")
 
+sql_query = """
+SELECT 
+user_name FROM user, 
+user_groups WHERE user_id=ug_user  AND ug_group="bot"
+UNION
+SELECT user_name FROM user, 
+user_former_groups WHERE user_id=ufg_user  AND ufg_group="bot"
+GROUP BY user_name;
+"""
+superset = SupersetQuery(site=site)
+bot_users = superset.query(sql_query)
 
 def parse_categories(wikitext: str) -> list[str]:
     code = mwparserfromhell.parse(wikitext or "")
