@@ -33,7 +33,13 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Pending Changes Review")
         codes = list(Wiki.objects.values_list("code", flat=True))
-        self.assertCountEqual(codes, ["de", "en", "pl", "fi"])
+        # All Wikipedias with FlaggedRevisions enabled
+        expected_codes = [
+            "als", "ar", "be", "bn", "bs", "ce", "ckb", "de", "en", "eo",
+            "fa", "fi", "hi", "hu", "ia", "id", "ka", "pl", "pt", "ru",
+            "sq", "tr", "uk", "vec"
+        ]
+        self.assertCountEqual(codes, expected_codes)
 
     @mock.patch("reviews.views.WikiClient")
     def test_api_refresh_returns_error_on_failure(self, mock_client):
