@@ -202,7 +202,8 @@ If your proposal already exists in an open issue or PR, but you feel there are d
     * You can also filter out any issues with the `Status: In Progress` label, so that you only see issues that haven't been assigned to anyone.
 
 2) No need to ask to be assigned an issue.
-    * Just let people know through comments that you are working on it and assign it to yourself. 
+    * Just let people know through comments that you are working on it and assign it to yourself.
+    * If there is both Phabricator ticket and Github issue then comment on both that you are working with it.
     * If someone is already working on it, ask to collaborate before jumping in.
 
 3) After being assigned, address each item listed in the acceptance criteria, if any exist.
@@ -211,6 +212,10 @@ If your proposal already exists in an open issue or PR, but you feel there are d
 
 4) Give regular updates.
     * It's expected that you would give regular progress updates about the work that you're doing as comments on the issue so that everyone is in the loop about what work is being accomplished 
+
+5) Claim new tasks responsibly.
+    * If you want to switch to another task for any reason, unassign yourself from the current ticket or issue and leave a comment there so others know it’s available to work on.
+    * Please claim a new task only after you’ve submitted a pull request for your previous one.
 
 ### Branching Strategy
 
