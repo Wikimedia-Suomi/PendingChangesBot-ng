@@ -12,6 +12,10 @@ import pywikibot
 from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 
 logger = logging.getLogger(__name__)
+from bs4 import BeautifulSoup
+
+from .models import EditorProfile, PendingPage, PendingRevision
+from .services import WikiClient
 
 
 @dataclass(frozen=True)
@@ -27,8 +31,7 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     """Run the configured autoreview checks for each pending revision of a page."""
 
     revisions = list(
-        page.revisions.exclude(revid=page.stable_revid)
-        .order_by("timestamp", "revid")
+        page.revisions.exclude(revid=page.stable_revid).order_by("timestamp", "revid")
     )  # Oldest revision first.
     usernames = {revision.user_name for revision in revisions if revision.user_name}
     profiles = {
@@ -42,12 +45,14 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     auto_groups = _normalize_to_lookup(configuration.auto_approved_groups)
     blocking_categories = _normalize_to_lookup(configuration.blocking_categories)
     redirect_aliases = _get_redirect_aliases(page.wiki)
+    client = WikiClient(page.wiki)
 
     results: list[dict] = []
     for revision in revisions:
         profile = profiles.get(revision.user_name or "")
         revision_result = _evaluate_revision(
             revision,
+            client,
             profile,
             auto_groups=auto_groups,
             blocking_categories=blocking_categories,
@@ -70,6 +75,7 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
 
 def _evaluate_revision(
     revision: PendingRevision,
+    client: WikiClient,
     profile: EditorProfile | None,
     *,
     auto_groups: dict[str, str],
@@ -248,6 +254,35 @@ def _evaluate_revision(
         }
     )
 
+    # Test 4: Check for new rendering errors in the HTML.
+    new_render_errors = _check_for_new_render_errors(revision, client)
+    if new_render_errors:
+        tests.append(
+            {
+                "id": "new-render-errors",
+                "title": "New render errors",
+                "status": "fail",
+                "message": "The edit introduces new rendering errors.",
+            }
+        )
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="blocked",
+                label="Cannot be auto-approved",
+                reason="The edit introduces new rendering errors.",
+            ),
+        }
+
+    tests.append(
+        {
+            "id": "new-render-errors",
+            "title": "New render errors",
+            "status": "ok",
+            "message": "The edit does not introduce new rendering errors.",
+        }
+    )
+
     return {
         "tests": tests,
         "decision": AutoreviewDecision(
@@ -256,6 +291,29 @@ def _evaluate_revision(
             reason="In dry-run mode the edit would not be approved automatically.",
         ),
     }
+
+
+def _check_for_new_render_errors(revision: PendingRevision, client: WikiClient) -> bool:
+    """Check if a revision introduces new HTML elements with class='error'."""
+    if not revision.parentid:
+        return False
+
+    current_html = client.get_rendered_html(revision.revid)
+    previous_html = client.get_rendered_html(revision.parentid)
+
+    if not current_html or not previous_html:
+        return False
+
+    current_soup = BeautifulSoup(current_html, "lxml")
+    previous_soup = BeautifulSoup(previous_html, "lxml")
+
+    current_errors = {str(e) for e in current_soup.find_all(class_="error")}
+    previous_errors = {str(e) for e in previous_soup.find_all(class_="error")}
+
+    print("Current Errors: ", current_errors)
+    print("Previous Errors: ", previous_errors)
+
+    return bool(current_errors - previous_errors)
 
 
 def _normalize_to_lookup(values: Iterable[str] | None) -> dict[str, str]:

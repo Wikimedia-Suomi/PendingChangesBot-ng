@@ -41,6 +41,25 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
+    def get_rendered_html(self, revid: int) -> str:
+        """Fetch the rendered HTML for a specific revision."""
+        if not revid:
+            return ""
+        request = self.site.simple_request(
+            action="parse",
+            oldid=revid,
+            prop="text",
+            formatversion=2,
+        )
+        try:
+            response = request.submit()
+            html = response.get("parse", {}).get("text", "")
+            print(html)
+            return html if isinstance(html, str) else ""
+        except Exception:
+            logger.exception("Failed to fetch rendered HTML for revision %s", revid)
+            return ""
+
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
         """Fetch the pending pages using Superset and cache them in the database."""
 
@@ -168,7 +187,9 @@ ORDER BY fp_pending_since, rev_id DESC
         )
         if existing_page is None:
             logger.warning(
-                "Pending page %s was deleted before saving revision %s", page.pk, payload.revid
+                "Pending page %s was deleted before saving revision %s",
+                page.pk,
+                payload.revid,
             )
             return None
 
@@ -214,7 +235,14 @@ ORDER BY fp_pending_since, rev_id DESC
         if not superset_data:
             return profile
 
-        autoreviewed_groups = {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
+        autoreviewed_groups = {
+            "autoreview",
+            "autoreviewer",
+            "editor",
+            "reviewer",
+            "sysop",
+            "bot",
+        }
         groups = sorted(superset_data.get("user_groups") or [])
         former_groups = sorted(superset_data.get("user_former_groups") or [])
 
