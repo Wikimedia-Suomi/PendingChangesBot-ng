@@ -99,7 +99,7 @@ SELECT
 FROM
    (SELECT rev_page AS fp_page_id,
            rev_id AS fp_stable,
-           20250901000000 AS fp_pending_since
+           BINARY('20250901000000') AS fp_pending_since
     FROM revision
     WHERE rev_id IN ({ids_csv})) AS fp,
    revision AS r

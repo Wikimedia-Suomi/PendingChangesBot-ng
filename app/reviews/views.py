@@ -387,19 +387,19 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             auto_groups = [auto_groups]
         configuration.blocking_categories = blocking_categories
         configuration.auto_approved_groups = auto_groups
-        if "test_mode" in payload: # Handle test mode toggle
+        if "test_mode" in payload:  # Handle test mode toggle
             test_mode = payload.get("test_mode")
             if isinstance(test_mode, bool):
                 configuration.test_mode = test_mode
-        if "test_revision_ids" in payload: # Handle test revision IDs with validation
+        if "test_revision_ids" in payload:  # Handle test revision IDs with validation
             test_revision_ids = payload.get("test_revision_ids", [])
-            if isinstance(test_revision_ids, str): # Accept comma-separated string
+            if isinstance(test_revision_ids, str):  # Accept comma-separated string
                 test_revision_ids = [
                     item.strip()
                     for item in str(test_revision_ids).split(",")
                     if item.strip()
                 ]
-            validated_ids = [] # Validate: only integers allowed
+            validated_ids = []  # Validate: only integers allowed
             for item in test_revision_ids:
                 cleaned = str(item).strip()
                 if cleaned.isdigit():
