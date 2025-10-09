@@ -152,6 +152,9 @@ createApp({
     const forms = reactive({
       blockingCategories: "",
       autoApprovedGroups: "",
+      testMode: false,  // Test mode toggle
+      testRevisionIds: [],  // Array of revision IDs
+      newRevisionId: "",  // Input field for new revision ID
     });
 
     const currentWiki = computed(() =>
@@ -166,10 +169,17 @@ createApp({
       if (!currentWiki.value) {
         forms.blockingCategories = "";
         forms.autoApprovedGroups = "";
+        forms.testMode = false;
+        forms.testRevisionIds = [];
+        forms.newRevisionId = "";
         return;
       }
       forms.blockingCategories = (currentWiki.value.configuration.blocking_categories || []).join("\n");
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
+      // Load test mode settings from configuration
+      forms.testMode = currentWiki.value.configuration.test_mode || false;
+      forms.testRevisionIds = currentWiki.value.configuration.test_revision_ids || [];
+      forms.newRevisionId = "";
     }
 
     async function apiRequest(url, options = {}) {
@@ -287,6 +297,8 @@ createApp({
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
+        test_mode: forms.testMode,  // Include test mode toggle
+        test_revision_ids: forms.testRevisionIds,  // Include revision IDs array
       };
       try {
         const data = await apiRequest(`/api/wikis/${state.selectedWikiId}/configuration/`, {
@@ -304,6 +316,34 @@ createApp({
       } catch (error) {
         // Error already handled in apiRequest.
       }
+    }
+
+    // Add a revision ID to the test mode list
+    function addRevisionId() {
+      const value = forms.newRevisionId.trim();
+      if (!value) {
+        return;
+      }
+      // Validate: must be a number
+      if (!/^\d+$/.test(value)) {
+        state.error = "Revision ID must be a number";
+        return;
+      }
+      // Prevent duplicates
+      if (forms.testRevisionIds.includes(value)) {
+        state.error = "Revision ID already added";
+        return;
+      }
+      // Add to array
+      forms.testRevisionIds.push(value);
+      // Clear input field
+      forms.newRevisionId = "";
+      state.error = "";
+    }
+
+    // Remove a revision ID from the test mode list
+    function removeRevisionId(index) {
+      forms.testRevisionIds.splice(index, 1);
     }
 
     function formatDate(value) {
@@ -556,6 +596,8 @@ createApp({
       formatTestStatus,
       statusTagClass,
       formatDecision,
+      addRevisionId,  // Add revision ID function
+      removeRevisionId,  // Remove revision ID function
     };
   },
 }).mount("#app");
