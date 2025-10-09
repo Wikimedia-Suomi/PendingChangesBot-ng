@@ -293,6 +293,19 @@ def _evaluate_revision(
     }
 
 
+def _get_render_error_count(revision: PendingRevision, html: str) -> int:
+    """Calculate and cache the number of rendering errors in the HTML."""
+    if revision.render_error_count is not None:
+        return revision.render_error_count
+
+    soup = BeautifulSoup(html, "lxml")
+    error_count = len(soup.find_all(class_="error"))
+
+    revision.render_error_count = error_count
+    revision.save(update_fields=["render_error_count"])
+    return error_count
+
+
 def _check_for_new_render_errors(revision: PendingRevision, client: WikiClient) -> bool:
     """Check if a revision introduces new HTML elements with class='error'."""
     if not revision.parentid:
@@ -304,13 +317,18 @@ def _check_for_new_render_errors(revision: PendingRevision, client: WikiClient) 
     if not current_html or not previous_html:
         return False
 
-    current_soup = BeautifulSoup(current_html, "lxml")
-    previous_soup = BeautifulSoup(previous_html, "lxml")
+    current_error_count = _get_render_error_count(revision, current_html)
 
-    current_errors = {str(e) for e in current_soup.find_all(class_="error")}
-    previous_errors = {str(e) for e in previous_soup.find_all(class_="error")}
+    parent_revision = PendingRevision.objects.filter(
+        page__wiki=revision.page.wiki, revid=revision.parentid
+    ).first()
+    previous_error_count = (
+        _get_render_error_count(parent_revision, previous_html)
+        if parent_revision
+        else 0
+    )
 
-    return bool(current_errors - previous_errors)
+    return current_error_count > previous_error_count
 
 
 def _normalize_to_lookup(values: Iterable[str] | None) -> dict[str, str]:
@@ -398,8 +416,7 @@ def is_bot_edit(revision: PendingRevision) -> bool:
         return False
     try:
         profile = EditorProfile.objects.get(
-            wiki=revision.page.wiki,
-            username=revision.user_name
+            wiki=revision.page.wiki, username=revision.user_name
         )
         # Check both current bot status and former bot status
         return profile.is_bot or profile.is_former_bot

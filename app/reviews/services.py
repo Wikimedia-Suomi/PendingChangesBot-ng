@@ -45,6 +45,16 @@ class WikiClient:
         """Fetch the rendered HTML for a specific revision."""
         if not revid:
             return ""
+
+        try:
+            revision = PendingRevision.objects.get(page__wiki=self.wiki, revid=revid)
+            if revision.rendered_html:
+                return revision.rendered_html
+        except PendingRevision.DoesNotExist:
+            revision = None
+        except Exception:
+            revision = None
+
         request = self.site.simple_request(
             action="parse",
             oldid=revid,
@@ -54,8 +64,13 @@ class WikiClient:
         try:
             response = request.submit()
             html = response.get("parse", {}).get("text", "")
-            return html if isinstance(html, str) else ""
+            html_content = html if isinstance(html, str) else ""
+            if revision and html_content:
+                revision.rendered_html = html_content
+                revision.save(update_fields=["rendered_html"])
+            return html_content
         except Exception:
+            logger.exception("Failed to fetch rendered HTML for rev %s", revid)
             return ""
 
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
