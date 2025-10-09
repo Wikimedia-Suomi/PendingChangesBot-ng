@@ -70,7 +70,6 @@ class WikiClient:
                 revision.save(update_fields=["rendered_html"])
             return html_content
         except Exception:
-            logger.exception("Failed to fetch rendered HTML for rev %s", revid)
             return ""
 
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
