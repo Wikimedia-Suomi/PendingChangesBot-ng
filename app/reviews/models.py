@@ -161,6 +161,7 @@ class EditorProfile(models.Model):
     usergroups = models.JSONField(default=list, blank=True)
     is_blocked = models.BooleanField(default=False)
     is_bot = models.BooleanField(default=False)
+    is_former_bot = models.BooleanField(default=False)
     is_autopatrolled = models.BooleanField(default=False)
     is_autoreviewed = models.BooleanField(default=False)
     fetched_at = models.DateTimeField(auto_now=True)

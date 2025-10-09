@@ -221,15 +221,24 @@ def _normalize_to_lookup(values: Iterable[str] | None) -> dict[str, str]:
 
 
 def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bool:
-    if profile and profile.is_bot:
-        return True
+    """
+    Check if a user is a bot or former bot.
+    
+    Args:
+        revision: The pending revision to check
+        profile: The editor profile if available
+        
+    Returns:
+        True if the user is a current bot or former bot, False otherwise
+    """
     superset = revision.superset_data or {}
     if superset.get("rc_bot"):
         return True
-    groups = superset.get("user_groups") or []
-    for group in groups:
-        if isinstance(group, str) and group.casefold() == "bot":
-            return True
+    
+    # Check if we have is_bot_edit result (checks both current and former bot status)
+    if is_bot_edit(revision):
+        return True
+    
     return False
 
 
@@ -275,3 +284,18 @@ def _blocking_category_hits(
         if normalized in blocking_lookup:
             matched.add(blocking_lookup[normalized])
     return matched
+
+
+def is_bot_edit(revision: PendingRevision) -> bool:
+    """Check if a revision was made by a bot or former bot."""
+    if not revision.user_name:
+        return False
+    try:
+        profile = EditorProfile.objects.get(
+            wiki=revision.page.wiki,
+            username=revision.user_name
+        )
+        # Check both current bot status and former bot status
+        return profile.is_bot or profile.is_former_bot
+    except EditorProfile.DoesNotExist:
+        return False
