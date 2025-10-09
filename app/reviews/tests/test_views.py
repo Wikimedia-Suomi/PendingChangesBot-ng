@@ -371,17 +371,19 @@ class ViewTests(TestCase):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
-                if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#REDIRECT"]
-                                }
-                            ]
+                if (
+                    kwargs.get("meta") == "siteinfo"
+                    and kwargs.get("siprop") == "magicwords"
+                ):
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "magicwords": [
+                                    {"name": "redirect", "aliases": ["#REDIRECT"]}
+                                ]
+                            }
                         }
-                    })
+                    )
 
                 return FakeRequest(wikitext_response)
 
@@ -445,9 +447,9 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 4)
+        self.assertEqual(len(result["tests"]), 5)
         self.assertEqual(result["tests"][3]["status"], "ok")
-        self.assertEqual(len(result["tests"]), 4)
+        self.assertEqual(len(result["tests"]), 5)
         self.assertEqual(result["tests"][-1]["status"], "ok")
 
     @mock.patch("reviews.services.pywikibot.Site")
