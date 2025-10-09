@@ -189,3 +189,10 @@ class ISBNDetectionTests(TestCase):
         """
         invalid = _find_invalid_isbns(text)
         self.assertEqual(len(invalid), 1)
+
+    def test_isbn_with_trailing_year(self):
+        """Test that trailing years are not captured as part of ISBN."""
+        text = "isbn: 978 0 306 40615 7 2020"
+        invalid = _find_invalid_isbns(text)
+        # Should recognize valid ISBN and not capture the year
+        self.assertEqual(len(invalid), 0)

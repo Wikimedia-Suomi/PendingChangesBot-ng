@@ -428,7 +428,7 @@ def _validate_isbn_13(isbn: str) -> bool:
 
 def _find_invalid_isbns(text: str) -> list[str]:
     """Find all ISBNs in text and return list of invalid ones."""
-    isbn_pattern = re.compile(r'isbn\s*[=:]?\s*([0-9Xx\-\s]+)', re.IGNORECASE)
+    isbn_pattern = re.compile(r'isbn\s*[=:]?\s*([0-9Xx\-\s]{1,17})', re.IGNORECASE)
 
     invalid_isbns = []
     for match in isbn_pattern.finditer(text):
