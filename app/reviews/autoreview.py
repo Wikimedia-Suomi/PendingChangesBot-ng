@@ -310,9 +310,6 @@ def _check_for_new_render_errors(revision: PendingRevision, client: WikiClient) 
     current_errors = {str(e) for e in current_soup.find_all(class_="error")}
     previous_errors = {str(e) for e in previous_soup.find_all(class_="error")}
 
-    print("Current Errors: ", current_errors)
-    print("Previous Errors: ", previous_errors)
-
     return bool(current_errors - previous_errors)
 
 

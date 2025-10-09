@@ -54,7 +54,6 @@ class WikiClient:
         try:
             response = request.submit()
             html = response.get("parse", {}).get("text", "")
-            print(html)
             return html if isinstance(html, str) else ""
         except Exception:
             logger.exception("Failed to fetch rendered HTML for revision %s", revid)
