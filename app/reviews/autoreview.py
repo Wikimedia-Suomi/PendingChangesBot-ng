@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+from app.reviews.meta_bot import is_global_bot_via_api, is_in_quarry_current
+
 from .models import EditorProfile, PendingPage, PendingRevision
 
 @dataclass(frozen=True)
@@ -217,6 +219,44 @@ def _normalize_to_lookup(values: Iterable[str] | None) -> dict[str, str]:
         if normalized:
             lookup[normalized] = str(value)
     return lookup
+
+def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bool:
+    
+    """
+    Check if a user is a local or global bot (current or former).
+
+    Args:
+        revision: The pending revision to check
+        profile: The editor profile if available
+
+    Returns:
+        True if the user is a current or former bot (local or global), False otherwise
+    """
+    superset = revision.superset_data or {}
+    
+    # Check local bot flag from Superset data
+    if superset.get("rc_bot"):
+        return True
+    # Check if it's a local bot edit (existing check)
+    if _is_local_bot_edit(revision):
+        return True
+    # Check if the user is a global bot (Meta-Wiki)
+    try:
+        if is_global_bot_via_api(revision.user_name):
+            return True
+    except Exception:
+        # API call failed, fall back to quarry cache
+        if is_in_quarry_current(revision.user_name):
+            return True
+    
+        return False
+    
+    def _is_local_bot_edit(revision: PendingRevision) -> bool:
+        """
+        Checks if the revision is marked as a bot edit locally.
+        """
+        # You may need to adjust this logic based on your PendingRevision model
+        return getattr(revision, "is_bot", False)
 
 
 def _matched_user_groups(
