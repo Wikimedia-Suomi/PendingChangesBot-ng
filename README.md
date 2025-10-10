@@ -56,13 +56,19 @@ Vue.js interface for reviewing the results.
 Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
 Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
 the steps below once per user account that will run PendingChangesBot:
-
-1. **Create a Pywikibot configuration**
+1. **Move to app directory**
+   All pywikibot and manage.py commands should be run in the app directory.
+   
    ```bash
-   echo "usernames['meta']['meta'] = '$YOUR_USERNAME'" > user-config.py
+   cd app
    ```
 
-3. **Log in with Pywikibot**
+3. **Create a Pywikibot configuration**
+   ```bash
+   echo "usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'" > user-config.py
+   ```
+
+4. **Log in with Pywikibot**
    * On **Windows**:
    ```bash
    python -m pywikibot.scripts.login -site:meta
@@ -74,7 +80,7 @@ the steps below once per user account that will run PendingChangesBot:
    The command should report `Logged in on metawiki` and create a persistent login
    cookie at `~/.pywikibot/pywikibot.lwp`.
 
-4. **Approve Superset's OAuth client**
+5. **Approve Superset's OAuth client**
    - While still logged in to Meta-Wiki in your browser, open
      <https://superset.wmcloud.org/login/>.
    - Authorize the OAuth request for Superset. After approval you should be redirected
