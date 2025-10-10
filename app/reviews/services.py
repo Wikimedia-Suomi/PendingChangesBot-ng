@@ -44,9 +44,9 @@ class WikiClient:
 
     def is_user_blocked_after_edit(self, username: str, edit_timestamp: datetime) -> bool:
         """Check if user was blocked after making an edit."""
-        site_key = f"{self.wiki.code}:{self.wiki.family}"
-        timestamp_iso = edit_timestamp.isoformat()
-        return was_user_blocked_after(site_key, username, timestamp_iso)
+        # Extract year from timestamp for cache efficiency
+        year = edit_timestamp.year
+        return was_user_blocked_after(self.wiki.code, self.wiki.family, username, year)
 
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
         """Fetch the pending pages using Superset and cache them in the database."""
@@ -335,25 +335,30 @@ def _parse_superset_bool(value) -> bool | None:
             return False
     return bool(value)
 
+
 # Simple in-memory cache using Python's built-in LRU cache
 @lru_cache(maxsize=1000)
-def was_user_blocked_after(site_key: str, username: str, timestamp_iso: str) -> bool:
+def was_user_blocked_after(code: str, family: str, username: str, year: int) -> bool:
     """
-    Check if user was blocked after a timestamp.
+    Check if user was blocked after a specific year.
     Uses @lru_cache for automatic caching.
     
+    Timestamp precision is reduced to year to improve cache hit rate,
+    since exact accuracy isn't required for this check.
+    
     Args:
-        site_key: String like "fi:wikipedia" for cache key
+        code: Wiki code (e.g., "fi")
+        family: Wiki family (e.g., "wikipedia")
         username: Username to check
-        timestamp_iso: ISO format timestamp string
+        year: Year to check blocks after
     
     Returns:
-        True if user was blocked after the timestamp
+        True if user was blocked after the given year
     """
     try:
-        code, family = site_key.split(":")
         site = pywikibot.Site(code, family)
-        timestamp = pywikibot.Timestamp.fromISOformat(timestamp_iso)
+        # Create timestamp for start of year
+        timestamp = pywikibot.Timestamp(year, 1, 1, 0, 0, 0)
         
         # Get block events after the timestamp
         block_events = site.logevents(
@@ -374,6 +379,3 @@ def was_user_blocked_after(site_key: str, username: str, timestamp_iso: str) -> 
         logger.error(f"Error checking blocks for {username}: {e}")
         # Fail safe: assume blocked if we can't verify
         return True
-
-
-
