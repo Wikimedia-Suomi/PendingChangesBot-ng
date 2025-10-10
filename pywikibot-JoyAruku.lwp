@@ -1,0 +1,14 @@
+#LWP-Cookies-2.0
+Set-Cookie3: WMF-Last-Access="08-Oct-2025"; path="/"; domain="meta.wikimedia.org"; path_spec; secure; expires="2025-11-09 12:00:00Z"; HttpOnly=None; version=0
+Set-Cookie3: NetworkProbeLimit="0.001"; path="/"; domain="meta.wikimedia.org"; path_spec; secure; expires="2025-10-08 16:17:08Z"; SameSite=None; version=0
+Set-Cookie3: metawikiSession=plkm5mmrv32166hcrt2v0m6br2ekmgr9; path="/"; domain="meta.wikimedia.org"; path_spec; secure; discard; HttpOnly=None; SameSite=None; version=0
+Set-Cookie3: metawikiUserID=40370385; path="/"; domain="meta.wikimedia.org"; path_spec; secure; expires="2026-10-08 15:17:46Z"; HttpOnly=None; SameSite=None; version=0
+Set-Cookie3: metawikiUserName=JoyAruku; path="/"; domain="meta.wikimedia.org"; path_spec; secure; expires="2026-10-08 15:17:46Z"; HttpOnly=None; SameSite=None; version=0
+Set-Cookie3: centralauth_User=JoyAruku; path="/"; domain="meta.wikimedia.org"; path_spec; secure; expires="2026-10-08 15:17:46Z"; HttpOnly=None; SameSite=None; version=0
+Set-Cookie3: centralauth_Token=0e5c7d44beea9a7fe41a88e30f74d741; path="/"; domain="meta.wikimedia.org"; path_spec; secure; expires="2026-10-08 15:17:46Z"; HttpOnly=None; SameSite=None; version=0
+Set-Cookie3: centralauth_Session=29fad3e9e63e9816db240c949536e460; path="/"; domain="meta.wikimedia.org"; path_spec; secure; discard; HttpOnly=None; SameSite=None; version=0
+Set-Cookie3: loginnotify_prevlogins="2025-8rpoau-sqjpse99r0cdgdc9ejc8w6a2o872uhl"; path="/"; domain="meta.wikimedia.org"; path_spec; secure; expires="2026-04-06 15:17:46Z"; HttpOnly=None; version=0
+Set-Cookie3: cpPosIndex="2%401759936666%2359d11827d610abbe8817910687c3d581"; path="/"; domain="meta.wikimedia.org"; path_spec; secure; expires="2025-10-08 15:17:56Z"; HttpOnly=None; version=0
+Set-Cookie3: UseDC=master; path="/"; domain="meta.wikimedia.org"; path_spec; secure; expires="2025-10-08 15:17:56Z"; HttpOnly=None; version=0
+Set-Cookie3: GeoIP="NG:LA:Lagos:6.45:3.39:v4"; path="/"; domain=".wikimedia.org"; path_spec; domain_dot; secure; discard; version=0
+Set-Cookie3: WMF-Uniq="lPRAr7BCQ2qYlg3sdan9OQKGAAEBAFvdG-yYy3NASJEvCssVEDOFijvYjifTbo3l"; path="/"; domain=".meta.wikimedia.org"; path_spec; secure; expires="2026-10-08 00:00:00Z"; HttpOnly=None; SameSite=None; version=0

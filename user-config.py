@@ -1,3 +1,1 @@
-usernames['wikipedia']['fi'] = 'USERNAME'
-usernames['meta']['meta'] = 'USERNAME'
-
+usernames['meta']['meta'] = 'JoyAruku'
