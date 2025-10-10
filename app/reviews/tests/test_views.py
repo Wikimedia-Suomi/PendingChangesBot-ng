@@ -41,8 +41,9 @@ class ViewTests(TestCase):
         ]
         self.assertCountEqual(codes, expected_codes)
 
+    @mock.patch("reviews.views.logger")
     @mock.patch("reviews.views.WikiClient")
-    def test_api_refresh_returns_error_on_failure(self, mock_client):
+    def test_api_refresh_returns_error_on_failure(self, mock_client, mock_logger):
         mock_client.return_value.refresh.side_effect = RuntimeError("failure")
         response = self.client.post(reverse("api_refresh", args=[self.wiki.pk]))
         self.assertEqual(response.status_code, 502)
