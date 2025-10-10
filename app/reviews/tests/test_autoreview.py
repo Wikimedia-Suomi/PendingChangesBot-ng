@@ -196,3 +196,10 @@ class ISBNDetectionTests(TestCase):
         invalid = _find_invalid_isbns(text)
         # Should recognize valid ISBN and not capture the year
         self.assertEqual(len(invalid), 0)
+
+    def test_isbn_with_spaces_around_hyphens(self):
+        """Test that ISBNs with spaces around hyphens are fully captured."""
+        text = "isbn: 978 - 0 - 306 - 40615 - 7"
+        invalid = _find_invalid_isbns(text)
+        # Should recognize valid ISBN with spaces around hyphens
+        self.assertEqual(len(invalid), 0)
