@@ -364,12 +364,14 @@ class ViewTests(TestCase):
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
                     return FakeRequest({
-                            "query": {
-                                "magicwords": [
-                                    {"name": "redirect",
-                                     "aliases": ["#REDIRECT"]}
-                                ]
-                            }
+                        "query": {
+                            "magicwords": [
+                                {
+                                    "name": "redirect",
+                                    "aliases": ["#REDIRECT"]
+                                }
+                            ]
+                        }
                         }
                     )
 

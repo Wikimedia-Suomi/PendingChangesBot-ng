@@ -9,10 +9,9 @@ from typing import Iterable
 
 import pywikibot
 
-from .models import Wiki
+from .models import EditorProfile, PendingPage, PendingRevision,Wiki
 from bs4 import BeautifulSoup
 
-from .models import EditorProfile, PendingPage, PendingRevision
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
