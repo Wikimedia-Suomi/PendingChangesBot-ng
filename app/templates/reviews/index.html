@@ -35,6 +35,20 @@
                   <button class="button is-warning" @click="clearCache">Clear cache</button>
                 </div>
               </div>
+              <div class="field mt-3" v-if="currentWiki">
+                <label class="label is-small">FlaggedRevs Quick Links:</label>
+                <div class="buttons">
+                  <a :href="buildFlaggedRevsUrl('ValidationStatistics')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
+                    Validation Statistics
+                  </a>
+                  <a :href="buildFlaggedRevsUrl('PendingChanges')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
+                    Pending Changes
+                  </a>
+                  <a :href="buildFlaggedRevsUrl('Log/Review')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
+                    Review Log
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
