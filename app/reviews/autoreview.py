@@ -13,6 +13,7 @@ from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 
 logger = logging.getLogger(__name__)
 
+from .models import EditorProfile, PendingPage, PendingRevision
 
 @dataclass(frozen=True)
 class AutoreviewDecision:
@@ -270,7 +271,6 @@ def _normalize_to_lookup(values: Iterable[str] | None) -> dict[str, str]:
             lookup[normalized] = str(value)
     return lookup
 
-
 def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bool:
     """
     Check if a user is a bot or former bot.
@@ -283,6 +283,8 @@ def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bo
         True if the user is a current bot or former bot, False otherwise
     """
     superset = revision.superset_data or {}
+    
+    # Check local bot flag from Superset data
     if superset.get("rc_bot"):
         return True
 
@@ -296,7 +298,6 @@ def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bo
 def _matched_user_groups(
     revision: PendingRevision,
     profile: EditorProfile | None,
-    *,
     allowed_groups: dict[str, str],
 ) -> set[str]:
     if not allowed_groups:
