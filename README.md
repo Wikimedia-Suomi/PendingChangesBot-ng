@@ -23,56 +23,97 @@ Vue.js interface for reviewing the results.
    git clone https://github.com/Wikimedia-Suomi/PendingChangesBot-ng.git
    cd PendingChangesBot-ng
    ```
-3. **Create and activate a virtual environment** (recommended)
+3. **Check your python version** (recommended)
+   * On **Windows**:
+   ```bash
+   python --version
+   ```
+   * On **macOS**:
+   ```bash
+   python3 --version
+   ```
+   Install if not found *for python3 you need to install pip3 
+4. **Create and activate a virtual environment** (recommended)
    ```bash
    python3 -m venv venv
    source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
    ```
-4. **Install Python dependencies**
+5. **Install Python dependencies**
+   * On **Windows**:
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
+   * On **macOS**:
+   ```bash
+   pip3 install --upgrade pip
+   pip3 install -r requirements.txt
+   ```
+
 
 ## Configuring Pywikibot Superset OAuth
 
 Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
 Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
 the steps below once per user account that will run PendingChangesBot:
-
-1. **Create a Pywikibot configuration**
+1. **Move to app directory**
+   All pywikibot and manage.py commands should be run in the app directory.
+   
    ```bash
-   echo "usernames['meta']['meta'] = '$YOUR_USERNAME'" > user-config.py
+   cd app
    ```
 
-3. **Log in with Pywikibot**
+3. **Create a Pywikibot configuration**
+   ```bash
+   echo "usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'" > user-config.py
+   ```
+
+4. **Log in with Pywikibot**
+   * On **Windows**:
    ```bash
    python -m pywikibot.scripts.login -site:meta
+   ```
+   * On **macOS**:
+   ```bash
+   python3 -m pywikibot.scripts.login -site:meta
    ```
    The command should report `Logged in on metawiki` and create a persistent login
    cookie at `~/.pywikibot/pywikibot.lwp`.
 
-4. **Approve Superset's OAuth client**
+5. **Approve Superset's OAuth client**
    - While still logged in to Meta-Wiki in your browser, open
      <https://superset.wmcloud.org/login/>.
    - Authorize the OAuth request for Superset. After approval you should be redirected
      to Superset's interface.
 
 ## Running the database migrations
-
 ```bash
 cd app
+```
+On **Windows**:
+```bash
 python manage.py makemigrations
 python manage.py migrate
+```
+* On **macOS**:
+```bash
+python3 manage.py makemigrations
+python3 manage.py migrate
 ```
 
 ## Running the application
 
 The Django project serves both the API and the Vue.js frontend from the same codebase.
-
 ```bash
 cd app
+```
+* On **Windows**:
+```bash
 python manage.py runserver
+```
+* On **macOS**:
+```bash
+python3 manage.py runserver
 ```
 
 Open <http://127.0.0.1:8000/> in your browser to use the interface. JSON endpoints are
@@ -81,10 +122,16 @@ available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
 ## Running unit tests
 
 Unit tests live in the Django backend project. Run them from the `app/` directory so Django can locate the correct settings module.
-
 ```bash
 cd app
+```
+* On **Windows**:
+```bash
 python manage.py test
+```
+* On **macOS**:
+```bash
+python3 manage.py test
 ```
 
 ## Running Flake8

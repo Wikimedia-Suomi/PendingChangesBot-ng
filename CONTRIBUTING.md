@@ -74,15 +74,31 @@ Before installing or running the application, ensure you have:
    git clone https://github.com/Wikimedia-Suomi/PendingChangesBot-ng.git
    cd PendingChangesBot-ng
    ```
-3. **Create and activate a virtual environment** (recommended)
+3. **Check your python version** (recommended)
+   * On **Windows**:
+   ```bash
+   python --version
+   ```
+   * On **macOS**:
+   ```bash
+   python3 --version
+   ```
+   Install if not found *for python3 you need to install pip3 
+4. **Create and activate a virtual environment** (recommended)
    ```bash
    python3 -m venv venv
    source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
    ```
 4. **Install Python dependencies**
+   * On **Windows**:
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
+   ```
+   * On **macOS**:
+   ```bash
+   pip3 install --upgrade pip
+   pip3 install -r requirements.txt
    ```
 
 ### Configuring Pywikibot Superset OAuth
@@ -93,12 +109,18 @@ the steps below once per user account that will run PendingChangesBot:
 
 1. **Create a Pywikibot configuration**
    ```bash
-   echo "usernames['meta']['meta'] = '$YOUR_USERNAME'" > user-config.py
+   ce app
+   echo "usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'" > user-config.py
    ```
 
 3. **Log in with Pywikibot**
+   * On **Windows**:
    ```bash
    python -m pywikibot.scripts.login -site:meta
+   ```
+   * On **macOS**:
+   ```bash
+   python3 -m pywikibot.scripts.login -site:meta
    ```
    The command should report `Logged in on metawiki` and create a persistent login
    cookie at `~/.pywikibot/pywikibot.lwp`.
@@ -110,21 +132,35 @@ the steps below once per user account that will run PendingChangesBot:
      to Superset's interface.
 
 ### Running the database migrations
-
-```bash
-cd app
-python manage.py makemigrations
-python manage.py migrate
-```
+   ```bash
+   cd app
+   ```
+   * On **Windows**:
+   ```bash
+   python manage.py makemigrations
+   python manage.py migrate
+   ```
+   * On **macOS**:
+   ```bash
+   python3 manage.py makemigrations
+   python3 manage.py migrate
+   ```
 
 ### Running the application
 
 The Django project serves both the API and the Vue.js frontend from the same codebase.
 
-```bash
-cd app
-python manage.py runserver
-```
+   ```bash
+   cd app
+   ```
+   * On **Windows**:
+   ```bash
+   python manage.py runserver
+   ```
+   * On **macOS**:
+   ```bash
+   python3 manage.py runserver
+   ```
 
 Open <http://127.0.0.1:8000/> in your browser to use the interface. JSON endpoints are
 available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
@@ -133,18 +169,25 @@ available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
 
 Unit tests live in the Django backend project. Run them from the `app/` directory so Django can locate the correct settings module.
 
-```bash
-cd app
-python manage.py test
-```
+   ```bash
+   cd app
+   ```
+   * On **Windows**:
+   ```bash
+   python manage.py test
+   ```
+   * On **macOS**:
+   ```bash
+   python3 manage.py test
+   ```
 
 ### Running Flake8
 
 Run Flake8 from the repository root to lint the code according to the configuration provided in `.flake8`.
 
-```bash
-flake8
-```
+   ```bash
+   flake8
+   ```
 
 If you are working inside a virtual environment, ensure it is activated before executing the command.
 
