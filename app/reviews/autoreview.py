@@ -9,13 +9,13 @@ from typing import Iterable
 
 import pywikibot
 
-from .models import EditorProfile, PendingPage, PendingRevision, Wiki
-
-logger = logging.getLogger(__name__)
+from .models import Wiki
 from bs4 import BeautifulSoup
 
 from .models import EditorProfile, PendingPage, PendingRevision
 from .services import WikiClient
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,8 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     """Run the configured autoreview checks for each pending revision of a page."""
 
     revisions = list(
-        page.revisions.exclude(revid=page.stable_revid).order_by("timestamp", "revid")
+        page.revisions.exclude(revid=page.stable_revid)
+        .order_by("timestamp", "revid")
     )  # Oldest revision first.
     usernames = {revision.user_name for revision in revisions if revision.user_name}
     profiles = {
@@ -416,7 +417,8 @@ def is_bot_edit(revision: PendingRevision) -> bool:
         return False
     try:
         profile = EditorProfile.objects.get(
-            wiki=revision.page.wiki, username=revision.user_name
+            wiki=revision.page.wiki,
+            username=revision.user_name
         )
         # Check both current bot status and former bot status
         return profile.is_bot or profile.is_former_bot

@@ -142,14 +142,7 @@ class ViewTests(TestCase):
             wikitext="",
             categories=[],
             superset_data={
-                "user_groups": [
-                    "editor",
-                    "autoreviewer",
-                    "editor",
-                    "reviewer",
-                    "sysop",
-                    "bot",
-                ],
+                "user_groups": ["editor","autoreviewer","editor","reviewer","sysop","bot"],
                 "change_tags": ["foo"],
                 "page_categories": ["Bar"],
                 "rc_bot": False,
@@ -185,9 +178,7 @@ class ViewTests(TestCase):
             "blocking_categories": ["Foo"],
             "auto_approved_groups": ["sysop"],
         }
-        response = self.client.put(
-            url, data=json.dumps(payload), content_type="application/json"
-        )
+        response = self.client.put(url, data=json.dumps(payload), content_type="application/json")
         self.assertEqual(response.status_code, 200)
         config = self.wiki.configuration
         config.refresh_from_db()
@@ -371,15 +362,12 @@ class ViewTests(TestCase):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
-                if (
-                    kwargs.get("meta") == "siteinfo"
-                    and kwargs.get("siprop") == "magicwords"
-                ):
-                    return FakeRequest(
-                        {
+                if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
+                    return FakeRequest({
                             "query": {
                                 "magicwords": [
-                                    {"name": "redirect", "aliases": ["#REDIRECT"]}
+                                    {"name": "redirect",
+                                     "aliases": ["#REDIRECT"]}
                                 ]
                             }
                         }

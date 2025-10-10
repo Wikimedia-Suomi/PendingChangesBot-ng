@@ -22,7 +22,7 @@ class Wiki(models.Model):
     code = models.CharField(max_length=50, unique=True)
     family = models.CharField(max_length=100, default="wikipedia")
     api_endpoint = models.URLField(
-        help_text=("Full API endpoint, e.g. https://fi.wikipedia.org/w/api.php")
+        help_text="Full API endpoint, e.g. https://fi.wikipedia.org/w/api.php"
     )
     script_path = models.CharField(max_length=255, default="/w")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -38,9 +38,7 @@ class Wiki(models.Model):
 class WikiConfiguration(models.Model):
     """Stores per-wiki rules that influence automatic approvals."""
 
-    wiki = models.OneToOneField(
-        Wiki, on_delete=models.CASCADE, related_name="configuration"
-    )
+    wiki = models.OneToOneField(Wiki, on_delete=models.CASCADE, related_name="configuration")
     blocking_categories = models.JSONField(default=list, blank=True)
     auto_approved_groups = models.JSONField(default=list, blank=True)
     redirect_aliases = models.JSONField(
@@ -61,9 +59,7 @@ class WikiConfiguration(models.Model):
 class PendingPage(models.Model):
     """Represents a page that currently has pending changes."""
 
-    wiki = models.ForeignKey(
-        Wiki, on_delete=models.CASCADE, related_name="pending_pages"
-    )
+    wiki = models.ForeignKey(Wiki, on_delete=models.CASCADE, related_name="pending_pages")
     pageid = models.BigIntegerField()
     title = models.CharField(max_length=500)
     stable_revid = models.BigIntegerField()
@@ -82,9 +78,7 @@ class PendingPage(models.Model):
 class PendingRevision(models.Model):
     """Revision data cached from the wiki API."""
 
-    page = models.ForeignKey(
-        PendingPage, on_delete=models.CASCADE, related_name="revisions"
-    )
+    page = models.ForeignKey(PendingPage, on_delete=models.CASCADE, related_name="revisions")
     revid = models.BigIntegerField()
     parentid = models.BigIntegerField(null=True, blank=True)
     user_name = models.CharField(max_length=255, blank=True)
@@ -171,9 +165,7 @@ class PendingRevision(models.Model):
 class EditorProfile(models.Model):
     """Caches information about editors to avoid repeated API calls."""
 
-    wiki = models.ForeignKey(
-        Wiki, on_delete=models.CASCADE, related_name="editor_profiles"
-    )
+    wiki = models.ForeignKey(Wiki, on_delete=models.CASCADE, related_name="editor_profiles")
     username = models.CharField(max_length=255)
     usergroups = models.JSONField(default=list, blank=True)
     is_blocked = models.BooleanField(default=False)
