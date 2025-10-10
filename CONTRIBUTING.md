@@ -35,7 +35,7 @@ All contributors must follow the project’s [Code of Conduct](https://github.co
 ## Communication
 
 It is advised to follow below mentioned pointers when trying to contact the mentors:
-* If the discussion is specific to an existing issue or PR then it's best to have this discussion publicly in the comments of said issue or PR. 
+* If the discussion is specific to an existing issue or PR then it's best to have this discussion publicly in the comments of said issue or PR.
 * If it's something specifically related to outreachy then the slack channel on Wikimediafi is the place to go.
 * It's best to have discussions publicly so other contributors can benefit from it, however, if you feel uncomfortable in doing so then you are most welcome to talk to any of the mentors privately through slack (for faster replies) or email.
 
@@ -85,29 +85,128 @@ Before installing or running the application, ensure you have:
    pip install -r requirements.txt
    ```
 
-### Configuring Pywikibot Superset OAuth
+### Configuring Pywikibot with OAuth
 
-Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
-Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
-the steps below once per user account that will run PendingChangesBot:
+Pywikibot requires OAuth authentication to interact with Wikimedia APIs and approve Superset's OAuth client. We **strongly recommend using OAuth 1.0a** for better security.
 
-1. **Create a Pywikibot configuration**
+#### Step 1: Register an OAuth 1.0a Consumer
+
+1. **Go to the OAuth registration page**
+   - Visit: <https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose>
+   - Make sure you're logged into your Wikimedia account
+
+2. **Click "Propose an OAuth 1.0a consumer"** (not OAuth 2.0)
+
+3. **Fill in the registration form:**
+   - **Application name**: `PendingChangesBot-local` (or any descriptive name)
+   - **Consumer version**: `1.0`
+   - **Application description**: `Local development bot for reviewing pending changes`
+   - **OAuth "callback" URL**: **Leave this field completely blank**
+   - Check **This consumer is for use only by [your username]**:
+   - **Applicable project**: Select `*` (all projects)
+   - **Types of grants**: Select "Request authorization for specific permissions"
+   - **Applicable grants**: Check these permissions:
+     - **Basic rights**
+     - **High-volume (bot) access**
+     - **Edit existing pages**
+     - **Patrol changes to pages**
+     - **Rollback changes to pages**
+   - **Allowed IP ranges**: Leave as default (`0.0.0.0/0` and `::/0`)
+   - **Public RSA key**: Leave blank
+   - Check the acknowledgment box
+
+4. **Submit and copy your tokens**
+   - After submission, you'll receive **4 tokens**:
+     - Consumer token
+     - Consumer secret
+     - Access token
+     - Access secret
+   - **Save these immediately. You won't see them again!**
+
+#### Step 2: Create Your Pywikibot Configuration
+
+1. **Option A: Copy the example template**
    ```bash
-   echo "usernames['meta']['meta'] = '$YOUR_USERNAME'" > user-config.py
+   cp user-config.py.example user-config.py
    ```
 
-3. **Log in with Pywikibot**
-   ```bash
-   python -m pywikibot.scripts.login -site:meta
-   ```
-   The command should report `Logged in on metawiki` and create a persistent login
-   cookie at `~/.pywikibot/pywikibot.lwp`.
+2. **Option B: Create `user-config.py` in root** with this content:
+   ```python
+   from collections import defaultdict as _defaultdict
 
-4. **Approve Superset's OAuth client**
-   - While still logged in to Meta-Wiki in your browser, open
-     <https://superset.wmcloud.org/login/>.
-   - Authorize the OAuth request for Superset. After approval you should be redirected
-     to Superset's interface.
+   family = 'wikipedia'
+   mylang = 'en'
+
+   usernames = _defaultdict(dict)
+   usernames['wikipedia']['en'] = 'YourWikipediaUsername'
+   usernames['meta']['meta'] = 'YourWikipediaUsername'
+
+   authenticate = {}
+   authenticate['meta.wikimedia.org'] = (
+       'CONSUMER_TOKEN',       # Replace these with your credentials
+       'CONSUMER_SECRET',
+       'ACCESS_TOKEN',
+       'ACCESS_SECRET'
+   )
+   ```
+
+3. **Replace the placeholders:**
+   - Replace `'YourWikipediaUsername'` with your actual Wikipedia username
+   - Replace all token placeholders with your actual OAuth tokens from Step 1
+
+#### Step 3: Test Your OAuth Setup
+
+1. **Test the login:**
+   ```bash
+   python3 -m pywikibot.scripts.login -site:meta
+   ```
+
+2. **Expected output:**
+   ```
+   Logged in on meta:meta as YourUsername.
+   ```
+
+3. **If successful**, a login cookie will be created
+
+#### Step 4: Approve Superset's OAuth Client
+
+1. **While logged in to Meta-Wiki**, visit:
+   - <https://superset.wmcloud.org/login/>
+
+2. **Authorize the OAuth request** for Superset
+   - You should be redirected to Superset's interface after approval
+
+#### Troubleshooting Common Issues
+
+**Problem: `SyntaxError: source code string cannot contain null bytes`**
+- **Cause**: Your `user-config.py` file is corrupted or contains hidden binary characters
+- **Solution**: Delete the file and recreate it from scratch using the template above
+
+**Problem: `NoUsernameError: Logged in as X but expect as Y`**
+- **Cause**: Username mismatch between OAuth tokens and `user-config.py`
+- **Solution**: Update `usernames` to match your actual Wikipedia username
+
+**Problem: `UserWarning: Configuration variable "defaultdict" is defined but unknown`**
+- **Cause**: Importing `defaultdict` without underscore prefix
+- **Solution**: Use `from collections import defaultdict as _defaultdict`
+
+**Problem: `Invalid value provided` for OAuth callback URL**
+- **Cause**: Trying to enter a value in the callback URL field
+- **Solution**: Leave the "OAuth callback URL" field **completely blank**
+
+**Problem: OAuth login fails with `401 Unauthorized`**
+- **Cause**: Incorrect or expired OAuth tokens
+- **Solution**: Register a new OAuth consumer and update your tokens
+
+#### Security Best Practices
+
+- **Never commit** `user-config.py` to git (already in `.gitignore`)
+- **Never share** your OAuth tokens publicly
+- **Use owner-only consumers** for local development
+- **Grant minimal permissions** – only what you need
+- **Regenerate tokens** if compromised
+
+Need help? Ask in the Slack channel or open an issue!
 
 ### Running the database migrations
 
@@ -202,15 +301,15 @@ If your proposal already exists in an open issue or PR, but you feel there are d
     * You can also filter out any issues with the `Status: In Progress` label, so that you only see issues that haven't been assigned to anyone.
 
 2) No need to ask to be assigned an issue.
-    * Just let people know through comments that you are working on it and assign it to yourself. 
+    * Just let people know through comments that you are working on it and assign it to yourself.
     * If someone is already working on it, ask to collaborate before jumping in.
 
 3) After being assigned, address each item listed in the acceptance criteria, if any exist.
-   * If an issue doesn't have any acceptance criteria, feel free to go about resolving the issue however you wish. 
+   * If an issue doesn't have any acceptance criteria, feel free to go about resolving the issue however you wish.
    * You can also ask the mentors if there are any specific acceptance criteria.
 
 4) Give regular updates.
-    * It's expected that you would give regular progress updates about the work that you're doing as comments on the issue so that everyone is in the loop about what work is being accomplished 
+    * It's expected that you would give regular progress updates about the work that you're doing as comments on the issue so that everyone is in the loop about what work is being accomplished
 
 ### Branching Strategy
 
@@ -243,7 +342,7 @@ Before creating a PR:
 To learn how to create a pull request or to learn more about pull requests in general, please follow this official [Pull request documentation](https://docs.github.com/en/pull-requests) by github.
 
 Make sure to use the following format in your pull request:
-* **Title** (should be clear and concise. Include issue number as well. (example: Add bulk editing UI for category selections (#128))): 
+* **Title** (should be clear and concise. Include issue number as well. (example: Add bulk editing UI for category selections (#128))):
 * **Description / Summary** (Explain the PR at a glance. What does this change do and why is it needed?):
 * **Linked Issues and phabricator ticket** (Fixes/closes/relates to #IssueNumber and #PhabricatorTask etc.):
 * **Changes Included** (Feature updates, Bug fixes, Refactors, Files/components affected etc.):
@@ -254,7 +353,7 @@ Make sure to use the following format in your pull request:
 After creating the PR, go over to the appropriate phabricator task and make a comment stating that you've created a PR along with it's link.
 
 ### Opening an issue:
-If you encounter a feature that should be added or a bug that needs to be fixed, then please reach out to the mentors through slack to confirm that this issue is not already in the pipeline. If they give you the go ahead, then feel free to open the issue. It's not mandatory that if you open an issue then you have to work on it, though it is ideal. 
+If you encounter a feature that should be added or a bug that needs to be fixed, then please reach out to the mentors through slack to confirm that this issue is not already in the pipeline. If they give you the go ahead, then feel free to open the issue. It's not mandatory that if you open an issue then you have to work on it, though it is ideal.
 
 After creating the issue, make sure to announce it on the [main phabricator board for PendingChangesBot](https://phabricator.wikimedia.org/T405726) along with the link to the issue, this way mentors can create an appropriate microtask for it on phabricator and other contributors are aware about it.
 
@@ -272,9 +371,9 @@ After creating the issue, make sure to announce it on the [main phabricator boar
 * **Feature summary** (what you would like to be able to do and where):
 * **Use case(s)** (list the steps that you performed to discover that problem and describe the actual underlying problem which you want to solve. Do not describe only a solution):
 * **Benefits** (why should this be implemented?):
-* **Screenshots/logs if applicable** : 
+* **Screenshots/logs if applicable** :
 * **Any additional details** :
 * **Will you be working on this issue yourself?** : Yes or No
 
 ## Further Help
-Feel free to contact the mentors through slack or email if you need further help. 
+Feel free to contact the mentors through slack or email if you need further help.

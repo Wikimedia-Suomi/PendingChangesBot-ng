@@ -34,29 +34,39 @@ Vue.js interface for reviewing the results.
    pip install -r requirements.txt
    ```
 
-## Configuring Pywikibot Superset OAuth
+## Configuring Pywikibot with OAuth
 
-Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
-Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
-the steps below once per user account that will run PendingChangesBot:
+Pywikibot requires OAuth 1.0a authentication to interact with Wikimedia APIs.
 
-1. **Create a Pywikibot configuration**
+### Quick Setup
+
+1. **Copy the example configuration:**
    ```bash
-   echo "usernames['meta']['meta'] = '$YOUR_USERNAME'" > user-config.py
+   cp user-config.py.example user-config.py
    ```
 
-3. **Log in with Pywikibot**
-   ```bash
-   python -m pywikibot.scripts.login -site:meta
-   ```
-   The command should report `Logged in on metawiki` and create a persistent login
-   cookie at `~/.pywikibot/pywikibot.lwp`.
+2. **Register an OAuth 1.0a consumer:**
+   - Visit: <https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose>
+   - Click "Propose an OAuth 1.0a consumer"
+   - Leave callback URL **blank**
+   - Select grants: Basic rights, High-volume (bot) access, Edit existing pages, Patrol changes
+   - Check "This consumer is for use only by [your username]"
 
-4. **Approve Superset's OAuth client**
-   - While still logged in to Meta-Wiki in your browser, open
-     <https://superset.wmcloud.org/login/>.
-   - Authorize the OAuth request for Superset. After approval you should be redirected
-     to Superset's interface.
+3. **Add credentials to `user-config.py`:**
+   - Replace `YourWikipediaUsername` with your actual username
+   - Replace OAuth token placeholders with your actual tokens
+
+4. **Test your setup:**
+   ```bash
+   python3 -m pywikibot.scripts.login -site:meta
+   ```
+   Expected output: `Logged in on meta:meta as YourUsername`
+
+5. **Approve Superset's OAuth client:**
+   - Visit <https://superset.wmcloud.org/login/>
+   - Authorize the OAuth request
+
+📖 **For detailed step-by-step instructions, troubleshooting, and security best practices**, see [CONTRIBUTING.md](CONTRIBUTING.md#configuring-pywikibot-with-oauth).
 
 ## Running the database migrations
 

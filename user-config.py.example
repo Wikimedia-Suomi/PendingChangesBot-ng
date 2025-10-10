@@ -1,0 +1,42 @@
+# -*- coding: utf-8 -*-
+# Pywikibot configuration file for PendingChangesBot
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to user-config.py in the same directory:
+#    cp user-config.py.example user-config.py
+# 2. Replace all placeholder values with your actual credentials
+# 3. Never commit user-config.py to git (it's already in .gitignore)
+#
+# For detailed OAuth setup instructions, see CONTRIBUTING.md section:
+# "Configuring Pywikibot with OAuth"
+
+from collections import defaultdict as _defaultdict
+
+# Bot configuration
+family = 'wikipedia'
+mylang = 'en'
+
+# Username configuration
+# Replace 'YourWikipediaUsername' with your actual Wikipedia/Wikimedia username
+usernames = _defaultdict(dict)
+usernames['wikipedia']['en'] = 'YourWikipediaUsername'
+usernames['meta']['meta'] = 'YourWikipediaUsername'
+
+# OAuth authentication (recommended - more secure than BotPasswords)
+# Get your OAuth 1.0a tokens from:
+# https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose
+#
+# After registering an OAuth consumer, replace the placeholder values below
+# with your actual tokens:
+authenticate = {}
+authenticate['meta.wikimedia.org'] = (
+    'CONSUMER_TOKEN',       # Replace with your consumer token
+    'CONSUMER_SECRET',      # Replace with your consumer secret
+    'ACCESS_TOKEN',         # Replace with your access token
+    'ACCESS_SECRET'         # Replace with your access secret
+)
+
+# Test your setup with:
+# python3 -m pywikibot.scripts.login -site:meta
+#
+# Expected output: "Logged in on meta:meta as YourUsername"
