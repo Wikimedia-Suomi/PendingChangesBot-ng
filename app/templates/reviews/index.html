@@ -10,6 +10,8 @@
   <body>
     {% verbatim %}
     <div id="app" class="container is-fluid py-4">
+      <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
+      <div class="notification is-info" v-if="state.loading">Loading data…</div>
       <section class="hero is-light">
         <div class="hero-body">
           <div class="columns is-vcentered">
@@ -225,8 +227,6 @@
         </div>
       </section>
 
-      <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
-      <div class="notification is-info" v-if="state.loading">Loading data…</div>
     </div>
     {% endverbatim %}
 
