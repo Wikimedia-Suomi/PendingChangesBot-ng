@@ -54,9 +54,6 @@
         </div>
       </section>
 
-      <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
-      <div class="notification is-info" v-if="state.loading">Loading data…</div>
-
       <section class="section" v-if="currentWiki">
         <div class="box mb-5">
           <div class="level is-mobile">
@@ -89,6 +86,9 @@
             </div>
           </div>
         </div>
+
+      <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
+      <div class="notification is-info" v-if="state.loading">Loading data…</div>
 
         <div v-if="state.pages.length">
           <div class="content">
