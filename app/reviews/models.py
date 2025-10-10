@@ -92,6 +92,8 @@ class PendingRevision(models.Model):
     comment = models.TextField(blank=True)
     change_tags = models.JSONField(default=list, blank=True)
     wikitext = models.TextField()
+    rendered_html = models.TextField(blank=True)
+    render_error_count = models.IntegerField(null=True, blank=True)
     categories = models.JSONField(default=list, blank=True)
     superset_data = models.JSONField(default=dict, blank=True)
 

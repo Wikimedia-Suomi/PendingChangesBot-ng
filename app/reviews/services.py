@@ -41,6 +41,37 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
+    def get_rendered_html(self, revid: int) -> str:
+        """Fetch the rendered HTML for a specific revision."""
+        if not revid:
+            return ""
+
+        try:
+            revision = PendingRevision.objects.get(page__wiki=self.wiki, revid=revid)
+            if revision.rendered_html:
+                return revision.rendered_html
+        except PendingRevision.DoesNotExist:
+            revision = None
+        except Exception:
+            revision = None
+
+        request = self.site.simple_request(
+            action="parse",
+            oldid=revid,
+            prop="text",
+            formatversion=2,
+        )
+        try:
+            response = request.submit()
+            html = response.get("parse", {}).get("text", "")
+            html_content = html if isinstance(html, str) else ""
+            if revision and html_content:
+                revision.rendered_html = html_content
+                revision.save(update_fields=["rendered_html"])
+            return html_content
+        except Exception:
+            return ""
+
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
         """Fetch the pending pages using Superset and cache them in the database."""
 
