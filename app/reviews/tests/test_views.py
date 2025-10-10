@@ -456,9 +456,10 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 6)
-        self.assertEqual(result["tests"][3]["status"], "ok")
-        self.assertEqual(len(result["tests"]), 6)
+        # Now we have 7 tests: bot-user, blocked-user, auto-approved-group,
+        # article-to-redirect, blocking-categories, render-errors, revertrisk
+        self.assertEqual(len(result["tests"]), 7)
+        self.assertEqual(result["tests"][4]["status"], "ok")
         self.assertEqual(result["tests"][-1]["status"], "ok")
 
     @mock.patch("reviews.services.pywikibot.Site")
