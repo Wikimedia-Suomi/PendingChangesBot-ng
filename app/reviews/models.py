@@ -43,6 +43,15 @@ class WikiConfiguration(models.Model):
     wiki = models.OneToOneField(Wiki, on_delete=models.CASCADE, related_name="configuration")
     blocking_categories = models.JSONField(default=list, blank=True)
     auto_approved_groups = models.JSONField(default=list, blank=True)
+    redirect_aliases = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Cached redirect magic word aliases from wiki API "
+            "(i.e: https://fi.wikipedia.org/w/api.php?"
+            "action=query&meta=siteinfo&siprop=magicwords)"
+        )
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:  # pragma: no cover - debug helper
@@ -161,6 +170,7 @@ class EditorProfile(models.Model):
     usergroups = models.JSONField(default=list, blank=True)
     is_blocked = models.BooleanField(default=False)
     is_bot = models.BooleanField(default=False)
+    is_former_bot = models.BooleanField(default=False)
     is_autopatrolled = models.BooleanField(default=False)
     is_autoreviewed = models.BooleanField(default=False)
     fetched_at = models.DateTimeField(auto_now=True)

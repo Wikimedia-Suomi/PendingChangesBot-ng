@@ -21,7 +21,44 @@ def index(request: HttpRequest) -> HttpResponse:
 
     wikis = Wiki.objects.all().order_by("code")
     if not wikis.exists():
+        # All Wikipedias using FlaggedRevisions extension
+        # Source: https://noc.wikimedia.org/conf/highlight.php?file=flaggedrevs.php
         default_wikis = (
+            {
+                "name": "Alemannic Wikipedia",
+                "code": "als",
+                "api_endpoint": "https://als.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Arabic Wikipedia",
+                "code": "ar",
+                "api_endpoint": "https://ar.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Belarusian Wikipedia",
+                "code": "be",
+                "api_endpoint": "https://be.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Bengali Wikipedia",
+                "code": "bn",
+                "api_endpoint": "https://bn.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Bosnian Wikipedia",
+                "code": "bs",
+                "api_endpoint": "https://bs.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Chechen Wikipedia",
+                "code": "ce",
+                "api_endpoint": "https://ce.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Central Kurdish Wikipedia",
+                "code": "ckb",
+                "api_endpoint": "https://ckb.wikipedia.org/w/api.php",
+            },
             {
                 "name": "German Wikipedia",
                 "code": "de",
@@ -33,14 +70,79 @@ def index(request: HttpRequest) -> HttpResponse:
                 "api_endpoint": "https://en.wikipedia.org/w/api.php",
             },
             {
-                "name": "Polish Wikipedia",
-                "code": "pl",
-                "api_endpoint": "https://pl.wikipedia.org/w/api.php",
+                "name": "Esperanto Wikipedia",
+                "code": "eo",
+                "api_endpoint": "https://eo.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Persian Wikipedia",
+                "code": "fa",
+                "api_endpoint": "https://fa.wikipedia.org/w/api.php",
             },
             {
                 "name": "Finnish Wikipedia",
                 "code": "fi",
                 "api_endpoint": "https://fi.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Hindi Wikipedia",
+                "code": "hi",
+                "api_endpoint": "https://hi.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Hungarian Wikipedia",
+                "code": "hu",
+                "api_endpoint": "https://hu.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Interlingua Wikipedia",
+                "code": "ia",
+                "api_endpoint": "https://ia.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Indonesian Wikipedia",
+                "code": "id",
+                "api_endpoint": "https://id.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Georgian Wikipedia",
+                "code": "ka",
+                "api_endpoint": "https://ka.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Polish Wikipedia",
+                "code": "pl",
+                "api_endpoint": "https://pl.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Portuguese Wikipedia",
+                "code": "pt",
+                "api_endpoint": "https://pt.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Russian Wikipedia",
+                "code": "ru",
+                "api_endpoint": "https://ru.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Albanian Wikipedia",
+                "code": "sq",
+                "api_endpoint": "https://sq.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Turkish Wikipedia",
+                "code": "tr",
+                "api_endpoint": "https://tr.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Ukrainian Wikipedia",
+                "code": "uk",
+                "api_endpoint": "https://uk.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Venetian Wikipedia",
+                "code": "vec",
+                "api_endpoint": "https://vec.wikipedia.org/w/api.php",
             },
         )
         for defaults in default_wikis:
