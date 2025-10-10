@@ -6,6 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Iterable
+from urllib.parse import urlparse
 
 import pywikibot
 
@@ -283,6 +284,94 @@ def _evaluate_revision(
         }
     )
 
+    is_ref_only, has_ref_removals, added_or_modified_refs = _is_reference_only_edit(
+        revision
+    )
+
+    if is_ref_only:
+        if has_ref_removals:
+            tests.append(
+                {
+                    "id": "reference-only-edit",
+                    "title": "Reference-only edit",
+                    "status": "fail",
+                    "message": "The edit removes references, which requires manual review.",
+                }
+            )
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="manual",
+                    label="Requires human review",
+                    reason="Reference-only edits that remove references require manual review.",
+                ),
+            }
+
+        urls = _extract_urls_from_references(added_or_modified_refs)
+
+        if urls:
+            domains = []
+            for url in urls:
+                domain = _extract_domain(url)
+                if domain:
+                    domains.append(domain)
+
+            unknown_domains = []
+            for domain in set(domains):
+                if not _check_domain_usage_in_wikipedia(revision.page.wiki, domain):
+                    unknown_domains.append(domain)
+
+            if unknown_domains:
+                domain_list = ", ".join(sorted(unknown_domains))
+                tests.append(
+                    {
+                        "id": "reference-only-edit",
+                        "title": "Reference-only edit",
+                        "status": "fail",
+                        "message": (
+                            f"The edit adds references with new domains: "
+                            f"{domain_list}. Manual review required."
+                        ),
+                    }
+                )
+                return {
+                    "tests": tests,
+                    "decision": AutoreviewDecision(
+                        status="manual",
+                        label="Requires human review",
+                        reason=(
+                            "Reference-only edits with new external domains "
+                            "require manual review."
+                        ),
+                    ),
+                }
+
+        tests.append(
+            {
+                "id": "reference-only-edit",
+                "title": "Reference-only edit",
+                "status": "ok",
+                "message": "The edit only adds or modifies references with known domains.",
+            }
+        )
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="approve",
+                label="Would be auto-approved",
+                reason="The edit only adds or modifies references.",
+            ),
+        }
+    else:
+        tests.append(
+            {
+                "id": "reference-only-edit",
+                "title": "Reference-only edit",
+                "status": "not_ok",
+                "message": "This is not a reference-only edit.",
+            }
+        )
+
     return {
         "tests": tests,
         "decision": AutoreviewDecision(
@@ -537,3 +626,149 @@ def _is_article_to_redirect_conversion(
         return False
 
     return True
+
+
+def _extract_references(wikitext: str) -> dict[str, str]:
+    """Extract all reference tags from wikitext.
+
+    Returns a dictionary mapping reference positions to their content.
+    """
+    if not wikitext:
+        return {}
+
+    references = {}
+    ref_pattern = r'<ref(?:\s+[^>]*)?>(?:.*?)</ref>|<ref(?:\s+[^>]*)?/>'
+
+    for i, match in enumerate(re.finditer(ref_pattern, wikitext, re.IGNORECASE | re.DOTALL)):
+        references[f"ref_{i}"] = match.group(0)
+
+    return references
+
+
+def _remove_references(wikitext: str) -> str:
+    """Remove all reference tags from wikitext, leaving other content."""
+    if not wikitext:
+        return ""
+
+    ref_pattern = r'<ref(?:\s+[^>]*)?>(?:.*?)</ref>|<ref(?:\s+[^>]*)?/>'
+    cleaned = re.sub(ref_pattern, '', wikitext, flags=re.IGNORECASE | re.DOTALL)
+
+    return cleaned
+
+
+def _is_reference_only_edit(revision: PendingRevision) -> tuple[bool, bool, list[str]]:
+    """Check if an edit only adds or modifies references.
+
+    Returns:
+        tuple: (is_reference_only, has_removals, added_or_modified_refs)
+            - is_reference_only: True if only references changed
+            - has_removals: True if references were removed
+            - added_or_modified_refs: List of new/modified reference content
+    """
+    if not revision.parentid:
+        return False, False, []
+
+    current_wikitext = revision.get_wikitext()
+    parent_wikitext = _get_parent_wikitext(revision)
+
+    if not parent_wikitext:
+        return False, False, []
+
+    current_refs = _extract_references(current_wikitext)
+    parent_refs = _extract_references(parent_wikitext)
+
+    current_content = _remove_references(current_wikitext)
+    parent_content = _remove_references(parent_wikitext)
+
+    current_content_normalized = ' '.join(current_content.split())
+    parent_content_normalized = ' '.join(parent_content.split())
+
+    if current_content_normalized != parent_content_normalized:
+        return False, False, []
+
+    if current_refs == parent_refs:
+        return False, False, []
+
+    current_ref_values = set(current_refs.values())
+    parent_ref_values = set(parent_refs.values())
+
+    has_removals = len(parent_ref_values - current_ref_values) > 0
+    added_or_modified = list(current_ref_values - parent_ref_values)
+
+    return True, has_removals, added_or_modified
+
+
+def _extract_urls_from_references(references: list[str]) -> list[str]:
+    """Extract URLs from reference tags.
+
+    Args:
+        references: List of reference tag content
+
+    Returns:
+        List of URLs found in the references
+    """
+    urls = []
+    url_pattern = r'https?://[^\s\]<>"\'\|\{\}]+(?:\([^\s\)]*\))?'
+
+    for ref in references:
+        for match in re.finditer(url_pattern, ref, re.IGNORECASE):
+            url = match.group(0)
+            url = url.rstrip('.,;:!?}')
+            urls.append(url)
+
+    return urls
+
+
+def _extract_domain(url: str) -> str | None:
+    """Extract domain from URL.
+
+    Args:
+        url: Full URL string
+
+    Returns:
+        Domain name or None if parsing fails
+    """
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc
+        if domain:
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            return domain
+        return None
+    except Exception:
+        return None
+
+
+def _check_domain_usage_in_wikipedia(wiki: Wiki, domain: str) -> bool:
+    """Check if a domain has been previously used in Wikipedia articles.
+
+    Args:
+        wiki: The wiki to check against
+        domain: Domain name to check
+
+    Returns:
+        True if domain has been used before, False otherwise
+    """
+    try:
+        site = pywikibot.Site(code=wiki.code, fam=wiki.family)
+
+        ext_url_usage = site.exturlusage(
+            url=domain,
+            protocol='http',
+            namespaces=[0],
+            total=1
+        )
+
+        for _ in ext_url_usage:
+            return True
+
+        return False
+    except Exception as e:
+        logger.warning(
+            "Failed to check domain usage for %s on %s: %s",
+            domain,
+            wiki.code,
+            str(e)
+        )
+        return False
