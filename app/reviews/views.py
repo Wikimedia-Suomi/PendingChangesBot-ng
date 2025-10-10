@@ -167,6 +167,8 @@ def index(request: HttpRequest) -> HttpResponse:
                 "configuration": {
                     "blocking_categories": configuration.blocking_categories,
                     "auto_approved_groups": configuration.auto_approved_groups,
+                    "test_mode": configuration.test_mode,
+                    "test_revision_ids": configuration.test_revision_ids,
                 },
             }
         )

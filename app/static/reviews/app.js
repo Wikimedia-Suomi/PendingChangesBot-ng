@@ -178,7 +178,7 @@ createApp({
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
       // Load test mode settings from configuration
       forms.testMode = currentWiki.value.configuration.test_mode || false;
-      forms.testRevisionIds = currentWiki.value.configuration.test_revision_ids || [];
+      forms.testRevisionIds = [...(currentWiki.value.configuration.test_revision_ids || [])];
       forms.newRevisionId = "";
     }
 
@@ -294,6 +294,11 @@ createApp({
       if (!state.selectedWikiId) {
         return;
       }
+
+      // Track previous test mode state to detect changes
+      const previousTestMode = currentWiki.value?.configuration.test_mode || false;
+      const previousRevisionIds = JSON.stringify(currentWiki.value?.configuration.test_revision_ids || []);
+
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
@@ -313,6 +318,14 @@ createApp({
           state.wikis[wikiIndex].configuration = data;
         }
         syncForms();
+
+        // Auto-refresh results only when test mode settings change
+        const testModeChanged = previousTestMode !== data.test_mode;
+        const revisionIdsChanged = previousRevisionIds !== JSON.stringify(data.test_revision_ids || []);
+
+        if (testModeChanged || revisionIdsChanged) {
+          await loadPending();
+        }
       } catch (error) {
         // Error already handled in apiRequest.
       }
