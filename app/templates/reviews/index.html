@@ -10,8 +10,6 @@
   <body>
     {% verbatim %}
     <div id="app" class="container is-fluid py-4">
-      <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
-      <div class="notification is-info" v-if="state.loading">Loading data…</div>
       <section class="hero is-light">
         <div class="hero-body">
           <div class="columns is-vcentered">
@@ -55,6 +53,9 @@
           </div>
         </div>
       </section>
+
+      <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
+      <div class="notification is-info" v-if="state.loading">Loading data…</div>
 
       <section class="section" v-if="currentWiki">
         <div class="box mb-5">
@@ -226,7 +227,6 @@
           No pending revisions cached. Use the refresh button to fetch data.
         </div>
       </section>
-
     </div>
     {% endverbatim %}
 
