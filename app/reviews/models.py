@@ -43,6 +43,8 @@ class WikiConfiguration(models.Model):
     """Stores per-wiki rules that influence automatic approvals."""
 
     wiki = models.OneToOneField(Wiki, on_delete=models.CASCADE, related_name="configuration")
+    blocking_categories = models.JSONField(default=list, blank=True)
+    auto_approved_groups = models.JSONField(default=list, blank=True)
     redirect_aliases = models.JSONField(
         default=list,
         blank=True,
