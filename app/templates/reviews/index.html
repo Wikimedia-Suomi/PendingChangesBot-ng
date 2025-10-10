@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pending Changes Review</title>
     <link rel="stylesheet" href="static/css/bulma.0.9.4.min.css" />
+    <link
+      rel="stylesheet"
+      href="https://fi.wikipedia.org/w/load.php?modules=mediawiki.diff.styles&only=styles"
+    />
   </head>
   <body>
     {% verbatim %}
@@ -185,6 +189,10 @@
                         </tr>
                         <tr v-if="getRevisionReview(page, revision)">
                           <td colspan="4" class="has-background-light">
+                            <div :id="'diff-container-' + revision.revid">
+                              <p v-if="state.diffs.loadingDiff[revision.revid]">Loading diff…</p>
+                              <div v-else v-html="state.diffs.diffHtml[revision.revid]"></div>
+                            </div>
                             <div class="content mb-0">
                               <p class="has-text-weight-semibold">Autoreview test results</p>
                               <ul class="mb-2">

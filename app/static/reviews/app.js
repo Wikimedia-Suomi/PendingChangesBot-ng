@@ -147,6 +147,10 @@ createApp({
       reviewResults: {},
       runningReviews: {},
       runningBulkReview: false,
+      diffs: {
+        loadingDiff: [],
+        diffHtml: [],
+      }
     });
 
     const forms = reactive({
@@ -399,6 +403,7 @@ createApp({
           }
         });
         setReviewResults(pageId, mapping);
+        showDiff(page)
       } catch (error) {
         // Errors are surfaced via apiRequest state handling.
       } finally {
@@ -486,6 +491,40 @@ createApp({
         return "(dry-run)";
       }
       return `${base} (dry-run)`;
+    }
+
+
+    /**
+     * This functions gets Html to render for each revision
+     * @param {*} page - this is the page that has revision
+     */
+
+    async function showDiff(page) {
+      
+      page.revisions.forEach(async (revision)=> {
+        state.diffs.loadingDiff[revision.revid] = true;
+        try {
+          const title = page.title;
+          const oldid = revision.parentid;
+          const diffid = revision.revid;
+
+          const baseUrl = "https://fi.wikipedia.org";
+          const diffUrl = `${baseUrl}/w/index.php?title=${title}&diff=${diffid}&oldid=${oldid}&action=render&diffonly=1`;
+
+          const corsProxy = "https://corsproxy.io/?";
+          const fetchUrl = corsProxy + encodeURIComponent(diffUrl);
+
+          const response = await fetch(fetchUrl);
+          const html = await response.text();
+
+          state.diffs.diffHtml[revision.revid] = html;
+        } catch (error) {
+          state.diffs.diffHtml = `<p class="has-text-danger">Failed to load diff</p>`;
+        } finally {
+          state.diffs.loadingDiff[revision.revid] = false;
+        }
+
+      })        
     }
 
     watch(
