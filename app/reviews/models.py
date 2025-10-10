@@ -24,7 +24,7 @@ class Wiki(models.Model):
     api_endpoint = models.URLField(
         help_text=(
             "Full API endpoint, e.g. https://fi.wikipedia.org/w/api.php"
-            )
+        )
     )
     script_path = models.CharField(max_length=255, default="/w")
     created_at = models.DateTimeField(auto_now_add=True)

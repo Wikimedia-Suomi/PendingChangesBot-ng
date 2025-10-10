@@ -142,7 +142,7 @@ class ViewTests(TestCase):
             wikitext="",
             categories=[],
             superset_data={
-                "user_groups": ["editor","autoreviewer","editor","reviewer","sysop","bot"],
+                "user_groups": ["editor", "autoreviewer", "editor", "reviewer", "sysop", "bot"],
                 "change_tags": ["foo"],
                 "page_categories": ["Bar"],
                 "rc_bot": False,
@@ -372,8 +372,7 @@ class ViewTests(TestCase):
                                 }
                             ]
                         }
-                        }
-                    )
+                    })
 
                 return FakeRequest(wikitext_response)
 

@@ -9,7 +9,7 @@ from typing import Iterable
 
 import pywikibot
 
-from .models import EditorProfile, PendingPage, PendingRevision,Wiki
+from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 from bs4 import BeautifulSoup
 
 from .services import WikiClient

@@ -199,7 +199,7 @@ ORDER BY fp_pending_since, rev_id DESC
         )
         if existing_page is None:
             logger.warning(
-                "Pending page %s was deleted before saving revision %s",page.pk,payload.revid
+                "Pending page %s was deleted before saving revision %s", page.pk, payload.revid
             )
             return None
 
@@ -245,7 +245,7 @@ ORDER BY fp_pending_since, rev_id DESC
         if not superset_data:
             return profile
 
-        autoreviewed_groups = {"autoreview","autoreviewer","editor","reviewer","sysop","bot"}
+        autoreviewed_groups = {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
         groups = sorted(superset_data.get("user_groups") or [])
         former_groups = sorted(superset_data.get("user_former_groups") or [])
 
