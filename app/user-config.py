@@ -1,1 +1,1 @@
-usernames['meta']['meta'] = 'System625'
+usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'
