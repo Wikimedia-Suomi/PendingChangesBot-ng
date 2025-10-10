@@ -509,12 +509,11 @@ createApp({
           const diffid = revision.revid;
 
           const baseUrl = "https://fi.wikipedia.org";
-          const diffUrl = `${baseUrl}/w/index.php?title=${title}&diff=${diffid}&oldid=${oldid}&action=render&diffonly=1`;
+          const diffUrl = `${baseUrl}/w/index.php?title=${title}&diff=${diffid}&oldid=${oldid}&action=render&diffonly=1&uselang=en`;
 
-          const corsProxy = "https://corsproxy.io/?";
-          const fetchUrl = corsProxy + encodeURIComponent(diffUrl);
+          const apiUrl = `/api/wikis/fetch-diff/?url=${encodeURIComponent(diffUrl)}`;
+          const response = await fetch(apiUrl);
 
-          const response = await fetch(fetchUrl);
           const html = await response.text();
 
           state.diffs.diffHtml[revision.revid] = html;

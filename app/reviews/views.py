@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from http import HTTPStatus
+import requests
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -294,3 +295,24 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             "auto_approved_groups": configuration.auto_approved_groups,
         }
     )
+    
+def fetch_diff(request):
+    url = request.GET.get("url")
+    if not url:
+        return JsonResponse(
+            {
+                "error": "Missing 'url' parameter"
+            }, status=400)
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; DiffFetcher/1.0; +https://yourdomain.com)",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        return HttpResponse(response.text, content_type="text/html")
+    except requests.RequestException as e:
+        return JsonResponse({"error": str(e)}, status=500)
