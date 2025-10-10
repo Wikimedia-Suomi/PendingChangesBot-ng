@@ -433,8 +433,8 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 4)
-        self.assertEqual(result["tests"][3]["status"], "ok")
+        self.assertEqual(len(result["tests"]), 5)
+        self.assertEqual(result["tests"][4]["status"], "ok")
 
     def test_api_autoreview_orders_revisions_from_oldest_to_newest(self):
         page = PendingPage.objects.create(
