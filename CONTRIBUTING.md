@@ -109,7 +109,8 @@ the steps below once per user account that will run PendingChangesBot:
 
 1. **Create a Pywikibot configuration**
    ```bash
-   echo "usernames['meta']['meta'] = '$YOUR_USERNAME'" > user-config.py
+   ce app
+   echo "usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'" > user-config.py
    ```
 
 3. **Log in with Pywikibot**
