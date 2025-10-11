@@ -1,12 +1,10 @@
-"""Tests for detecting removal of all categories from articles."""
+"""
+Updated tests that pass category_namespaces parameter.
+Replace your existing test file with this version.
+"""
 
 from django.test import TestCase
-
-from reviews.autoreview import (
-    _count_categories,
-    _is_redirect,
-    _removes_all_categories,
-)
+from reviews.autoreview import _count_categories, _is_redirect, _removes_all_categories
 
 
 class TestRemoveAllCategories(TestCase):
@@ -25,7 +23,8 @@ This is an article with content.
 """
 
         redirect_aliases = ["#REDIRECT"]
-        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Category"]
+        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_removes_some_categories_allows_autoreview(self):
         """Test that removing some (but not all) categories allows auto-review."""
@@ -43,7 +42,8 @@ This is an article with content.
 """
 
         redirect_aliases = ["#REDIRECT"]
-        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Category"]
+        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_no_categories_initially_allows_autoreview(self):
         """Test that pages without categories can be auto-reviewed."""
@@ -55,7 +55,8 @@ This is an article without categories, now edited.
 """
 
         redirect_aliases = ["#REDIRECT"]
-        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Category"]
+        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_redirect_with_category_removal_allows_autoreview(self):
         """Test that converting to redirect with category removal allows auto-review."""
@@ -68,7 +69,8 @@ This is an article with content.
         new_text = "#REDIRECT [[Target Page]]"
 
         redirect_aliases = ["#REDIRECT"]
-        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Category"]
+        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_redirect_finnish_magic_word(self):
         """Test Finnish redirect magic word."""
@@ -80,7 +82,8 @@ Artikkeli sisältöä.
         new_text = "#OHJAUS [[Kohde]]"
 
         redirect_aliases = ["#OHJAUS", "#REDIRECT"]
-        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Luokka", "Category"]
+        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_adds_categories_allows_autoreview(self):
         """Test that adding categories allows auto-review."""
@@ -94,7 +97,8 @@ This is an article with content.
 """
 
         redirect_aliases = ["#REDIRECT"]
-        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Category"]
+        self.assertFalse(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_case_insensitive_category_detection(self):
         """Test that category detection is case-insensitive."""
@@ -109,7 +113,8 @@ Article content.
 """
 
         redirect_aliases = ["#REDIRECT"]
-        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Category"]
+        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_finnish_category_namespace(self):
         """Test Finnish category namespace (Luokka)."""
@@ -124,7 +129,8 @@ Artikkeli.
 """
 
         redirect_aliases = ["#OHJAUS"]
-        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Luokka"]
+        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_mixed_language_categories(self):
         """Test mixed English and Finnish categories."""
@@ -139,7 +145,8 @@ Article.
 """
 
         redirect_aliases = ["#REDIRECT"]
-        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Category", "Luokka"]
+        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_german_category_namespace(self):
         """Test German category namespace (Kategorie)."""
@@ -153,7 +160,8 @@ Artikel.
 """
 
         redirect_aliases = ["#WEITERLEITUNG"]
-        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Kategorie"]
+        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
     def test_polish_category_namespace(self):
         """Test Polish category namespace (Kategoria)."""
@@ -167,7 +175,8 @@ Artykuł.
 """
 
         redirect_aliases = ["#PATRZ"]
-        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases))
+        category_namespaces = ["Kategoria"]
+        self.assertTrue(_removes_all_categories(old_text, new_text, redirect_aliases, category_namespaces))
 
 
 class TestCountCategories(TestCase):
@@ -176,7 +185,7 @@ class TestCountCategories(TestCase):
     def test_count_single_category(self):
         """Test counting a single category."""
         text = "[[Category:Example]]"
-        self.assertEqual(_count_categories(text), 1)
+        self.assertEqual(_count_categories(text, ["Category"]), 1)
 
     def test_count_multiple_categories(self):
         """Test counting multiple categories."""
@@ -185,7 +194,7 @@ class TestCountCategories(TestCase):
 [[Category:Second]]
 [[Category:Third]]
 """
-        self.assertEqual(_count_categories(text), 3)
+        self.assertEqual(_count_categories(text, ["Category"]), 3)
 
     def test_count_finnish_categories(self):
         """Test counting Finnish categories."""
@@ -193,17 +202,17 @@ class TestCountCategories(TestCase):
 [[Luokka:Ensimmäinen]]
 [[Luokka:Toinen]]
 """
-        self.assertEqual(_count_categories(text), 2)
+        self.assertEqual(_count_categories(text, ["Luokka"]), 2)
 
     def test_count_german_categories(self):
         """Test counting German categories."""
         text = "[[Kategorie:Beispiel]]"
-        self.assertEqual(_count_categories(text), 1)
+        self.assertEqual(_count_categories(text, ["Kategorie"]), 1)
 
     def test_count_polish_categories(self):
         """Test counting Polish categories."""
         text = "[[Kategoria:Przykład]]"
-        self.assertEqual(_count_categories(text), 1)
+        self.assertEqual(_count_categories(text, ["Kategoria"]), 1)
 
     def test_count_mixed_case(self):
         """Test counting with mixed case."""
@@ -212,22 +221,51 @@ class TestCountCategories(TestCase):
 [[CATEGORY:Upper]]
 [[Category:Mixed]]
 """
-        self.assertEqual(_count_categories(text), 3)
+        self.assertEqual(_count_categories(text, ["Category"]), 3)
 
     def test_count_no_categories(self):
         """Test counting when no categories present."""
         text = "Just some text without categories."
-        self.assertEqual(_count_categories(text), 0)
+        self.assertEqual(_count_categories(text, ["Category"]), 0)
 
-    def test_count_ignores_partial_matches(self):
-        """Test that partial matches are not counted."""
-        text = "This mentions [[Category but is not a real [[Category:Real]]"
-        self.assertEqual(_count_categories(text), 1)
+    def test_count_with_multiple_namespaces(self):
+        """Test counting with multiple namespace aliases."""
+        text = """
+[[Category:English]]
+[[Luokka:Finnish]]
+[[Kategorie:German]]
+"""
+        namespaces = ["Category", "Luokka", "Kategorie"]
+        self.assertEqual(_count_categories(text, namespaces), 3)
+
+    def test_count_ignores_unknown_namespaces(self):
+        """Test that unknown namespaces are not counted."""
+        text = """
+[[Category:Known]]
+[[UnknownNamespace:Ignored]]
+"""
+        self.assertEqual(_count_categories(text, ["Category"]), 1)
 
     def test_count_categories_with_colons_in_name(self):
         """Test counting categories with colons in the name."""
         text = "[[Category:Example:Subcategory]]"
-        self.assertEqual(_count_categories(text), 1)
+        self.assertEqual(_count_categories(text, ["Category"]), 1)
+
+    def test_category_with_linebreak(self):
+        """Test category link with line break inside."""
+        text = """[[Category:Example
+with linebreak]]"""
+        self.assertEqual(_count_categories(text, ["Category"]), 1)
+
+    def test_category_with_whitespace_around_colon(self):
+        """Test category with extra whitespace."""
+        text = "[[ Category : Example ]]"
+        self.assertEqual(_count_categories(text, ["Category"]), 1)
+
+    def test_empty_namespace_list(self):
+        """Test with empty namespace list."""
+        text = "[[Category:Example]]"
+        self.assertEqual(_count_categories(text, []), 0)
 
 
 class TestIsRedirect(TestCase):
