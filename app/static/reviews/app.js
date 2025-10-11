@@ -152,6 +152,7 @@ createApp({
     const forms = reactive({
       blockingCategories: "",
       autoApprovedGroups: "",
+      revertriskThreshold: "",
     });
 
     const currentWiki = computed(() =>
@@ -166,10 +167,14 @@ createApp({
       if (!currentWiki.value) {
         forms.blockingCategories = "";
         forms.autoApprovedGroups = "";
+        forms.revertriskThreshold = "";
         return;
       }
       forms.blockingCategories = (currentWiki.value.configuration.blocking_categories || []).join("\n");
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
+      forms.revertriskThreshold = currentWiki.value.configuration.revertrisk_threshold !== null
+        ? String(currentWiki.value.configuration.revertrisk_threshold)
+        : "";
     }
 
     async function apiRequest(url, options = {}) {
@@ -284,9 +289,20 @@ createApp({
       if (!state.selectedWikiId) {
         return;
       }
+
+      let revertriskValue = null;
+      if (forms.revertriskThreshold && forms.revertriskThreshold.trim() !== "") {
+        revertriskValue = parseFloat(forms.revertriskThreshold);
+        if (isNaN(revertriskValue)) {
+          state.error = "Revertrisk threshold must be a valid number";
+          return;
+        }
+      }
+
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
+        revertrisk_threshold: revertriskValue,
       };
       try {
         const data = await apiRequest(`/api/wikis/${state.selectedWikiId}/configuration/`, {
