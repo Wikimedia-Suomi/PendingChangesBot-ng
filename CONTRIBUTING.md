@@ -35,7 +35,7 @@ All contributors must follow the project’s [Code of Conduct](https://github.co
 ## Communication
 
 It is advised to follow below mentioned pointers when trying to contact the mentors:
-* If the discussion is specific to an existing issue or PR then it's best to have this discussion publicly in the comments of said issue or PR. 
+* If the discussion is specific to an existing issue or PR then it's best to have this discussion publicly in the comments of said issue or PR.
 * If it's something specifically related to outreachy then the slack channel on Wikimediafi is the place to go.
 * It's best to have discussions publicly so other contributors can benefit from it, however, if you feel uncomfortable in doing so then you are most welcome to talk to any of the mentors privately through slack (for faster replies) or email.
 
@@ -74,16 +74,37 @@ Before installing or running the application, ensure you have:
    git clone https://github.com/Wikimedia-Suomi/PendingChangesBot-ng.git
    cd PendingChangesBot-ng
    ```
-3. **Create and activate a virtual environment** (recommended)
+3. **Check your python version** (recommended)
+   * On **Windows**:
+   ```bash
+   python --version
+   ```
+   * On **macOS**:
+   ```bash
+   python3 --version
+   ```
+   Install if not found *for python3 you need to install pip3 
+4. **Create and activate a virtual environment** (recommended)
    ```bash
    python3 -m venv venv
    source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
    ```
-4. **Install Python dependencies**
+5. **Install Python dependencies**
+   * On **Windows**:
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
+   * On **macOS**:
+   ```bash
+   pip3 install --upgrade pip
+   pip3 install -r requirements.txt
+   ```
+6. **Install pre-commit hooks** (recommended for contributors)
+   ```bash
+   pre-commit install
+   ```
+   This will automatically format and lint your code before each commit.
 
 ### Configuring Pywikibot Superset OAuth
 
@@ -93,12 +114,18 @@ the steps below once per user account that will run PendingChangesBot:
 
 1. **Create a Pywikibot configuration**
    ```bash
-   echo "usernames['meta']['meta'] = '$YOUR_USERNAME'" > user-config.py
+   ce app
+   echo "usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'" > user-config.py
    ```
 
 3. **Log in with Pywikibot**
+   * On **Windows**:
    ```bash
    python -m pywikibot.scripts.login -site:meta
+   ```
+   * On **macOS**:
+   ```bash
+   python3 -m pywikibot.scripts.login -site:meta
    ```
    The command should report `Logged in on metawiki` and create a persistent login
    cookie at `~/.pywikibot/pywikibot.lwp`.
@@ -110,21 +137,35 @@ the steps below once per user account that will run PendingChangesBot:
      to Superset's interface.
 
 ### Running the database migrations
-
-```bash
-cd app
-python manage.py makemigrations
-python manage.py migrate
-```
+   ```bash
+   cd app
+   ```
+   * On **Windows**:
+   ```bash
+   python manage.py makemigrations
+   python manage.py migrate
+   ```
+   * On **macOS**:
+   ```bash
+   python3 manage.py makemigrations
+   python3 manage.py migrate
+   ```
 
 ### Running the application
 
 The Django project serves both the API and the Vue.js frontend from the same codebase.
 
-```bash
-cd app
-python manage.py runserver
-```
+   ```bash
+   cd app
+   ```
+   * On **Windows**:
+   ```bash
+   python manage.py runserver
+   ```
+   * On **macOS**:
+   ```bash
+   python3 manage.py runserver
+   ```
 
 Open <http://127.0.0.1:8000/> in your browser to use the interface. JSON endpoints are
 available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
@@ -133,17 +174,32 @@ available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
 
 Unit tests live in the Django backend project. Run them from the `app/` directory so Django can locate the correct settings module.
 
+   ```bash
+   cd app
+   ```
+   * On **Windows**:
+   ```bash
+   python manage.py test
+   ```
+   * On **macOS**:
+   ```bash
+   python3 manage.py test
+   ```
+
+### Code Formatting and Linting
+
+This project uses [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting.
+
+**Note:** If you installed pre-commit hooks (step 5 above), formatting and linting happen automatically before each commit. You don't need to run these commands manually.
+
+### Manual Commands
+
 ```bash
-cd app
-python manage.py test
-```
+# Format code
+ruff format app/
 
-### Running Flake8
-
-Run Flake8 from the repository root to lint the code according to the configuration provided in `.flake8`.
-
-```bash
-flake8
+# Check and fix linting issues
+ruff check app/ --fix
 ```
 
 If you are working inside a virtual environment, ensure it is activated before executing the command.
@@ -202,15 +258,20 @@ If your proposal already exists in an open issue or PR, but you feel there are d
     * You can also filter out any issues with the `Status: In Progress` label, so that you only see issues that haven't been assigned to anyone.
 
 2) No need to ask to be assigned an issue.
-    * Just let people know through comments that you are working on it and assign it to yourself. 
+    * Just let people know through comments that you are working on it and assign it to yourself.
+    * If there is both Phabricator ticket and Github issue then comment on both that you are working with it.
     * If someone is already working on it, ask to collaborate before jumping in.
 
 3) After being assigned, address each item listed in the acceptance criteria, if any exist.
-   * If an issue doesn't have any acceptance criteria, feel free to go about resolving the issue however you wish. 
+   * If an issue doesn't have any acceptance criteria, feel free to go about resolving the issue however you wish.
    * You can also ask the mentors if there are any specific acceptance criteria.
 
 4) Give regular updates.
-    * It's expected that you would give regular progress updates about the work that you're doing as comments on the issue so that everyone is in the loop about what work is being accomplished 
+    * It's expected that you would give regular progress updates about the work that you're doing as comments on the issue so that everyone is in the loop about what work is being accomplished
+
+5) Claim new tasks responsibly.
+    * If you want to switch to another task for any reason, unassign yourself from the current ticket or issue and leave a comment there so others know it’s available to work on.
+    * Please claim a new task only after you’ve submitted a pull request for your previous one.
 
 ### Branching Strategy
 
@@ -243,7 +304,7 @@ Before creating a PR:
 To learn how to create a pull request or to learn more about pull requests in general, please follow this official [Pull request documentation](https://docs.github.com/en/pull-requests) by github.
 
 Make sure to use the following format in your pull request:
-* **Title** (should be clear and concise. Include issue number as well. (example: Add bulk editing UI for category selections (#128))): 
+* **Title** (should be clear and concise. Include issue number as well. (example: Add bulk editing UI for category selections (#128))):
 * **Description / Summary** (Explain the PR at a glance. What does this change do and why is it needed?):
 * **Linked Issues and phabricator ticket** (Fixes/closes/relates to #IssueNumber and #PhabricatorTask etc.):
 * **Changes Included** (Feature updates, Bug fixes, Refactors, Files/components affected etc.):
@@ -254,7 +315,7 @@ Make sure to use the following format in your pull request:
 After creating the PR, go over to the appropriate phabricator task and make a comment stating that you've created a PR along with it's link.
 
 ### Opening an issue:
-If you encounter a feature that should be added or a bug that needs to be fixed, then please reach out to the mentors through slack to confirm that this issue is not already in the pipeline. If they give you the go ahead, then feel free to open the issue. It's not mandatory that if you open an issue then you have to work on it, though it is ideal. 
+If you encounter a feature that should be added or a bug that needs to be fixed, then please reach out to the mentors through slack to confirm that this issue is not already in the pipeline. If they give you the go ahead, then feel free to open the issue. It's not mandatory that if you open an issue then you have to work on it, though it is ideal.
 
 After creating the issue, make sure to announce it on the [main phabricator board for PendingChangesBot](https://phabricator.wikimedia.org/T405726) along with the link to the issue, this way mentors can create an appropriate microtask for it on phabricator and other contributors are aware about it.
 
@@ -272,9 +333,9 @@ After creating the issue, make sure to announce it on the [main phabricator boar
 * **Feature summary** (what you would like to be able to do and where):
 * **Use case(s)** (list the steps that you performed to discover that problem and describe the actual underlying problem which you want to solve. Do not describe only a solution):
 * **Benefits** (why should this be implemented?):
-* **Screenshots/logs if applicable** : 
+* **Screenshots/logs if applicable** :
 * **Any additional details** :
 * **Will you be working on this issue yourself?** : Yes or No
 
 ## Further Help
-Feel free to contact the mentors through slack or email if you need further help. 
+Feel free to contact the mentors through slack or email if you need further help.
