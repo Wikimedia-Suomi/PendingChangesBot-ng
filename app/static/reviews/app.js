@@ -147,6 +147,7 @@ createApp({
       reviewResults: {},
       runningReviews: {},
       runningBulkReview: false,
+      searchQuery: "",
     });
 
     const forms = reactive({
@@ -158,9 +159,68 @@ createApp({
       state.wikis.find((wiki) => wiki.id === state.selectedWikiId) || null,
     );
 
-    const visiblePages = computed(() => state.pages.slice(0, pageDisplayLimit));
+    function matchesSearchQuery(page) {
+      if (!state.searchQuery || state.searchQuery.trim() === "") {
+        return true;
+      }
+      const query = state.searchQuery.toLowerCase().trim();
 
-    const hasMorePages = computed(() => state.pages.length > pageDisplayLimit);
+      // Check page title
+      if (page.title) {
+        const formattedTitle = formatTitle(page.title).toLowerCase().replace(/\s+/g, ' ');
+        const normalizedQuery = query.replace(/\s+/g, ' ');
+        if (formattedTitle.includes(normalizedQuery)) {
+          return true;
+        }
+      }
+
+      // Check revisions
+      if (Array.isArray(page.revisions)) {
+        for (const revision of page.revisions) {
+          // Check timestamp
+          if (revision.timestamp) {
+            // Check raw timestamp
+            if (revision.timestamp.toLowerCase().includes(query)) {
+              return true;
+            }
+            // Check formatted timestamp as displayed in UI
+            const formattedTimestamp = formatDateTime(revision.timestamp).toLowerCase();
+            if (formattedTimestamp.includes(query)) {
+              return true;
+            }
+          }
+          // Check user_name
+          if (revision.user_name && revision.user_name.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Check comment
+          if (revision.comment && revision.comment.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Check change_tags
+          if (Array.isArray(revision.change_tags)) {
+            for (const tag of revision.change_tags) {
+              if (tag && tag.toLowerCase().includes(query)) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+
+      return false;
+    }
+
+    const filteredPages = computed(() => {
+      if (!state.searchQuery || state.searchQuery.trim() === "") {
+        return state.pages;
+      }
+      return state.pages.filter((page) => matchesSearchQuery(page));
+    });
+
+    const visiblePages = computed(() => filteredPages.value.slice(0, pageDisplayLimit));
+
+    const hasMorePages = computed(() => filteredPages.value.length > pageDisplayLimit);
 
     function syncForms() {
       if (!currentWiki.value) {
@@ -375,6 +435,14 @@ createApp({
       return `/wiki/Special:Contributions/${encoded}`;
     }
 
+    function buildFlaggedRevsUrl(specialPage) {
+      const origin = getWikiOrigin();
+      if (!origin) {
+        return "";
+      }
+      return `${origin}/wiki/Special:${specialPage}?uselang=en`;
+    }
+
     function toggleConfiguration() {
       state.configurationOpen = !state.configurationOpen;
     }
@@ -527,6 +595,7 @@ createApp({
       state,
       forms,
       currentWiki,
+      filteredPages,
       visiblePages,
       hasMorePages,
       pageDisplayLimit,
@@ -540,6 +609,7 @@ createApp({
       buildLatestRevisionUrl,
       buildRevisionDiffUrl,
       buildUserContributionsUrl,
+      buildFlaggedRevsUrl,
       runAutoreview,
       runAutoreviewAllVisible,
       getRevisionReview,
