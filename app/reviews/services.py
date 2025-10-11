@@ -67,6 +67,7 @@ SELECT
    a.actor_name,
    a.actor_user,
    group_concat(DISTINCT(ctd_name)) AS change_tags,
+   group_concat(DISTINCT(ct_params)) AS change_tag_params,
    group_concat(DISTINCT(ug_group)) AS user_groups,
    group_concat(DISTINCT(ufg_group)) AS user_former_groups,
    group_concat(DISTINCT(cl_to)) AS page_categories,
@@ -93,8 +94,6 @@ WHERE
    AND r.rev_id>=fp_stable
    AND r.rev_actor=a.actor_id
    AND r.rev_comment_id=comment_id
-   AND (ctd_name IN ("mw-manual-revert", "mw-reverted", "mw-rollback", "mw-undo")
-   OR ctd_name IS NULL)
 GROUP BY r.rev_id
 ORDER BY fp_pending_since, rev_id DESC
 """
