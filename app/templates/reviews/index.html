@@ -106,6 +106,17 @@
               >
                 Autoreview all listed pages
               </button>
+              <div class="show-diff-checkbox">
+                <input
+                  class="large-checkbox"
+                  type="checkbox" 
+                  id="showdiff" 
+                  name="showdiff" 
+                  v-model="state.diffs.showDiffs"
+                  @change="saveDiffsToLocalStorage"
+                >
+                <label for="showdiff">Show Diffs</label>
+              </div>
             </div>
             <article v-for="page in visiblePages" :key="page.pageid" class="card mb-5">
               <header class="card-header">

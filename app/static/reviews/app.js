@@ -27,6 +27,7 @@ createApp({
     const selectedWikiStorageKey = "selectedWikiId";
     const sortOrderStorageKey = "pendingSortOrder";
     const pageDisplayLimit = 100;
+    const showDiffSetting = localStorage.getItem('showDiffsSetting') === 'false'
 
     function loadFromStorage(key) {
       if (typeof window === "undefined") {
@@ -148,6 +149,7 @@ createApp({
       runningReviews: {},
       runningBulkReview: false,
       diffs: {
+        showDiffs: showDiffSetting,
         loadingDiff: [],
         diffHtml: [],
       }
@@ -165,6 +167,10 @@ createApp({
     const visiblePages = computed(() => state.pages.slice(0, pageDisplayLimit));
 
     const hasMorePages = computed(() => state.pages.length > pageDisplayLimit);
+
+    function saveDiffsToLocalStorage() {      
+      localStorage.setItem('showDiffsSetting', !state.diffs.showDiffs);
+    }
 
     function syncForms() {
       if (!currentWiki.value) {
@@ -383,7 +389,7 @@ createApp({
       state.configurationOpen = !state.configurationOpen;
     }
 
-    async function runAutoreview(page) {
+    async function runAutoreview(page, showDiffs=true) {
       if (!page || !state.selectedWikiId) {
         return;
       }
@@ -403,7 +409,9 @@ createApp({
           }
         });
         setReviewResults(pageId, mapping);
-        showDiff(page)
+        if(showDiffs){
+          showDiff(page)
+        }
       } catch (error) {
         // Errors are surfaced via apiRequest state handling.
       } finally {
@@ -429,7 +437,7 @@ createApp({
           if (state.selectedWikiId !== wikiId) {
             break;
           }
-          await runAutoreview(page);
+          await runAutoreview(page, state.diffs.showDiffs);
         }
       } finally {
         state.runningBulkReview = false;
@@ -603,6 +611,7 @@ createApp({
       formatTestStatus,
       statusTagClass,
       formatDecision,
+      saveDiffsToLocalStorage,
     };
   },
 }).mount("#app");
