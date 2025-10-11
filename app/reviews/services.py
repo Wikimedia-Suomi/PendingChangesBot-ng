@@ -285,7 +285,7 @@ ORDER BY fp_pending_since, rev_id DESC
             FROM globaluser As gu
             LEFT JOIN global_user_groups As gug ON gu.gu_id = gug.gug_user
             LEFT JOIN global_user_former_groups As gufg ON gu.gu_id = gufg.gufg_user
-            WHERE gu_name = '{username.replace("'", "''")}'
+            WHERE gu.gu_name = '{username.replace("'", "''")}'
             GROUP BY gu.gu_id
             """
             
