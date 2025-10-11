@@ -224,6 +224,71 @@ Pywikibot requires OAuth authentication to interact with Wikimedia APIs and appr
 
 Need help? Ask in the Slack channel or open an issue!
 
+---
+
+### Alternative: Simple BotPassword Setup (Local Development Only)
+
+If you're having issues with OAuth 1.0a/2.0 compatibility (especially with Superset), you can use BotPasswords for local development instead. **Note**: This is simpler but less secure than OAuth.
+
+#### Step 1: Create a Bot Password
+
+1. **Go to Bot Passwords page:**
+   - Visit: <https://meta.wikimedia.org/wiki/Special:BotPasswords>
+   - Make sure you're logged into your Wikimedia account
+
+2. **Create a new bot password:**
+   - **Bot name**: `PendingChangesBot` (or any name you choose)
+   - **Grants**: Check these permissions:
+     - **Basic rights**
+     - **High-volume editing**
+     - **Edit existing pages**
+     - **Patrol changes to pages**
+   - Click **Create**
+
+3. **Save your credentials:**
+   - You'll see: `YourUsername@PendingChangesBot` and a long password
+   - **Save these immediately. You won't see the password again!**
+
+#### Step 2: Configure Pywikibot with BotPassword
+
+Create or update `user-config.py` in the root directory:
+
+```python
+from collections import defaultdict as _defaultdict
+
+family = 'wikipedia'
+mylang = 'en'
+
+usernames = _defaultdict(dict)
+usernames['wikipedia']['en'] = 'YourUsername@PendingChangesBot'
+usernames['meta']['meta'] = 'YourUsername@PendingChangesBot'
+
+# Store password in a separate file for security
+password_file = "user-password.py"
+```
+
+Then create `user-password.py` in the same directory:
+
+```python
+# BotPassword format: (username@botname, password)
+('YourUsername@PendingChangesBot', 'your_bot_password_here')
+```
+
+**Security note:** Make sure `user-password.py` is in `.gitignore` (it already is).
+
+#### Step 3: Test Your BotPassword Setup
+
+```bash
+python3 -m pywikibot.scripts.login -site:meta
+```
+
+Expected output:
+```
+Logging in to meta:meta as YourUsername@PendingChangesBot
+Logged in on meta:meta as YourUsername@PendingChangesBot.
+```
+---
+
 ### Running the database migrations
    ```bash
    cd app
