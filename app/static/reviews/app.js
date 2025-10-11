@@ -319,11 +319,13 @@ createApp({
         }
         syncForms();
 
-        // Auto-refresh results only when test mode settings change
+        // Auto-refresh results when in test mode or when test mode settings change
         const testModeChanged = previousTestMode !== data.test_mode;
         const revisionIdsChanged = previousRevisionIds !== JSON.stringify(data.test_revision_ids || []);
+        const isTestMode = data.test_mode;
 
-        if (testModeChanged || revisionIdsChanged) {
+        // Refresh if test mode changed, revision IDs changed, or currently in test mode
+        if (testModeChanged || revisionIdsChanged || isTestMode) {
           await loadPending();
         }
       } catch (error) {
@@ -332,7 +334,7 @@ createApp({
     }
 
     // Add a revision ID to the test mode list
-    function addRevisionId() {
+    async function addRevisionId() {
       const value = forms.newRevisionId.trim();
       if (!value) {
         return;
@@ -352,11 +354,17 @@ createApp({
       // Clear input field
       forms.newRevisionId = "";
       state.error = "";
+
+      // Auto-save configuration and refresh list
+      await saveConfiguration();
     }
 
     // Remove a revision ID from the test mode list
-    function removeRevisionId(index) {
+    async function removeRevisionId(index) {
       forms.testRevisionIds.splice(index, 1);
+
+      // Auto-save configuration and refresh list
+      await saveConfiguration();
     }
 
     function formatDate(value) {
