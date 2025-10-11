@@ -68,7 +68,6 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
 
     return results
 
-
 def _evaluate_revision(
     revision: PendingRevision,
     client: WikiClient,
@@ -108,20 +107,9 @@ def _evaluate_revision(
             }
         )
 
-    tests.append(
-        {
-            "id": "bot-user",
-            "title": "Bot user",
-            "status": "not_ok",
-            "message": "The user is not marked as a bot.",
-        }
-    )
-
+    # Test 2: Check if user was blocked after making the edit
     try:
-        from reviews.services import WikiClient
-        wiki_client = WikiClient(revision.page.wiki)
-        
-        if wiki_client.is_user_blocked_after_edit(revision.user_name, revision.timestamp):
+        if client.is_user_blocked_after_edit(revision.user_name, revision.timestamp):
             tests.append({
                 "id": "blocked-user",
                 "title": "User blocked after edit",
@@ -160,9 +148,8 @@ def _evaluate_revision(
             ),
         }
 
-
-    # Test 2: Editors in the allow-list can be auto-approved.
-    # Test 2: Autoapproved editors can always be auto-approved.
+    # Test 3: Editors in the allow-list can be auto-approved.
+    # Test 3: Autoapproved editors can always be auto-approved.
     if auto_groups:
         matched_groups = _matched_user_groups(revision, profile, allowed_groups=auto_groups)
         if matched_groups:
@@ -225,7 +212,7 @@ def _evaluate_revision(
                 }
             )
 
-    # Test 3: Do not approve article to redirect conversions
+    # Test 4: Do not approve article to redirect conversions
     is_redirect_conversion = _is_article_to_redirect_conversion(revision, redirect_aliases)
 
     if is_redirect_conversion:
@@ -266,7 +253,7 @@ def _evaluate_revision(
             ),
         }
 
-    # Test 4: Blocking categories on the old version prevent automatic approval.
+    # Test 5: Blocking categories on the old version prevent automatic approval.
     blocking_hits = _blocking_category_hits(revision, blocking_categories)
     if blocking_hits:
         tests.append(
@@ -297,7 +284,7 @@ def _evaluate_revision(
         }
     )
 
-    # Test 4: Check for new rendering errors in the HTML.
+    # Test 6: Check for new rendering errors in the HTML.
     new_render_errors = _check_for_new_render_errors(revision, client)
     if new_render_errors:
         tests.append(
@@ -334,7 +321,6 @@ def _evaluate_revision(
             reason="In dry-run mode the edit would not be approved automatically.",
         ),
     }
-
 
 def _get_render_error_count(revision: PendingRevision, html: str) -> int:
     """Calculate and cache the number of rendering errors in the HTML."""

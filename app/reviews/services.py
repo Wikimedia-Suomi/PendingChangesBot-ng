@@ -358,6 +358,7 @@ def _parse_superset_bool(value) -> bool | None:
     return bool(value)
 
 
+
 # Simple in-memory cache using Python's built-in LRU cache
 @lru_cache(maxsize=1000)
 def was_user_blocked_after(code: str, family: str, username: str, year: int) -> bool:
@@ -383,11 +384,13 @@ def was_user_blocked_after(code: str, family: str, username: str, year: int) -> 
         timestamp = pywikibot.Timestamp(year, 1, 1, 0, 0, 0)
         
         # Get block events after the timestamp
+        # reverse=True means enumerate forward from start timestamp
         block_events = site.logevents(
             logtype='block',
             page=f'User:{username}',
             start=timestamp,
-            reverse=False
+            reverse=True,
+            total=1  # Only need to find one block event
         )
         
         # Check if any 'block' action exists
@@ -399,5 +402,6 @@ def was_user_blocked_after(code: str, family: str, username: str, year: int) -> 
         
     except Exception as e:
         logger.error(f"Error checking blocks for {username}: {e}")
-        # Fail safe: assume blocked if we can't verify
-        return True
+        # Fail safe: assume NOT blocked if we can't verify
+        # This prevents breaking existing functionality when the API is unavailable
+        return False
