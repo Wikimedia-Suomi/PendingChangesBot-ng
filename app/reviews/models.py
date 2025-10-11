@@ -27,6 +27,17 @@ class Wiki(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    test_mode = models.BooleanField(
+        default=False,
+        help_text="If enabled, use test revision IDs instead of real flagged pages"
+    )
+    test_revision_ids = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Comma-separated revision IDs for test mode (e.g. 12345, 67890)"
+    )
+    
+
     class Meta:
         ordering = ["code"]
 

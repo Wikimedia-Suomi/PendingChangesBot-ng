@@ -129,3 +129,14 @@ PYWIKIBOT_SITE_FAMILY = os.getenv("PYWIKIBOT_SITE_FAMILY", "wikipedia")
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ============================
+# PendingChangesBot Test Mode
+# ============================
+
+# Toggle between production and test mode
+TEST_MODE = False
+
+# Comma-separated list of test revision IDs (only used when TEST_MODE=True)
+TEST_REVISION_IDS = []
+
