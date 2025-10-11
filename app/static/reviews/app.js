@@ -516,7 +516,25 @@ createApp({
 
           const html = await response.text();
 
-          state.diffs.diffHtml[revision.revid] = html;
+          // inject href to point to Wikipedia domain name(base url).
+          // form view all pending changes.
+          // where there are multiple revisions.
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const link = doc.querySelector(`a[title="${formatTitle(title)}"]`);
+
+          if (link) {
+              const relativeHref = link.getAttribute('href');
+              const domainUrl = "//fi.wikipedia.org";
+              
+              if (relativeHref && relativeHref.startsWith('/w/')) {
+                  link.setAttribute('href', `${domainUrl}${relativeHref}`);
+              }
+          }
+          
+          const updatedHtml = doc.body.innerHTML; 
+          state.diffs.diffHtml[revision.revid] = updatedHtml;
+
         } catch (error) {
           state.diffs.diffHtml = `<p class="has-text-danger">Failed to load diff</p>`;
         } finally {
