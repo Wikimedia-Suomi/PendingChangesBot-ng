@@ -382,9 +382,23 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
         configuration.save(
             update_fields=["blocking_categories", "auto_approved_groups", "updated_at"]
         )
+
+        test_mode_val = payload.get("test_mode")
+        if test_mode_val is not None:
+
+            wiki.test_mode = str(test_mode_val).lower() in ["true", "1", "yes"]
+
+        revision_ids_val = payload.get("test_revision_ids")
+        if revision_ids_val is not None:
+            wiki.test_revision_ids = str(revision_ids_val).strip()
+
+        wiki.save(update_fields=["test_mode", "test_revision_ids"])
+
     return JsonResponse(
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
+            "test_mode": wiki.test_mode,
+            "test_revision_ids": wiki.test_revision_ids,
         }
     )
