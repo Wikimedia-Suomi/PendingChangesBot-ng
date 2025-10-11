@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
 import pywikibot
+from pywikibot.comms import http
 from bs4 import BeautifulSoup
 
 from .models import EditorProfile, PendingPage, PendingRevision, Wiki
@@ -313,6 +315,72 @@ def _evaluate_revision(
         }
     )
 
+    # Test 7: Check revertrisk score if threshold is configured
+    revertrisk_threshold = revision.page.wiki.configuration.revertrisk_threshold
+    revertrisk_score = None
+
+    if revertrisk_threshold > 0.0:
+        revertrisk_score = _get_revertrisk_score(revision)
+
+        if revertrisk_score is not None:
+            if revertrisk_score > revertrisk_threshold:
+                tests.append(
+                    {
+                        "id": "revertrisk",
+                        "title": "Revert risk",
+                        "status": "fail",
+                        "message": (
+                            f"High revert risk score: {revertrisk_score:.3f} "
+                            f"(threshold: {revertrisk_threshold:.3f})"
+                        ),
+                        "revertrisk_score": revertrisk_score,
+                    }
+                )
+                return {
+                    "tests": tests,
+                    "decision": AutoreviewDecision(
+                        status="blocked",
+                        label="Cannot be auto-approved",
+                        reason=(
+                            f"High revert risk score "
+                            f"({revertrisk_score:.3f} > {revertrisk_threshold:.3f})"
+                        ),
+                    ),
+                }
+            else:
+                tests.append(
+                    {
+                        "id": "revertrisk",
+                        "title": "Revert risk",
+                        "status": "ok",
+                        "message": (
+                            f"Low revert risk score: {revertrisk_score:.3f} "
+                            f"(threshold: {revertrisk_threshold:.3f})"
+                        ),
+                        "revertrisk_score": revertrisk_score,
+                    }
+                )
+        else:
+            tests.append(
+                {
+                    "id": "revertrisk",
+                    "title": "Revert risk",
+                    "status": "not_ok",
+                    "message": "Failed to fetch revertrisk score from API",
+                    "revertrisk_score": None,
+                }
+            )
+    else:
+        tests.append(
+            {
+                "id": "revertrisk",
+                "title": "Revert risk",
+                "status": "ok",
+                "message": "Revertrisk checking is disabled (threshold set to 0.0)",
+                "revertrisk_score": None,
+            }
+        )
+
     return {
         "tests": tests,
         "decision": AutoreviewDecision(
@@ -554,3 +622,65 @@ def _is_article_to_redirect_conversion(
         return False
 
     return True
+
+
+def _get_revertrisk_score(revision: PendingRevision) -> float | None:
+    """
+    Query the Wikimedia revertrisk API to get the revert risk score for an edit.
+
+    Args:
+        revision: The pending revision to check
+
+    Returns:
+        The revertrisk score (0.0-1.0) or None if the API call fails
+    """
+    url = (
+        'https://api.wikimedia.org/service/lw/inference/v1/models/'
+        'revertrisk-language-agnostic:predict'
+    )
+    headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'PendingChangesBot/1.0 (https://fi.wikipedia.org/wiki/User:SeulojaBot)'
+    }
+    payload = json.dumps({
+        'rev_id': revision.revid,
+        'lang': revision.page.wiki.code,
+        'project': revision.page.wiki.family
+    })
+
+    try:
+        resp = http.fetch(url, method='POST', headers=headers, data=payload)
+
+        # Check for successful response
+        if resp.status_code != 200:
+            logger.warning(
+                "Revertrisk API returned status %s for revision %s",
+                resp.status_code,
+                revision.revid
+            )
+            return None
+
+        result = json.loads(resp.text)
+
+        # The API returns a structure like:
+        # {"output": {"probabilities": {"true": 0.123, "false": 0.877}}}
+        # We want the "true" probability (probability of being reverted)
+        probabilities = result.get('output', {}).get('probabilities', {})
+        true_prob = probabilities.get('true')
+
+        # Validate that the value exists before converting to float
+        if true_prob is None:
+            logger.warning(
+                "Revertrisk API response missing 'true' probability for revision %s",
+                revision.revid
+            )
+            return None
+
+        return float(true_prob)
+    except Exception as e:  # pragma: no cover - network failure fallback
+        logger.exception(
+            "Failed to fetch revertrisk score for revision %s: %s",
+            revision.revid,
+            e
+        )
+        return None

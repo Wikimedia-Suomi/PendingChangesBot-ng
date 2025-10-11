@@ -49,6 +49,14 @@ class WikiConfiguration(models.Model):
             "action=query&meta=siteinfo&siprop=magicwords)"
         ),
     )
+    revertrisk_threshold = models.FloatField(
+        default=0.0,
+        help_text=(
+            "Threshold for revertrisk score (0.0-1.0). "
+            "Edits with a score above this threshold will not be auto-approved. "
+            "Set to 0.0 to disable revertrisk checking."
+        )
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:  # pragma: no cover - debug helper
