@@ -201,6 +201,34 @@ def _evaluate_revision(
             }
         )
 
+    # Test 4: Check for removal of all categories
+    old_wikitext = _get_parent_wikitext(revision)
+    new_wikitext = revision.get_wikitext()
+    
+    if _removes_all_categories(old_wikitext, new_wikitext, redirect_aliases):
+        tests.append({
+            "id": "removes-all-categories",
+            "title": "Removes all categories",
+            "status": "fail",
+            "message": "Removing all categories requires autoreview rights.",
+        })
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="blocked",
+                label="Cannot be auto-approved",
+                reason="The edit removes all categories.",
+            ),
+        }
+    else:
+        tests.append({
+            "id": "removes-all-categories",
+            "title": "Removes all categories",
+            "status": "ok",
+            "message": "The edit does not remove all categories.",
+        })
+
+
     # Check if user has autopatrolled rights (after redirect conversion check)
     if profile and profile.is_autopatrolled:
         return {
@@ -212,7 +240,7 @@ def _evaluate_revision(
             ),
         }
 
-    # Test 4: Blocking categories on the old version prevent automatic approval.
+    # Test 5: Blocking categories on the old version prevent automatic approval.
     blocking_hits = _blocking_category_hits(revision, blocking_categories)
     if blocking_hits:
         tests.append(
@@ -243,7 +271,7 @@ def _evaluate_revision(
         }
     )
 
-    # Test 4: Check for new rendering errors in the HTML.
+    # Test 6 Check for new rendering errors in the HTML.
     new_render_errors = _check_for_new_render_errors(revision, client)
     if new_render_errors:
         tests.append(
@@ -514,3 +542,31 @@ def _is_article_to_redirect_conversion(
         return False
 
     return True
+
+def _count_categories(wikitext: str) -> int:
+    """
+    Count the number of category links in wikitext.
+
+    Supports multiple language namespaces and handles edge cases like
+    line breaks inside category links and extra whitespace.
+    """
+    if not wikitext:
+        return 0
+    
+    # Pattern with re.DOTALL to handle line breaks inside categories
+    pattern = r'\[\[\s*(category|luokka|kategorie|kategoria|kategori)\s*:\s*[^\]]+?\]\]'
+    matches = re.findall(pattern, wikitext, re.IGNORECASE | re.DOTALL)
+    return len(matches)
+
+
+def _removes_all_categories(old_wikitext: str, new_wikitext: str, redirect_aliases: list[str]) -> bool:
+    """Check if edit removes all categories (should block auto-review)."""
+    # Allow if converting to redirect
+    if _is_redirect(new_wikitext, redirect_aliases):
+        return False
+    
+    old_count = _count_categories(old_wikitext)
+    new_count = _count_categories(new_wikitext)
+    
+    # Block if had categories before and now has none
+    return old_count > 0 and new_count == 0
