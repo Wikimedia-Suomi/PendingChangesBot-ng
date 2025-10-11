@@ -35,6 +35,19 @@
               </div>
               <div class="control">
                 <button class="button is-warning" @click="clearCache">Clear cache</button>
+              <div class="field mt-3" v-if="currentWiki">
+                <label class="label is-small">FlaggedRevs Quick Links:</label>
+                <div class="buttons">
+                  <a :href="buildFlaggedRevsUrl('ValidationStatistics')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
+                    Validation Statistics
+                  </a>
+                  <a :href="buildFlaggedRevsUrl('PendingChanges')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
+                    Pending Changes
+                  </a>
+                  <a :href="buildFlaggedRevsUrl('Log/Review')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
+                    Review Log
+                  </a>
+                </div>
               </div>
             </div>
           </div>
@@ -91,6 +104,24 @@
         </div>
 
       </div>
+      <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
+      <div class="notification is-info" v-if="state.loading">Loading data…</div>
+
+        <div v-if="state.pages.length">
+          <div class="content">
+            <h2 class="title is-4">Pending pages</h2>
+              <div class="field is-grouped is-align-items-center mt-3">
+                <label class="label mr-2 mb-0">Sort by</label>
+                <div class="control">
+                  <div class="select">
+                    <select v-model="state.sortOrder">
+                      <option value="newest">Newest pending page first</option>
+                      <option value="oldest">Oldest pending page first</option>
+                      <option value="random">Random order</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
 
       <div v-if="state.pages.length">
         <div class="content">
@@ -220,5 +251,8 @@
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="{% static 'reviews/app.js' %}"></script>
 </body>
+      </section>
+    </div>
+    {% endverbatim %}
 
 </html>

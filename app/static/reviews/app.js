@@ -391,6 +391,14 @@ createApp({
       return `/wiki/Special:Contributions/${encoded}`;
     }
 
+    function buildFlaggedRevsUrl(specialPage) {
+      const origin = getWikiOrigin();
+      if (!origin) {
+        return "";
+      }
+      return `${origin}/wiki/Special:${specialPage}?uselang=en`;
+    }
+
     function toggleConfiguration() {
       state.configurationOpen = !state.configurationOpen;
     }
@@ -556,6 +564,7 @@ createApp({
       buildLatestRevisionUrl,
       buildRevisionDiffUrl,
       buildUserContributionsUrl,
+      buildFlaggedRevsUrl,
       runAutoreview,
       runAutoreviewAllVisible,
       getRevisionReview,
