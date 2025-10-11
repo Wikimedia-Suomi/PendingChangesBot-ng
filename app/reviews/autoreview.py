@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+
+import json
+import logging
+from dataclasses import dataclass
+from typing import Iterable
+
+from .models import EditorProfile, PendingPage, PendingRevision
+from pywikibot.comms import http
 import logging
 import re
 from collections.abc import Iterable
@@ -40,6 +48,7 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
 
     auto_groups = _normalize_to_lookup(configuration.auto_approved_groups)
     blocking_categories = _normalize_to_lookup(configuration.blocking_categories)
+    revertrisk_threshold = getattr(configuration, "revertrisk_threshold", None)
     redirect_aliases = _get_redirect_aliases(page.wiki)
     client = WikiClient(page.wiki)
 
@@ -52,6 +61,7 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
             profile,
             auto_groups=auto_groups,
             blocking_categories=blocking_categories,
+            revertrisk_threshold=revertrisk_threshold,
             redirect_aliases=redirect_aliases,
         )
         results.append(
@@ -75,6 +85,7 @@ def _evaluate_revision(
     *,
     auto_groups: dict[str, str],
     blocking_categories: dict[str, str],
+    revertrisk_threshold: float | None,
     redirect_aliases: list[str],
 ) -> dict:
     tests: list[dict] = []
@@ -284,6 +295,46 @@ def _evaluate_revision(
         }
     )
 
+    # Test 4: High revert risk prevents automatic approval.
+    if revertrisk_threshold is not None:
+        score = _get_revertrisk_score(revision)
+
+        if score is None:
+            tests.append(
+                {
+                    "id": "revertrisk",
+                    "title": "Revert risk check",
+                    "status": "error",
+                    "message": "Could not retrieve revert risk score.",
+                }
+            )
+        elif score > revertrisk_threshold:
+            tests.append(
+                {
+                    "id": "revertrisk",
+                    "title": "Revert risk check",
+                    "status": "fail",
+                    "message": f"High revert risk: {score:.3f} exceeds threshold {revertrisk_threshold:.3f}.",
+                }
+            )
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="blocked",
+                    label="Cannot be auto-approved",
+                    reason="The edit has a high probability of being reverted.",
+                ),
+            }
+        else:
+            tests.append(
+                {
+                    "id": "revertrisk",
+                    "title": "Revert risk check",
+                    "status": "ok",
+                    "message": f"Revert risk {score:.3f} is below threshold {revertrisk_threshold:.3f}.",
+                }
+            )
+    # Test 4: Check for new rendering errors in the HTML.
     # Test 6: Check for new rendering errors in the HTML.
     new_render_errors = _check_for_new_render_errors(revision, client)
     if new_render_errors:
@@ -321,6 +372,36 @@ def _evaluate_revision(
             reason="In dry-run mode the edit would not be approved automatically.",
         ),
     }
+
+def _get_revertrisk_score(revision: PendingRevision) -> float | None:
+    """Query the Wikimedia revertrisk API to get the revert risk score for an edit."""
+    try:
+        lang = getattr(revision.page.wiki, "language_code", "en")
+
+        url = "https://api.wikimedia.org/service/lw/inference/v1/models/revertrisk-multilingual:predict"
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "PendingChangesBot/1.0 (https://fi.wikipedia.org/wiki/User:SeulojaBot)",
+        }
+        payload = json.dumps({"rev_id": revision.revid, "lang": lang})
+
+        resp = http.fetch(url, method="POST", headers=headers, data=payload)
+
+        if resp.status_code == 200:
+            data = json.loads(resp.text)
+            # handle API response consistently
+            if "score" in data:
+                return float(data["score"])
+            # fallback for nested probabilities
+            return float(data.get("output", {}).get("probabilities", {}).get("true", 0.0))
+
+        logger.warning(f"Revertrisk API returned {resp.status_code} for {revision.revid}")
+        return None
+
+    except Exception as e:
+        logger.exception(f"Error fetching revertrisk for {revision.revid}: {e}")
+        return None
+
 
 def _get_render_error_count(revision: PendingRevision, html: str) -> int:
     """Calculate and cache the number of rendering errors in the HTML."""

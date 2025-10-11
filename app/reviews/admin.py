@@ -11,8 +11,9 @@ class WikiAdmin(admin.ModelAdmin):
 
 @admin.register(WikiConfiguration)
 class WikiConfigurationAdmin(admin.ModelAdmin):
-    list_display = ("wiki", "updated_at")
+    list_display = ("wiki", "revertrisk_threshold", "updated_at")
     search_fields = ("wiki__name", "wiki__code")
+    fields = ["wiki", "revertrisk_threshold"]
 
 
 @admin.register(PendingPage)
