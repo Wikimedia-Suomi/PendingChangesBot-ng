@@ -74,15 +74,31 @@ Before installing or running the application, ensure you have:
    git clone https://github.com/Wikimedia-Suomi/PendingChangesBot-ng.git
    cd PendingChangesBot-ng
    ```
-3. **Create and activate a virtual environment** (recommended)
+3. **Check your python version** (recommended)
+   * On **Windows**:
+   ```bash
+   python --version
+   ```
+   * On **macOS**:
+   ```bash
+   python3 --version
+   ```
+   Install if not found *for python3 you need to install pip3 
+4. **Create and activate a virtual environment** (recommended)
    ```bash
    python3 -m venv venv
    source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
    ```
 4. **Install Python dependencies**
+   * On **Windows**:
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
+   ```
+   * On **macOS**:
+   ```bash
+   pip3 install --upgrade pip
+   pip3 install -r requirements.txt
    ```
 
 ### Configuring Pywikibot with OAuth
@@ -209,21 +225,35 @@ Pywikibot requires OAuth authentication to interact with Wikimedia APIs and appr
 Need help? Ask in the Slack channel or open an issue!
 
 ### Running the database migrations
-
-```bash
-cd app
-python manage.py makemigrations
-python manage.py migrate
-```
+   ```bash
+   cd app
+   ```
+   * On **Windows**:
+   ```bash
+   python manage.py makemigrations
+   python manage.py migrate
+   ```
+   * On **macOS**:
+   ```bash
+   python3 manage.py makemigrations
+   python3 manage.py migrate
+   ```
 
 ### Running the application
 
 The Django project serves both the API and the Vue.js frontend from the same codebase.
 
-```bash
-cd app
-python manage.py runserver
-```
+   ```bash
+   cd app
+   ```
+   * On **Windows**:
+   ```bash
+   python manage.py runserver
+   ```
+   * On **macOS**:
+   ```bash
+   python3 manage.py runserver
+   ```
 
 Open <http://127.0.0.1:8000/> in your browser to use the interface. JSON endpoints are
 available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
@@ -232,18 +262,25 @@ available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
 
 Unit tests live in the Django backend project. Run them from the `app/` directory so Django can locate the correct settings module.
 
-```bash
-cd app
-python manage.py test
-```
+   ```bash
+   cd app
+   ```
+   * On **Windows**:
+   ```bash
+   python manage.py test
+   ```
+   * On **macOS**:
+   ```bash
+   python3 manage.py test
+   ```
 
 ### Running Flake8
 
 Run Flake8 from the repository root to lint the code according to the configuration provided in `.flake8`.
 
-```bash
-flake8
-```
+   ```bash
+   flake8
+   ```
 
 If you are working inside a virtual environment, ensure it is activated before executing the command.
 
@@ -302,6 +339,7 @@ If your proposal already exists in an open issue or PR, but you feel there are d
 
 2) No need to ask to be assigned an issue.
     * Just let people know through comments that you are working on it and assign it to yourself.
+    * If there is both Phabricator ticket and Github issue then comment on both that you are working with it.
     * If someone is already working on it, ask to collaborate before jumping in.
 
 3) After being assigned, address each item listed in the acceptance criteria, if any exist.
@@ -310,6 +348,10 @@ If your proposal already exists in an open issue or PR, but you feel there are d
 
 4) Give regular updates.
     * It's expected that you would give regular progress updates about the work that you're doing as comments on the issue so that everyone is in the loop about what work is being accomplished
+
+5) Claim new tasks responsibly.
+    * If you want to switch to another task for any reason, unassign yourself from the current ticket or issue and leave a comment there so others know it’s available to work on.
+    * Please claim a new task only after you’ve submitted a pull request for your previous one.
 
 ### Branching Strategy
 

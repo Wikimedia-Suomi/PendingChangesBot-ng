@@ -23,16 +23,33 @@ Vue.js interface for reviewing the results.
    git clone https://github.com/Wikimedia-Suomi/PendingChangesBot-ng.git
    cd PendingChangesBot-ng
    ```
-3. **Create and activate a virtual environment** (recommended)
+3. **Check your python version** (recommended)
+   * On **Windows**:
+   ```bash
+   python --version
+   ```
+   * On **macOS**:
+   ```bash
+   python3 --version
+   ```
+   Install if not found *for python3 you need to install pip3 
+4. **Create and activate a virtual environment** (recommended)
    ```bash
    python3 -m venv venv
    source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
    ```
-4. **Install Python dependencies**
+5. **Install Python dependencies**
+   * On **Windows**:
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
+   * On **macOS**:
+   ```bash
+   pip3 install --upgrade pip
+   pip3 install -r requirements.txt
+   ```
+
 
 ## Configuring Pywikibot with OAuth
 
@@ -69,20 +86,33 @@ Pywikibot requires OAuth 1.0a authentication to interact with Wikimedia APIs.
 📖 **For detailed step-by-step instructions, troubleshooting, and security best practices**, see [CONTRIBUTING.md](CONTRIBUTING.md#configuring-pywikibot-with-oauth).
 
 ## Running the database migrations
-
 ```bash
 cd app
+```
+On **Windows**:
+```bash
 python manage.py makemigrations
 python manage.py migrate
+```
+* On **macOS**:
+```bash
+python3 manage.py makemigrations
+python3 manage.py migrate
 ```
 
 ## Running the application
 
 The Django project serves both the API and the Vue.js frontend from the same codebase.
-
 ```bash
 cd app
+```
+* On **Windows**:
+```bash
 python manage.py runserver
+```
+* On **macOS**:
+```bash
+python3 manage.py runserver
 ```
 
 Open <http://127.0.0.1:8000/> in your browser to use the interface. JSON endpoints are
@@ -91,10 +121,16 @@ available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
 ## Running unit tests
 
 Unit tests live in the Django backend project. Run them from the `app/` directory so Django can locate the correct settings module.
-
 ```bash
 cd app
+```
+* On **Windows**:
+```bash
 python manage.py test
+```
+* On **macOS**:
+```bash
+python3 manage.py test
 ```
 
 ## Running Flake8

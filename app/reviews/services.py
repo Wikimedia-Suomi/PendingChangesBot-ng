@@ -41,6 +41,37 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
+    def get_rendered_html(self, revid: int) -> str:
+        """Fetch the rendered HTML for a specific revision."""
+        if not revid:
+            return ""
+
+        try:
+            revision = PendingRevision.objects.get(page__wiki=self.wiki, revid=revid)
+            if revision.rendered_html:
+                return revision.rendered_html
+        except PendingRevision.DoesNotExist:
+            revision = None
+        except Exception:
+            revision = None
+
+        request = self.site.simple_request(
+            action="parse",
+            oldid=revid,
+            prop="text",
+            formatversion=2,
+        )
+        try:
+            response = request.submit()
+            html = response.get("parse", {}).get("text", "")
+            html_content = html if isinstance(html, str) else ""
+            if revision and html_content:
+                revision.rendered_html = html_content
+                revision.save(update_fields=["rendered_html"])
+            return html_content
+        except Exception:
+            return ""
+
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
         """Fetch the pending pages using Superset and cache them in the database."""
 
@@ -206,6 +237,7 @@ ORDER BY fp_pending_since, rev_id DESC
                 "usergroups": [],
                 "is_blocked": False,
                 "is_bot": False,
+                "is_former_bot": False,
                 "is_autopatrolled": False,
                 "is_autoreviewed": False,
             },
@@ -215,8 +247,11 @@ ORDER BY fp_pending_since, rev_id DESC
 
         autoreviewed_groups = {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
         groups = sorted(superset_data.get("user_groups") or [])
+        former_groups = sorted(superset_data.get("user_former_groups") or [])
+
         profile.usergroups = groups
         profile.is_bot = "bot" in groups or bool(superset_data.get("rc_bot"))
+        profile.is_former_bot = "bot" in former_groups
         profile.is_autopatrolled = "autopatrolled" in groups
         profile.is_autoreviewed = bool(autoreviewed_groups & set(groups))
         profile.is_blocked = bool(superset_data.get("user_blocked", False))
@@ -225,6 +260,7 @@ ORDER BY fp_pending_since, rev_id DESC
                 "usergroups",
                 "is_blocked",
                 "is_bot",
+                "is_former_bot",
                 "is_autopatrolled",
                 "is_autoreviewed",
                 "fetched_at",
