@@ -93,6 +93,18 @@
         <div v-if="state.pages.length">
           <div class="content">
             <h2 class="title is-4">Pending pages</h2>
+              <div class="field mt-3">
+                <label class="label">Search</label>
+                <div class="control">
+                  <input
+                    class="input"
+                    type="text"
+                    v-model="state.searchQuery"
+                    placeholder="Filter by page title, timestamp, user name, comment, or tags..."
+                  />
+                </div>
+                <p class="help">Search is case-insensitive and matches across page titles, timestamps, user names, comments, and tags.</p>
+              </div>
               <div class="field is-grouped is-align-items-center mt-3">
                 <label class="label mr-2 mb-0">Sort by</label>
                 <div class="control">
@@ -221,8 +233,11 @@
                 </div>
               </div>
             </article>
+            </div>
+            <div class="notification is-info" v-if="state.pages.length && !visiblePages.length">
+              No pages match your search criteria. Try a different search term.
+            </div>
           </div>
-        </div>
         <div class="notification is-warning" v-else>
           No pending revisions cached. Use the refresh button to fetch data.
         </div>

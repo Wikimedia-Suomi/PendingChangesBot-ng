@@ -147,6 +147,7 @@ createApp({
       reviewResults: {},
       runningReviews: {},
       runningBulkReview: false,
+      searchQuery: "",
     });
 
     const forms = reactive({
@@ -158,9 +159,61 @@ createApp({
       state.wikis.find((wiki) => wiki.id === state.selectedWikiId) || null,
     );
 
-    const visiblePages = computed(() => state.pages.slice(0, pageDisplayLimit));
+    function matchesSearchQuery(page) {
+      if (!state.searchQuery || state.searchQuery.trim() === "") {
+        return true;
+      }
+      const query = state.searchQuery.toLowerCase().trim();
 
-    const hasMorePages = computed(() => state.pages.length > pageDisplayLimit);
+      // Check page title
+      if (page.title && page.title.toLowerCase().includes(query)) {
+        return true;
+      }
+
+      // Check page's pending_since timestamp
+      if (page.pending_since && page.pending_since.toLowerCase().includes(query)) {
+        return true;
+      }
+
+      // Check revisions
+      if (Array.isArray(page.revisions)) {
+        for (const revision of page.revisions) {
+          // Check timestamp
+          if (revision.timestamp && revision.timestamp.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Check user_name
+          if (revision.user_name && revision.user_name.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Check comment
+          if (revision.comment && revision.comment.toLowerCase().includes(query)) {
+            return true;
+          }
+          // Check change_tags
+          if (Array.isArray(revision.change_tags)) {
+            for (const tag of revision.change_tags) {
+              if (tag && tag.toLowerCase().includes(query)) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+
+      return false;
+    }
+
+    const filteredPages = computed(() => {
+      if (!state.searchQuery || state.searchQuery.trim() === "") {
+        return state.pages;
+      }
+      return state.pages.filter((page) => matchesSearchQuery(page));
+    });
+
+    const visiblePages = computed(() => filteredPages.value.slice(0, pageDisplayLimit));
+
+    const hasMorePages = computed(() => filteredPages.value.length > pageDisplayLimit);
 
     function syncForms() {
       if (!currentWiki.value) {
@@ -535,6 +588,7 @@ createApp({
       state,
       forms,
       currentWiki,
+      filteredPages,
       visiblePages,
       hasMorePages,
       pageDisplayLimit,
