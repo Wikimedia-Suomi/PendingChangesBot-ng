@@ -35,6 +35,8 @@ class Wiki(models.Model):
 
 
 class WikiConfiguration(models.Model):
+    auto_approved_groups = models.JSONField(default=list, blank=True)
+    blocking_categories = models.JSONField(default=list, blank=True)
     """Stores per-wiki rules that influence automatic approvals."""
 
     wiki = models.OneToOneField(Wiki, on_delete=models.CASCADE, related_name="configuration")
@@ -49,6 +51,9 @@ class WikiConfiguration(models.Model):
             "action=query&meta=siteinfo&siprop=magicwords)"
         ),
     )
+    # Test mode: use test_revision_ids instead of flaggedpages for testing
+    test_mode = models.BooleanField(default=False)
+    test_revision_ids = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:  # pragma: no cover - debug helper
