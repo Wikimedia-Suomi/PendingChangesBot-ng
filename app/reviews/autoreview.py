@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 import pywikibot
-
-from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 from bs4 import BeautifulSoup
 
+from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
@@ -30,15 +29,12 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     """Run the configured autoreview checks for each pending revision of a page."""
 
     revisions = list(
-        page.revisions.exclude(revid=page.stable_revid)
-        .order_by("timestamp", "revid")
+        page.revisions.exclude(revid=page.stable_revid).order_by("timestamp", "revid")
     )  # Oldest revision first.
     usernames = {revision.user_name for revision in revisions if revision.user_name}
     profiles = {
         profile.username: profile
-        for profile in EditorProfile.objects.filter(
-            wiki=page.wiki, username__in=usernames
-        )
+        for profile in EditorProfile.objects.filter(wiki=page.wiki, username__in=usernames)
     }
     configuration = page.wiki.configuration
 
@@ -71,7 +67,6 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
         )
 
     return results
-
 
 def _evaluate_revision(
     revision: PendingRevision,
@@ -112,11 +107,51 @@ def _evaluate_revision(
             }
         )
 
-    # Test 2: Autoapproved editors can always be auto-approved.
+    # Test 2: Check if user was blocked after making the edit
+    try:
+        if client.is_user_blocked_after_edit(revision.user_name, revision.timestamp):
+            tests.append({
+                "id": "blocked-user",
+                "title": "User blocked after edit",
+                "status": "fail",
+                "message": "User was blocked after making this edit.",
+            })
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="blocked",
+                    label="Cannot be auto-approved",
+                    reason="User was blocked after making this edit.",
+                ),
+            }
+        else:
+            tests.append({
+                "id": "blocked-user",
+                "title": "User block status",
+                "status": "ok",
+                "message": "User has not been blocked since making this edit.",
+            })
+    except Exception as e:
+        logger.error(f"Error checking blocks for {revision.user_name}: {e}")
+        tests.append({
+            "id": "blocked-user",
+            "title": "Block check failed",
+            "status": "fail",
+            "message": "Could not verify user block status.",
+        })
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="error",
+                label="Cannot be auto-approved",
+                reason="Unable to verify user was not blocked.",
+            ),
+        }
+
+    # Test 3: Editors in the allow-list can be auto-approved.
+    # Test 3: Autoapproved editors can always be auto-approved.
     if auto_groups:
-        matched_groups = _matched_user_groups(
-            revision, profile, allowed_groups=auto_groups
-        )
+        matched_groups = _matched_user_groups(revision, profile, allowed_groups=auto_groups)
         if matched_groups:
             tests.append(
                 {
@@ -177,10 +212,8 @@ def _evaluate_revision(
                 }
             )
 
-    # Test 3: Do not approve article to redirect conversions
-    is_redirect_conversion = _is_article_to_redirect_conversion(
-        revision, redirect_aliases
-    )
+    # Test 4: Do not approve article to redirect conversions
+    is_redirect_conversion = _is_article_to_redirect_conversion(revision, redirect_aliases)
 
     if is_redirect_conversion:
         tests.append(
@@ -188,10 +221,7 @@ def _evaluate_revision(
                 "id": "article-to-redirect-conversion",
                 "title": "Article-to-redirect conversion",
                 "status": "fail",
-                "message": (
-                    "Converting articles to redirects "
-                    "requires autoreview rights."
-                ),
+                "message": ("Converting articles to redirects requires autoreview rights."),
             }
         )
         return {
@@ -223,7 +253,7 @@ def _evaluate_revision(
             ),
         }
 
-    # Test 4: Blocking categories on the old version prevent automatic approval.
+    # Test 5: Blocking categories on the old version prevent automatic approval.
     blocking_hits = _blocking_category_hits(revision, blocking_categories)
     if blocking_hits:
         tests.append(
@@ -254,7 +284,7 @@ def _evaluate_revision(
         }
     )
 
-    # Test 5: Check for new rendering errors in the HTML.
+    # Test 6: Check for new rendering errors in the HTML.
     new_render_errors = _check_for_new_render_errors(revision, client)
     if new_render_errors:
         tests.append(
@@ -283,7 +313,7 @@ def _evaluate_revision(
         }
     )
 
-    # Test 6: Reference-only edits can be auto-approved if domains are verified
+    # Test 7: Reference-only edits can be auto-approved if domains are verified
     parent_wikitext = _get_parent_wikitext(revision)
     current_wikitext = revision.get_wikitext()
     ref_check = _is_reference_only_edit(parent_wikitext, current_wikitext)
@@ -389,7 +419,6 @@ def _evaluate_revision(
         ),
     }
 
-
 def _get_render_error_count(revision: PendingRevision, html: str) -> int:
     """Calculate and cache the number of rendering errors in the HTML."""
     if revision.render_error_count is not None:
@@ -420,9 +449,7 @@ def _check_for_new_render_errors(revision: PendingRevision, client: WikiClient) 
         page__wiki=revision.page.wiki, revid=revision.parentid
     ).first()
     previous_error_count = (
-        _get_render_error_count(parent_revision, previous_html)
-        if parent_revision
-        else 0
+        _get_render_error_count(parent_revision, previous_html) if parent_revision else 0
     )
 
     return current_error_count > previous_error_count
@@ -488,9 +515,7 @@ def _matched_user_groups(
     return matched
 
 
-def _blocking_category_hits(
-    revision: PendingRevision, blocking_lookup: dict[str, str]
-) -> set[str]:
+def _blocking_category_hits(revision: PendingRevision, blocking_lookup: dict[str, str]) -> set[str]:
     if not blocking_lookup:
         return set()
 
@@ -512,10 +537,7 @@ def is_bot_edit(revision: PendingRevision) -> bool:
     if not revision.user_name:
         return False
     try:
-        profile = EditorProfile.objects.get(
-            wiki=revision.page.wiki,
-            username=revision.user_name
-        )
+        profile = EditorProfile.objects.get(wiki=revision.page.wiki, username=revision.user_name)
         # Check both current bot status and former bot status
         return profile.is_bot or profile.is_former_bot
     except EditorProfile.DoesNotExist:
@@ -556,7 +578,7 @@ def _get_redirect_aliases(wiki: Wiki) -> list[str]:
 
     fallback_aliases = language_fallbacks.get(
         wiki.code,
-        ["#REDIRECT"]  # fallback for non default languages
+        ["#REDIRECT"],  # fallback for non default languages
     )
 
     logger.warning(
@@ -575,16 +597,14 @@ def _is_redirect(wikitext: str, redirect_aliases: list[str]) -> bool:
 
     patterns = []
     for alias in redirect_aliases:
-        word = alias.lstrip('#').strip()
+        word = alias.lstrip("#").strip()
         if word:
             patterns.append(re.escape(word))
 
     if not patterns:
         return False
 
-    redirect_pattern = (
-        r'^#[ \t]*(' + '|'.join(patterns) + r')[ \t]*\[\[([^\]\n\r]+?)\]\]'
-    )
+    redirect_pattern = r"^#[ \t]*(" + "|".join(patterns) + r")[ \t]*\[\[([^\]\n\r]+?)\]\]"
 
     match = re.match(redirect_pattern, wikitext, re.IGNORECASE)
     return match is not None
@@ -601,10 +621,7 @@ def _get_parent_wikitext(revision: PendingRevision) -> str:
         return ""
 
     try:
-        parent_revision = PendingRevision.objects.get(
-            page=revision.page,
-            revid=revision.parentid
-        )
+        parent_revision = PendingRevision.objects.get(page=revision.page, revid=revision.parentid)
         return parent_revision.get_wikitext()
     except PendingRevision.DoesNotExist:
         logger.warning(

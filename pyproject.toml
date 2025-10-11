@@ -1,0 +1,42 @@
+[project]
+name = "PendingChangesBot-ng"
+description = "A bot to help review pending changes on Wikimedia projects"
+requires-python = ">=3.9"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+extend-exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    "migrations",
+    "static"
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort (import sorting)
+    "UP", # pyupgrade (enforce modern Python syntax)
+]
+
+ignore = [
+    "E203",
+    "UP007",  # Use X | Y for type annotations (requires Python 3.10+)
+]
+
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+quote-style = "double"
+
+indent-style = "space"
+
+skip-magic-trailing-comma = false
