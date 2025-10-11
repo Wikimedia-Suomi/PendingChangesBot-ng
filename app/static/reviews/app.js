@@ -147,6 +147,10 @@ createApp({
       reviewResults: {},
       runningReviews: {},
       runningBulkReview: false,
+      diffs: {
+        loadingDiff: [],
+        diffHtml: [],
+      }
     });
 
     const forms = reactive({
@@ -407,6 +411,7 @@ createApp({
           }
         });
         setReviewResults(pageId, mapping);
+        showDiff(page)
       } catch (error) {
         // Errors are surfaced via apiRequest state handling.
       } finally {
@@ -494,6 +499,57 @@ createApp({
         return "(dry-run)";
       }
       return `${base} (dry-run)`;
+    }
+
+
+    /**
+     * This functions gets Html to render for each revision
+     * @param {*} page - this is the page that has revision
+     */
+
+    async function showDiff(page) {
+      
+      page.revisions.forEach(async (revision)=> {
+        state.diffs.loadingDiff[revision.revid] = true;
+        try {
+          const title = page.title;
+          const oldid = revision.parentid;
+          const diffid = revision.revid;
+
+          const baseUrl = "https://fi.wikipedia.org";
+          const diffUrl = `${baseUrl}/w/index.php?title=${title}&diff=${diffid}&oldid=${oldid}&action=render&diffonly=1&uselang=en`;
+
+          const apiUrl = `/api/wikis/fetch-diff/?url=${encodeURIComponent(diffUrl)}`;
+          const response = await fetch(apiUrl);
+
+          const html = await response.text();
+
+          // inject href to point to Wikipedia domain name(base url).
+          // form view all pending changes.
+          // where there are multiple revisions.
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const link = doc.querySelector(`a[title="${formatTitle(title)}"]`);
+
+          if (link) {
+              const relativeHref = link.getAttribute('href');
+              const domainUrl = "//fi.wikipedia.org";
+              
+              if (relativeHref && relativeHref.startsWith('/w/')) {
+                  link.setAttribute('href', `${domainUrl}${relativeHref}`);
+              }
+          }
+          
+          const updatedHtml = doc.body.innerHTML; 
+          state.diffs.diffHtml[revision.revid] = updatedHtml;
+
+        } catch (error) {
+          state.diffs.diffHtml = `<p class="has-text-danger">Failed to load diff</p>`;
+        } finally {
+          state.diffs.loadingDiff[revision.revid] = false;
+        }
+
+      })        
     }
 
     watch(
