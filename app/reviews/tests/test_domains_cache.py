@@ -1,9 +1,9 @@
-import time
-
 from types import SimpleNamespace
 
 from reviews.check_domains import (
     clear_domain_cache,
+    get_default_ttl,
+    set_default_ttl,
     domains_previously_used,
 )
 
@@ -33,13 +33,41 @@ def test_cache_hit_avoids_second_query():
     assert ok1 is True and ok2 is True
 
 
-def test_cache_ttl_expires_and_requeries():
+def test_clear_cache_causes_requery():
     site = CountingFakeSite(exturlusage_map={"example.com": True})
     clear_domain_cache()
-    # use very small TTL
-    ok1, d1 = domains_previously_used(site, ["https://example.com/page"], cache_ttl_seconds=0.01)
-    time.sleep(0.02)
-    ok2, d2 = domains_previously_used(site, ["https://example.com/page"], cache_ttl_seconds=0.01)
-    # two calls should have hit the site because TTL expired
-    assert site.calls >= 2
-    assert ok1 is True and ok2 is True
+    ok1, d1 = domains_previously_used(site, ["https://example.com/page"])
+
+    site.map = {"example.com": False}
+    clear_domain_cache()
+    ok2, d2 = domains_previously_used(site, ["https://example.com/page"])
+
+    assert site.calls == 2
+    assert ok1 is True
+    assert ok2 is False
+    assert d2["example.com"]["used"] is False
+
+
+def test_cache_respects_ttl(monkeypatch):
+    site = CountingFakeSite(exturlusage_map={"example.com": True})
+    clear_domain_cache()
+
+    original_ttl = get_default_ttl()
+    set_default_ttl(1)
+
+    # Ensure the second lookup happens in a different TTL bucket (>= 1s later).
+    times = iter([1000.0, 1002.0, 1004.0])
+    monkeypatch.setattr("reviews.check_domains.time.time", lambda: next(times))
+
+    ok1, _ = domains_previously_used(site, ["https://example.com/a"])
+
+    site.map = {"example.com": False}
+    ok2, _ = domains_previously_used(site, ["https://example.com/b"])
+
+    assert site.calls == 2
+    assert ok1 is True
+    assert ok2 is False
+
+    # Restore defaults for other tests
+    set_default_ttl(original_ttl or 3600)
+    clear_domain_cache()

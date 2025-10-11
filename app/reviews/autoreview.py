@@ -7,9 +7,11 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
+import mwparserfromhell
 import pywikibot
 
 from .models import EditorProfile, PendingPage, PendingRevision, Wiki
+from .check_domains import domains_previously_used
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +219,55 @@ def _evaluate_revision(
             ),
         }
 
-    # Test 4: Blocking categories on the old version prevent automatic approval.
+    # Test 4: External links should reference previously used domains.
+    added_links = _get_added_external_links(revision)
+    if added_links:
+        site = pywikibot.Site(code=revision.page.wiki.code, fam=revision.page.wiki.family)
+        domain_ok, domain_details = domains_previously_used(site, added_links)
+
+        if not domain_ok:
+            problematic_domains = _problematic_external_domains(domain_details)
+            tests.append(
+                {
+                    "id": "external-link-domains",
+                    "title": "External link domains",
+                    "status": "fail",
+                    "message": (
+                        "New external links reference domains without prior "
+                        "usage: {}.".format(
+                            ", ".join(sorted(problematic_domains)) if problematic_domains else "unknown"
+                        )
+                    ),
+                }
+            )
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="manual",
+                    label="Requires human review",
+                    reason="External links reference domains with no prior usage.",
+                ),
+            }
+
+        tests.append(
+            {
+                "id": "external-link-domains",
+                "title": "External link domains",
+                "status": "ok",
+                "message": "All new external links reference previously used domains.",
+            }
+        )
+    else:
+        tests.append(
+            {
+                "id": "external-link-domains",
+                "title": "External link domains",
+                "status": "ok",
+                "message": "No new external links detected.",
+            }
+        )
+
+    # Test 5: Blocking categories on the old version prevent automatic approval.
     blocking_hits = _blocking_category_hits(revision, blocking_categories)
     if blocking_hits:
         tests.append(
@@ -464,3 +514,44 @@ def _is_article_to_redirect_conversion(
         return False
 
     return True
+
+
+def _get_added_external_links(revision: PendingRevision) -> list[str]:
+    current_links = _extract_external_links(revision.get_wikitext())
+    parent_links = _extract_external_links(_get_parent_wikitext(revision))
+    return sorted(current_links - parent_links)
+
+
+def _extract_external_links(wikitext: str) -> set[str]:
+    if not wikitext:
+        return set()
+
+    wikicode = mwparserfromhell.parse(wikitext)
+    links: set[str] = set()
+    for link in wikicode.filter_external_links():
+        url = str(link.url).strip()
+        if url:
+            links.add(url)
+    return links
+
+
+def _problematic_external_domains(domain_details: dict[str, dict]) -> list[str]:
+    problematic: list[str] = []
+    for domain, info in domain_details.items():
+        if domain == "__malformed__":
+            examples = info.get("url_examples", [])
+            if examples:
+                problematic.append("malformed URLs ({})".format(", ".join(examples)))
+            else:
+                problematic.append("malformed URLs")
+            continue
+
+        used = info.get("used")
+        if used:
+            continue
+
+        label = domain or "unknown"
+        if info.get("error"):
+            label = f"{label} (error)"
+        problematic.append(label)
+    return problematic

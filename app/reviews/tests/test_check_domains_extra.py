@@ -3,8 +3,6 @@ from types import SimpleNamespace
 from reviews.check_domains import (
     clear_domain_cache,
     domains_previously_used,
-    set_default_ttl,
-    get_default_ttl,
 )
 
 
@@ -50,10 +48,12 @@ def test_clear_domain_cache_empties_cache():
     assert ok2 is False
 
 
-def test_set_get_default_ttl():
-    original = get_default_ttl()
-    try:
-        set_default_ttl(0.5)
-        assert abs(get_default_ttl() - 0.5) < 1e-6
-    finally:
-        set_default_ttl(original)
+def test_cached_flag_reports_hit():
+    site = CapturingFakeSite(exturlusage_map={"example.com": True})
+    clear_domain_cache()
+    ok1, d1 = domains_previously_used(site, ["https://example.com/page"])
+    ok2, d2 = domains_previously_used(site, ["https://example.com/page#section"])
+
+    assert ok1 is True and ok2 is True
+    assert d1["example.com"]["cached"] is False
+    assert d2["example.com"]["cached"] is True

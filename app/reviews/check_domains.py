@@ -5,7 +5,7 @@ Utilities to check whether domains from newly added links have been
 previously used in Wikipedia articles (namespace=0) using Pywikibot.
 
 Main entry point:
-    domains_previously_used(site, urls, cache=None, ttl_seconds=3600)
+    domains_previously_used(site, urls)
 
 Public helpers:
 - extract_domain(url) -> Optional[str]
@@ -15,13 +15,15 @@ Public helpers:
 Notes:
 - Safe defaults: any API error or malformed URL causes the check to fail
   (i.e., require manual review), as requested.
-- Caches domain results in-memory for `ttl_seconds` (default 1 hour).
+- Caches domain results in-memory using functools.lru_cache().
 """
 
-from typing import Iterable, List, Optional, Dict, Tuple, Any, TYPE_CHECKING
+from typing import Iterable, List, Optional, Dict, Any, Tuple, TYPE_CHECKING
 from urllib.parse import urlparse
-import time
+from functools import lru_cache
+import weakref
 import re
+import time
 
 # Make pywikibot import optional so unit tests and static tools can run without it.
 if TYPE_CHECKING:
@@ -32,33 +34,60 @@ else:
     except Exception:
         pywikibot = None  # type: ignore
 
-# In-memory cache: domain -> (bool_was_used, timestamp)
-_DOMAIN_CACHE: Dict[str, Tuple[bool, float]] = {}
+_DEFAULT_CACHE_TTL_SECONDS: float = 3600.0
+_SITE_REGISTRY: "weakref.WeakValueDictionary[int, Any]" = weakref.WeakValueDictionary()
 
-# Default TTL for cached entries (seconds)
-_DEFAULT_TTL = 3600.0
+
+def _register_site(site: Any) -> int:
+    """Store a weak reference to the site and return a cache key."""
+    site_key = id(site)
+    _SITE_REGISTRY[site_key] = site
+    return site_key
 
 
 def clear_domain_cache() -> None:
-    """Clear the in-memory domain cache."""
-    global _DOMAIN_CACHE
-    _DOMAIN_CACHE = {}
+    """Clear memoized domain usage checks."""
+    _cached_domain_usage.cache_clear()
+    _SITE_REGISTRY.clear()
 
 
-def _cache_get(domain: str, ttl_seconds: float) -> Optional[bool]:
-    rec = _DOMAIN_CACHE.get(domain)
-    if not rec:
+def set_default_ttl(seconds: Optional[float]) -> None:
+    """Set the default cache TTL in seconds (0/None disables TTL bucketing)."""
+    global _DEFAULT_CACHE_TTL_SECONDS
+    _DEFAULT_CACHE_TTL_SECONDS = float(seconds or 0)
+    _cached_domain_usage.cache_clear()
+
+
+def get_default_ttl() -> Optional[float]:
+    """Return the currently configured default TTL in seconds, or None if disabled."""
+    return _DEFAULT_CACHE_TTL_SECONDS or None
+
+
+def _cache_bucket(ttl_seconds: Optional[float]) -> Optional[int]:
+    if not ttl_seconds or ttl_seconds <= 0:
         return None
-    was_used, ts = rec
-    if (time.time() - ts) > ttl_seconds:
-        # expired
-        del _DOMAIN_CACHE[domain]
-        return None
-    return was_used
+    return int(time.time() // ttl_seconds)
 
 
-def _cache_set(domain: str, value: bool) -> None:
-    _DOMAIN_CACHE[domain] = (value, time.time())
+@lru_cache(maxsize=4096)
+def _cached_domain_usage(site_key: int, domain: str, bucket: Optional[int]) -> Tuple[bool, Optional[Exception]]:
+    site = _SITE_REGISTRY.get(site_key)
+    if site is None:
+        raise RuntimeError("Site reference expired; cache needs refresh")
+
+    try:
+        results = site.exturlusage(domain, total=1, namespaces=[0])
+        for _ in results:
+            return True, None
+        return False, None
+    except Exception as exc:  # pragma: no cover - network failure fallback
+        return False, exc
+
+
+def _effective_ttl_seconds(ttl_override: Optional[float]) -> Optional[float]:
+    if ttl_override is None:
+        return _DEFAULT_CACHE_TTL_SECONDS or None
+    return ttl_override or None
 
 
 # MediaWiki URL protocols (as guidance for parsing); not all protocols include a hostname.
@@ -173,24 +202,29 @@ def extract_domain(raw_url: str) -> Optional[str]:
     return None
 
 
-def _check_domain_used_with_site(site: Any, domain: str) -> bool:
-    """
-    Use pywikibot.Site.exturlusage to check whether `domain` has been used in namespace 0.
+def _check_domain_used_with_site(
+    site: Any,
+    domain: str,
+    *,
+    cache_ttl_seconds: Optional[float] = None,
+) -> Tuple[bool, Optional[Exception]]:
+    """Return (used, error) for namespace=0 domain usage on the given site."""
 
-    Returns True if used, False otherwise.
-
-    Raises exceptions thrown by the site API (we catch them at a higher level).
-    """
-    results = site.exturlusage(domain, total=1, namespaces=[0])
-    # results may be a generator; attempt to get the first item.
-    for _ in results:
-        return True
-    return False
+    effective_ttl = _effective_ttl_seconds(cache_ttl_seconds)
+    bucket = _cache_bucket(effective_ttl)
+    site_key = _register_site(site)
+    try:
+        return _cached_domain_usage(site_key, domain, bucket)
+    except RuntimeError:
+        # Site reference expired from the registry; reset registry and retry once.
+        _SITE_REGISTRY.clear()
+        _cached_domain_usage.cache_clear()
+        site_key = _register_site(site)
+        return _cached_domain_usage(site_key, domain, bucket)
 
 
 def domains_previously_used(site: Any,
                             urls: Iterable[str],
-                            cache_ttl_seconds: float = _DEFAULT_TTL,
                             raise_on_error: bool = False
                             ) -> Tuple[bool, Dict[str, Dict]]:
     """
@@ -199,7 +233,6 @@ def domains_previously_used(site: Any,
     Parameters
     - site: pywikibot.Site instance
     - urls: iterable of URL strings newly added in an edit
-    - cache_ttl_seconds: cache TTL (seconds), default 3600
     - raise_on_error: if True, re-raise API exceptions; otherwise, swallow and return (False, details)
 
     Returns:
@@ -245,35 +278,13 @@ def domains_previously_used(site: Any,
 
     # For each domain, check cache or query
     for domain, sample_urls in domain_to_urls.items():
-        cached = _cache_get(domain, cache_ttl_seconds)
-        if cached is not None:
-            details[domain] = {
-                'url_examples': sample_urls,
-                'domain': domain,
-                'used': bool(cached),
-                'cached': True,
-                'error': None
-            }
-            if not cached:
-                overall_ok = False
-            continue
+        before_hits = _cached_domain_usage.cache_info().hits
+        used, error = _check_domain_used_with_site(site, domain)
+        after_hits = _cached_domain_usage.cache_info().hits
+        was_cached = after_hits > before_hits
 
-        # Not cached -> query the site
-        try:
-            used = _check_domain_used_with_site(site, domain)
-            _cache_set(domain, bool(used))
-            details[domain] = {
-                'url_examples': sample_urls,
-                'domain': domain,
-                'used': bool(used),
-                'cached': False,
-                'error': None
-            }
-            if not used:
-                overall_ok = False
-        except Exception as e:
-            # API error -> conservative behavior
-            err_str = f'API error: {type(e).__name__}: {e}'
+        if error is not None:
+            err_str = f'API error: {type(error).__name__}: {error}'
             details[domain] = {
                 'url_examples': sample_urls,
                 'domain': domain,
@@ -283,20 +294,17 @@ def domains_previously_used(site: Any,
             }
             overall_ok = False
             if raise_on_error:
-                raise
+                raise error
+            continue
+
+        details[domain] = {
+            'url_examples': sample_urls,
+            'domain': domain,
+            'used': bool(used),
+            'cached': was_cached,
+            'error': None
+        }
+        if not used:
+            overall_ok = False
 
     return overall_ok, details
-
-
-def set_default_ttl(seconds: float) -> None:
-    """Set the module default TTL (seconds) used when callers rely on the default.
-
-    This exists to make tests and runtime tweaks easier without passing ttl everywhere.
-    """
-    global _DEFAULT_TTL
-    _DEFAULT_TTL = float(seconds)
-
-
-def get_default_ttl() -> float:
-    """Return the current module default TTL in seconds."""
-    return _DEFAULT_TTL

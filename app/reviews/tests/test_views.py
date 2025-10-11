@@ -387,9 +387,11 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 4)
-        self.assertEqual(result["tests"][3]["status"], "fail")
-        self.assertEqual(result["tests"][3]["id"], "blocking-categories")
+        self.assertEqual(len(result["tests"]), 5)
+        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
+        self.assertEqual(result["tests"][3]["status"], "ok")
+        self.assertEqual(result["tests"][4]["status"], "fail")
+        self.assertEqual(result["tests"][4]["id"], "blocking-categories")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
@@ -432,8 +434,148 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 4)
+        self.assertEqual(len(result["tests"]), 5)
+        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
         self.assertEqual(result["tests"][3]["status"], "ok")
+        self.assertEqual(result["tests"][4]["status"], "ok")
+
+    @mock.patch("reviews.autoreview.domains_previously_used")
+    @mock.patch("reviews.autoreview.pywikibot.Site")
+    def test_api_autoreview_flags_new_external_domains(self, mock_site, mock_domains):
+        mock_site.return_value = mock.Mock()
+        mock_domains.return_value = (
+            False,
+            {
+                "newexample.test": {
+                    "used": False,
+                    "url_examples": ["https://new.example.test/link"],
+                    "error": None,
+                }
+            },
+        )
+
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=106,
+            title="External Links",
+            stable_revid=500,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=500,
+            parentid=None,
+            user_name="Stabilizer",
+            user_id=42,
+            timestamp=datetime.now(timezone.utc) - timedelta(days=3),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(days=3),
+            sha1="stable",
+            comment="Stable",
+            change_tags=[],
+            wikitext="Stable content",
+            categories=[],
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=501,
+            parentid=500,
+            user_name="NewUser",
+            user_id=43,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=6),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=6),
+            sha1="pending",
+            comment="Added link",
+            change_tags=[],
+            wikitext="Stable content with [https://new.example.test/link new link]",
+            categories=[],
+            superset_data={"user_groups": ["user"], "rc_bot": False},
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+
+        self.assertEqual(result["decision"]["status"], "manual")
+        self.assertEqual(len(result["tests"]), 4)
+        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
+        self.assertEqual(result["tests"][3]["status"], "fail")
+        self.assertIn("newexample.test", result["tests"][3]["message"])
+
+        mock_domains.assert_called_once()
+        called_site, called_urls = mock_domains.call_args[0]
+        self.assertIs(called_site, mock_site.return_value)
+        self.assertEqual(called_urls, ["https://new.example.test/link"])
+
+    @mock.patch("reviews.autoreview.domains_previously_used")
+    @mock.patch("reviews.autoreview.pywikibot.Site")
+    def test_api_autoreview_allows_known_external_domains(self, mock_site, mock_domains):
+        mock_site.return_value = mock.Mock()
+        mock_domains.return_value = (
+            True,
+            {
+                "known.example": {
+                    "used": True,
+                    "url_examples": ["https://known.example/path"],
+                    "error": None,
+                }
+            },
+        )
+
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=107,
+            title="Known Links",
+            stable_revid=600,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=600,
+            parentid=None,
+            user_name="Stabilizer",
+            user_id=44,
+            timestamp=datetime.now(timezone.utc) - timedelta(days=5),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(days=5),
+            sha1="stable",
+            comment="Stable",
+            change_tags=[],
+            wikitext="Base content",
+            categories=[],
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=601,
+            parentid=600,
+            user_name="AnotherUser",
+            user_id=45,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=2),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=2),
+            sha1="pending",
+            comment="Adds known link",
+            change_tags=[],
+            wikitext="Base content plus [https://known.example/path known link]",
+            categories=[],
+            superset_data={"user_groups": ["user"], "rc_bot": False},
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+
+        self.assertEqual(result["decision"]["status"], "manual")
+        self.assertEqual(len(result["tests"]), 5)
+        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
+        self.assertEqual(result["tests"][3]["status"], "ok")
+        self.assertIn("previously used", result["tests"][3]["message"])
+
+        mock_domains.assert_called_once()
+        called_site, called_urls = mock_domains.call_args[0]
+        self.assertIs(called_site, mock_site.return_value)
+        self.assertEqual(called_urls, ["https://known.example/path"])
 
     def test_api_autoreview_orders_revisions_from_oldest_to_newest(self):
         page = PendingPage.objects.create(
