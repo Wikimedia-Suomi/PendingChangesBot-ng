@@ -237,13 +237,20 @@ ORDER BY fp_pending_since, rev_id DESC
         if not superset_data:
             return profile
 
-        autoreviewed_groups = {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
         groups = sorted(superset_data.get("user_groups") or [])
         former_groups = sorted(superset_data.get("user_former_groups") or [])
-
         profile.usergroups = groups
-        profile.is_bot = "bot" in groups or bool(superset_data.get("rc_bot"))
-        profile.is_former_bot = "bot" in former_groups
+
+        autoreviewed_groups = {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
+
+        if created or profile.global_status_checked_at is None:
+            is_global_bot, is_former_global_bot = self.fetch_global_bot_status(username)
+            profile.global_status_checked_at = dj_timezone.now()
+        else:
+            is_global_bot = profile.is_bot and "bot" not in groups
+            is_former_global_bot = profile.is_former_bot and "bot" not in former_groups
+        profile.is_bot = "bot" in groups or bool(superset_data.get("rc_bot")) or is_global_bot
+        profile.is_former_bot = "bot" in former_groups or is_former_global_bot
         profile.is_autopatrolled = "autopatrolled" in groups
         profile.is_autoreviewed = bool(autoreviewed_groups & set(groups))
         profile.is_blocked = bool(superset_data.get("user_blocked", False))
@@ -256,9 +263,54 @@ ORDER BY fp_pending_since, rev_id DESC
                 "is_autopatrolled",
                 "is_autoreviewed",
                 "fetched_at",
+                "global_status_checked_at",
             ]
         )
         return profile
+    
+    def fetch_global_bot_status(self, username: str) -> tuple[bool, bool]:
+        """
+        Check if a user is a global bot or former global bot on Meta-Wiki.
+        
+        Returns:
+            tuple[bool, bool]: (is_global_bot, is_former_global_bot)
+        """
+        try:
+            meta_site = pywikibot.Site("meta", "meta")
+        
+            sql_query = f"""
+            SELECT 
+               group_concat(DISTINCT(gug.gug_group)) AS user_groups,
+               group_concat(DISTINCT(gufg.gufg_group)) AS user_former_groups
+            FROM globaluser As gu
+            LEFT JOIN global_user_groups As gug ON gu.gu_id = gug.gug_user
+            LEFT JOIN global_user_former_groups As gufg ON gu.gu_id = gufg.gufg_user
+            WHERE gu_name = '{username.replace("'", "''")}'
+            GROUP BY gu.gu_id
+            """
+            
+            superset = SupersetQuery(site=meta_site)
+            payload = superset.query(sql_query)
+            
+            if not payload:
+                return False, False
+            
+            entry = payload[0]
+            groups = parse_superset_list(entry.get("user_groups"))
+            former_groups = parse_superset_list(entry.get("user_former_groups"))
+            
+            is_global_bot = "global-bot" in groups
+            is_former_global_bot = "global-bot" in former_groups
+            
+            return is_global_bot, is_former_global_bot
+            
+        except Exception as e:
+            logger.warning(
+                "Failed to fetch global bot status for user %s: %s",
+                username,
+                str(e)
+            )
+            return False, False
 
     def refresh(self) -> list[PendingPage]:
         return self.fetch_pending_pages()

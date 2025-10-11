@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Iterable
 
 import pywikibot
-from bs4 import BeautifulSoup
 
 from .models import EditorProfile, PendingPage, PendingRevision, Wiki
-from .services import WikiClient
 
 logger = logging.getLogger(__name__)
 
@@ -29,26 +27,27 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     """Run the configured autoreview checks for each pending revision of a page."""
 
     revisions = list(
-        page.revisions.exclude(revid=page.stable_revid).order_by("timestamp", "revid")
+        page.revisions.exclude(revid=page.stable_revid)
+        .order_by("timestamp", "revid")
     )  # Oldest revision first.
     usernames = {revision.user_name for revision in revisions if revision.user_name}
     profiles = {
         profile.username: profile
-        for profile in EditorProfile.objects.filter(wiki=page.wiki, username__in=usernames)
+        for profile in EditorProfile.objects.filter(
+            wiki=page.wiki, username__in=usernames
+        )
     }
     configuration = page.wiki.configuration
 
     auto_groups = _normalize_to_lookup(configuration.auto_approved_groups)
     blocking_categories = _normalize_to_lookup(configuration.blocking_categories)
     redirect_aliases = _get_redirect_aliases(page.wiki)
-    client = WikiClient(page.wiki)
 
     results: list[dict] = []
     for revision in revisions:
         profile = profiles.get(revision.user_name or "")
         revision_result = _evaluate_revision(
             revision,
-            client,
             profile,
             auto_groups=auto_groups,
             blocking_categories=blocking_categories,
@@ -71,7 +70,6 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
 
 def _evaluate_revision(
     revision: PendingRevision,
-    client: WikiClient,
     profile: EditorProfile | None,
     *,
     auto_groups: dict[str, str],
@@ -110,7 +108,9 @@ def _evaluate_revision(
 
     # Test 2: Autoapproved editors can always be auto-approved.
     if auto_groups:
-        matched_groups = _matched_user_groups(revision, profile, allowed_groups=auto_groups)
+        matched_groups = _matched_user_groups(
+            revision, profile, allowed_groups=auto_groups
+        )
         if matched_groups:
             tests.append(
                 {
@@ -172,7 +172,9 @@ def _evaluate_revision(
             )
 
     # Test 3: Do not approve article to redirect conversions
-    is_redirect_conversion = _is_article_to_redirect_conversion(revision, redirect_aliases)
+    is_redirect_conversion = _is_article_to_redirect_conversion(
+        revision, redirect_aliases
+    )
 
     if is_redirect_conversion:
         tests.append(
@@ -180,7 +182,10 @@ def _evaluate_revision(
                 "id": "article-to-redirect-conversion",
                 "title": "Article-to-redirect conversion",
                 "status": "fail",
-                "message": ("Converting articles to redirects requires autoreview rights."),
+                "message": (
+                    "Converting articles to redirects "
+                    "requires autoreview rights."
+                ),
             }
         )
         return {
@@ -243,35 +248,6 @@ def _evaluate_revision(
         }
     )
 
-    # Test 4: Check for new rendering errors in the HTML.
-    new_render_errors = _check_for_new_render_errors(revision, client)
-    if new_render_errors:
-        tests.append(
-            {
-                "id": "new-render-errors",
-                "title": "New render errors",
-                "status": "fail",
-                "message": "The edit introduces new rendering errors.",
-            }
-        )
-        return {
-            "tests": tests,
-            "decision": AutoreviewDecision(
-                status="blocked",
-                label="Cannot be auto-approved",
-                reason="The edit introduces new rendering errors.",
-            ),
-        }
-
-    tests.append(
-        {
-            "id": "new-render-errors",
-            "title": "New render errors",
-            "status": "ok",
-            "message": "The edit does not introduce new rendering errors.",
-        }
-    )
-
     return {
         "tests": tests,
         "decision": AutoreviewDecision(
@@ -280,42 +256,6 @@ def _evaluate_revision(
             reason="In dry-run mode the edit would not be approved automatically.",
         ),
     }
-
-
-def _get_render_error_count(revision: PendingRevision, html: str) -> int:
-    """Calculate and cache the number of rendering errors in the HTML."""
-    if revision.render_error_count is not None:
-        return revision.render_error_count
-
-    soup = BeautifulSoup(html, "lxml")
-    error_count = len(soup.find_all(class_="error"))
-
-    revision.render_error_count = error_count
-    revision.save(update_fields=["render_error_count"])
-    return error_count
-
-
-def _check_for_new_render_errors(revision: PendingRevision, client: WikiClient) -> bool:
-    """Check if a revision introduces new HTML elements with class='error'."""
-    if not revision.parentid:
-        return False
-
-    current_html = client.get_rendered_html(revision.revid)
-    previous_html = client.get_rendered_html(revision.parentid)
-
-    if not current_html or not previous_html:
-        return False
-
-    current_error_count = _get_render_error_count(revision, current_html)
-
-    parent_revision = PendingRevision.objects.filter(
-        page__wiki=revision.page.wiki, revid=revision.parentid
-    ).first()
-    previous_error_count = (
-        _get_render_error_count(parent_revision, previous_html) if parent_revision else 0
-    )
-
-    return current_error_count > previous_error_count
 
 
 def _normalize_to_lookup(values: Iterable[str] | None) -> dict[str, str]:
@@ -378,7 +318,9 @@ def _matched_user_groups(
     return matched
 
 
-def _blocking_category_hits(revision: PendingRevision, blocking_lookup: dict[str, str]) -> set[str]:
+def _blocking_category_hits(
+    revision: PendingRevision, blocking_lookup: dict[str, str]
+) -> set[str]:
     if not blocking_lookup:
         return set()
 
@@ -400,7 +342,10 @@ def is_bot_edit(revision: PendingRevision) -> bool:
     if not revision.user_name:
         return False
     try:
-        profile = EditorProfile.objects.get(wiki=revision.page.wiki, username=revision.user_name)
+        profile = EditorProfile.objects.get(
+            wiki=revision.page.wiki,
+            username=revision.user_name
+        )
         # Check both current bot status and former bot status
         return profile.is_bot or profile.is_former_bot
     except EditorProfile.DoesNotExist:
@@ -441,7 +386,7 @@ def _get_redirect_aliases(wiki: Wiki) -> list[str]:
 
     fallback_aliases = language_fallbacks.get(
         wiki.code,
-        ["#REDIRECT"],  # fallback for non default languages
+        ["#REDIRECT"]  # fallback for non default languages
     )
 
     logger.warning(
@@ -460,14 +405,16 @@ def _is_redirect(wikitext: str, redirect_aliases: list[str]) -> bool:
 
     patterns = []
     for alias in redirect_aliases:
-        word = alias.lstrip("#").strip()
+        word = alias.lstrip('#').strip()
         if word:
             patterns.append(re.escape(word))
 
     if not patterns:
         return False
 
-    redirect_pattern = r"^#[ \t]*(" + "|".join(patterns) + r")[ \t]*\[\[([^\]\n\r]+?)\]\]"
+    redirect_pattern = (
+        r'^#[ \t]*(' + '|'.join(patterns) + r')[ \t]*\[\[([^\]\n\r]+?)\]\]'
+    )
 
     match = re.match(redirect_pattern, wikitext, re.IGNORECASE)
     return match is not None
@@ -484,7 +431,10 @@ def _get_parent_wikitext(revision: PendingRevision) -> str:
         return ""
 
     try:
-        parent_revision = PendingRevision.objects.get(page=revision.page, revid=revision.parentid)
+        parent_revision = PendingRevision.objects.get(
+            page=revision.page,
+            revid=revision.parentid
+        )
         return parent_revision.get_wikitext()
     except PendingRevision.DoesNotExist:
         logger.warning(
