@@ -78,7 +78,6 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
 
     return results
 
-
 def _evaluate_revision(
     revision: PendingRevision,
     client: WikiClient,
@@ -119,7 +118,49 @@ def _evaluate_revision(
             }
         )
 
-    # Test 2: Autoapproved editors can always be auto-approved.
+    # Test 2: Check if user was blocked after making the edit
+    try:
+        if client.is_user_blocked_after_edit(revision.user_name, revision.timestamp):
+            tests.append({
+                "id": "blocked-user",
+                "title": "User blocked after edit",
+                "status": "fail",
+                "message": "User was blocked after making this edit.",
+            })
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="blocked",
+                    label="Cannot be auto-approved",
+                    reason="User was blocked after making this edit.",
+                ),
+            }
+        else:
+            tests.append({
+                "id": "blocked-user",
+                "title": "User block status",
+                "status": "ok",
+                "message": "User has not been blocked since making this edit.",
+            })
+    except Exception as e:
+        logger.error(f"Error checking blocks for {revision.user_name}: {e}")
+        tests.append({
+            "id": "blocked-user",
+            "title": "Block check failed",
+            "status": "fail",
+            "message": "Could not verify user block status.",
+        })
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="error",
+                label="Cannot be auto-approved",
+                reason="Unable to verify user was not blocked.",
+            ),
+        }
+
+    # Test 3: Editors in the allow-list can be auto-approved.
+    # Test 3: Autoapproved editors can always be auto-approved.
     if auto_groups:
         matched_groups = _matched_user_groups(revision, profile, allowed_groups=auto_groups)
         if matched_groups:
@@ -182,7 +223,7 @@ def _evaluate_revision(
                 }
             )
 
-    # Test 3: Do not approve article to redirect conversions
+    # Test 4: Do not approve article to redirect conversions
     is_redirect_conversion = _is_article_to_redirect_conversion(revision, redirect_aliases)
 
     if is_redirect_conversion:
@@ -223,7 +264,7 @@ def _evaluate_revision(
             ),
         }
 
-    # Test 4: Blocking categories on the old version prevent automatic approval.
+    # Test 5: Blocking categories on the old version prevent automatic approval.
     blocking_hits = _blocking_category_hits(revision, blocking_categories)
     if blocking_hits:
         tests.append(
@@ -294,6 +335,7 @@ def _evaluate_revision(
                 }
             )
     # Test 4: Check for new rendering errors in the HTML.
+    # Test 6: Check for new rendering errors in the HTML.
     new_render_errors = _check_for_new_render_errors(revision, client)
     if new_render_errors:
         tests.append(

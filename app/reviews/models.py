@@ -71,6 +71,7 @@ class PendingPage(models.Model):
     pending_since = models.DateTimeField(null=True, blank=True)
     fetched_at = models.DateTimeField(auto_now=True)
     categories = models.JSONField(default=list, blank=True)
+    wikidata_id = models.CharField(max_length=16, blank=True, null=True)
 
     class Meta:
         unique_together = ("wiki", "pageid")
