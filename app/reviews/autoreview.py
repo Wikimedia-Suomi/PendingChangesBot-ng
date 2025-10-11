@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -45,6 +46,8 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
 
     results: list[dict] = []
     for revision in revisions:
+        revision_start_time = time.perf_counter()
+        
         profile = profiles.get(revision.user_name or "")
         revision_result = _evaluate_revision(
             revision,
@@ -54,6 +57,10 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
             blocking_categories=blocking_categories,
             redirect_aliases=redirect_aliases,
         )
+        
+        revision_end_time = time.perf_counter()
+        total_time_ms = (revision_end_time - revision_start_time) * 1000
+        
         results.append(
             {
                 "revid": revision.revid,
@@ -63,10 +70,12 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
                     "label": revision_result["decision"].label,
                     "reason": revision_result["decision"].reason,
                 },
+                "total_time_ms": round(total_time_ms, 2),
             }
         )
 
     return results
+
 
 def _evaluate_revision(
     revision: PendingRevision,
@@ -80,13 +89,18 @@ def _evaluate_revision(
     tests: list[dict] = []
 
     # Test 1: Bot editors can always be auto-approved.
-    if _is_bot_user(revision, profile):
+    test_start = time.perf_counter()
+    is_bot = _is_bot_user(revision, profile)
+    test_duration = (time.perf_counter() - test_start) * 1000
+    
+    if is_bot:
         tests.append(
             {
                 "id": "bot-user",
                 "title": "Bot user",
                 "status": "ok",
                 "message": "The edit could be auto-approved because the user is a bot.",
+                "duration_ms": round(test_duration, 2),
             }
         )
         return {
@@ -104,17 +118,23 @@ def _evaluate_revision(
                 "title": "Bot user",
                 "status": "not_ok",
                 "message": "The user is not marked as a bot.",
+                "duration_ms": round(test_duration, 2),
             }
         )
 
     # Test 2: Check if user was blocked after making the edit
+    test_start = time.perf_counter()
     try:
-        if client.is_user_blocked_after_edit(revision.user_name, revision.timestamp):
+        user_blocked = client.is_user_blocked_after_edit(revision.user_name, revision.timestamp)
+        test_duration = (time.perf_counter() - test_start) * 1000
+        
+        if user_blocked:
             tests.append({
                 "id": "blocked-user",
                 "title": "User blocked after edit",
                 "status": "fail",
                 "message": "User was blocked after making this edit.",
+                "duration_ms": round(test_duration, 2),
             })
             return {
                 "tests": tests,
@@ -130,14 +150,17 @@ def _evaluate_revision(
                 "title": "User block status",
                 "status": "ok",
                 "message": "User has not been blocked since making this edit.",
+                "duration_ms": round(test_duration, 2),
             })
     except Exception as e:
+        test_duration = (time.perf_counter() - test_start) * 1000
         logger.error(f"Error checking blocks for {revision.user_name}: {e}")
         tests.append({
             "id": "blocked-user",
             "title": "Block check failed",
             "status": "fail",
             "message": "Could not verify user block status.",
+            "duration_ms": round(test_duration, 2),
         })
         return {
             "tests": tests,
@@ -148,10 +171,12 @@ def _evaluate_revision(
             ),
         }
 
-    # Test 3: Editors in the allow-list can be auto-approved.
     # Test 3: Autoapproved editors can always be auto-approved.
+    test_start = time.perf_counter()
     if auto_groups:
         matched_groups = _matched_user_groups(revision, profile, allowed_groups=auto_groups)
+        test_duration = (time.perf_counter() - test_start) * 1000
+        
         if matched_groups:
             tests.append(
                 {
@@ -161,6 +186,7 @@ def _evaluate_revision(
                     "message": "The user belongs to groups: {}.".format(
                         ", ".join(sorted(matched_groups))
                     ),
+                    "duration_ms": round(test_duration, 2),
                 }
             )
             return {
@@ -178,16 +204,21 @@ def _evaluate_revision(
                     "title": "Auto-approved groups",
                     "status": "not_ok",
                     "message": "The user does not belong to auto-approved groups.",
+                    "duration_ms": round(test_duration, 2),
                 }
             )
     else:
-        if profile and profile.is_autoreviewed:
+        has_autoreview = profile and profile.is_autoreviewed
+        test_duration = (time.perf_counter() - test_start) * 1000
+        
+        if has_autoreview:
             tests.append(
                 {
                     "id": "auto-approved-group",
                     "title": "Auto-approved groups",
                     "status": "ok",
                     "message": "The user has default auto-approval rights: Autoreviewed.",
+                    "duration_ms": round(test_duration, 2),
                 }
             )
             return {
@@ -209,11 +240,14 @@ def _evaluate_revision(
                         if profile and profile.is_autopatrolled
                         else "The user does not have default auto-approval rights."
                     ),
+                    "duration_ms": round(test_duration, 2),
                 }
             )
 
     # Test 4: Do not approve article to redirect conversions
+    test_start = time.perf_counter()
     is_redirect_conversion = _is_article_to_redirect_conversion(revision, redirect_aliases)
+    test_duration = (time.perf_counter() - test_start) * 1000
 
     if is_redirect_conversion:
         tests.append(
@@ -222,6 +256,7 @@ def _evaluate_revision(
                 "title": "Article-to-redirect conversion",
                 "status": "fail",
                 "message": ("Converting articles to redirects requires autoreview rights."),
+                "duration_ms": round(test_duration, 2),
             }
         )
         return {
@@ -239,6 +274,7 @@ def _evaluate_revision(
                 "title": "Article-to-redirect conversion",
                 "status": "ok",
                 "message": "This is not an article-to-redirect conversion.",
+                "duration_ms": round(test_duration, 2),
             }
         )
 
@@ -254,7 +290,10 @@ def _evaluate_revision(
         }
 
     # Test 5: Blocking categories on the old version prevent automatic approval.
+    test_start = time.perf_counter()
     blocking_hits = _blocking_category_hits(revision, blocking_categories)
+    test_duration = (time.perf_counter() - test_start) * 1000
+    
     if blocking_hits:
         tests.append(
             {
@@ -264,6 +303,7 @@ def _evaluate_revision(
                 "message": "The previous version belongs to blocking categories: {}.".format(
                     ", ".join(sorted(blocking_hits))
                 ),
+                "duration_ms": round(test_duration, 2),
             }
         )
         return {
@@ -281,11 +321,15 @@ def _evaluate_revision(
             "title": "Blocking categories",
             "status": "ok",
             "message": "The previous version is not in blocking categories.",
+            "duration_ms": round(test_duration, 2),
         }
     )
 
     # Test 6: Check for new rendering errors in the HTML.
+    test_start = time.perf_counter()
     new_render_errors = _check_for_new_render_errors(revision, client)
+    test_duration = (time.perf_counter() - test_start) * 1000
+    
     if new_render_errors:
         tests.append(
             {
@@ -293,6 +337,7 @@ def _evaluate_revision(
                 "title": "New render errors",
                 "status": "fail",
                 "message": "The edit introduces new rendering errors.",
+                "duration_ms": round(test_duration, 2),
             }
         )
         return {
@@ -310,6 +355,7 @@ def _evaluate_revision(
             "title": "New render errors",
             "status": "ok",
             "message": "The edit does not introduce new rendering errors.",
+            "duration_ms": round(test_duration, 2),
         }
     )
 
@@ -321,6 +367,7 @@ def _evaluate_revision(
             reason="In dry-run mode the edit would not be approved automatically.",
         ),
     }
+
 
 def _get_render_error_count(revision: PendingRevision, html: str) -> int:
     """Calculate and cache the number of rendering errors in the HTML."""
