@@ -32,7 +32,7 @@ Vue.js interface for reviewing the results.
    ```bash
    python3 --version
    ```
-   Install if not found *for python3 you need to install pip3 
+   Install if not found *for python3 you need to install pip3
 4. **Create and activate a virtual environment** (recommended)
    ```bash
    python3 -m venv venv
@@ -50,40 +50,25 @@ Vue.js interface for reviewing the results.
    pip3 install -r requirements.txt
    ```
 
+## Authentication Setup
 
-## Configuring Pywikibot with OAuth
+PendingChangesBot requires authentication to interact with Wikimedia APIs. For local development, the simplest method is using **BotPassword**.
 
-Pywikibot requires OAuth 1.0a authentication to interact with Wikimedia APIs.
+### Quick Start (BotPassword)
 
-### Quick Setup
-
-1. **Copy the example configuration:**
+1. **Create a Bot Password** at <https://meta.wikimedia.org/wiki/Special:BotPasswords>
+2. **Copy configuration files:**
    ```bash
    cp user-config.py.example user-config.py
+   cp user-password.py.example user-password.py
    ```
-
-2. **Register an OAuth 1.0a consumer:**
-   - Visit: <https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose>
-   - Click "Propose an OAuth 1.0a consumer"
-   - Leave callback URL **blank**
-   - Select grants: Basic rights, High-volume (bot) access, Edit existing pages, Patrol changes
-   - Check "This consumer is for use only by [your username]"
-
-3. **Add credentials to `user-config.py`:**
-   - Replace `YourWikipediaUsername` with your actual username
-   - Replace OAuth token placeholders with your actual tokens
-
-4. **Test your setup:**
+3. **Update credentials** in both files with your BotPassword details
+4. **Test login:**
    ```bash
    python3 -m pywikibot.scripts.login -site:meta
    ```
-   Expected output: `Logged in on meta:meta as YourUsername`
 
-5. **Approve Superset's OAuth client:**
-   - Visit <https://superset.wmcloud.org/login/>
-   - Authorize the OAuth request
-
-📖 **For detailed step-by-step instructions, troubleshooting, and security best practices**, see [CONTRIBUTING.md](CONTRIBUTING.md#configuring-pywikibot-with-oauth).
+**For complete setup instructions** (including OAuth 1.0a, OAuth 2.0, Django OAuth integration, and production deployment), see the [**Authentication Guide**](docs/AUTHENTICATION.md).
 
 ## Running the database migrations
 ```bash
