@@ -8,7 +8,7 @@ This guide shows how to implement **Django OAuth login** for the PendingChangesB
 
 ---
 
-## Why Django OAuth?
+## Why Django OAuth 1.0a?
 
 **The Problem:**
 - Production bot needs to run on behalf of authenticated users
@@ -16,69 +16,58 @@ This guide shows how to implement **Django OAuth login** for the PendingChangesB
 - Current setup requires manual Pywikibot configuration per user
 
 **The Solution:**
-- Users log in via the web UI with their Wikimedia account
+- Users log in via the web UI with their Wikimedia account (OAuth 1.0a)
 - Django captures and stores OAuth credentials
 - These credentials are passed to Pywikibot for API operations
 - Each review/patrol action is performed as the logged-in user
 
+**Why OAuth 1.0a (not 2.0)?**
+- Pywikibot currently **only supports OAuth 1.0a** ([T323849](https://phabricator.wikimedia.org/T323849))
+- OAuth 1.0a credentials can be directly passed to Pywikibot
+- OAuth 2.0 support in Pywikibot is still under development
+
 **Implementation Status:**
-This is a **roadmap document** for future implementation. The OAuth 2.0 integration with Django is not yet implemented in this codebase. This guide provides the necessary steps for when you're ready to implement this feature in production.
+This is a **roadmap document** for future implementation. The OAuth 1.0a integration with Django is not yet implemented in this codebase. This guide provides the necessary steps for when you're ready to implement this feature in production.
 
 ---
 
 ## Implementation Guide
 
-### Step 1: Register OAuth 2.0 Client
+### Step 1: Register OAuth 1.0a Consumer
 
 1. Visit: https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose
-2. Click **"Propose an OAuth 2.0 client"**
+2. Click **"Propose an OAuth 1.0a consumer"**
 3. Fill in the registration form:
    - **Application name**: `PendingChangesBot-Production`
    - **Consumer version**: `1.0`
    - **Application description**: Brief description of your bot's purpose
    - **Do NOT check** "This consumer is for use only by [your name]" - we need multi-user access
-   - **OAuth "callback" URL**: `https://your-toolforge-url.toolforge.org/oauth/callback/`
-     - Note: OAuth 2.0 requires exact URL match (no wildcards)
-   - **Contact email address**: Your email
+   - **OAuth "callback" URL**: **Leave this blank** (for OAuth 1.0a callback is optional)
    - **Applicable project**: `*` (all projects)
-   - **Client is confidential**: ✓ Check this (for server-side apps)
-   - **Allowed OAuth2 grant types**:
-     - ✓ Authorization code
-     - ✓ Refresh token
    - **Types of grants**: Select **"Request authorization for specific permissions"**
    - **Applicable grants** (only check what you need - avoid risky grants):
      - ✓ **Basic rights** (required)
+     - ✓ **High-volume (bot) access** (recommended for production)
      - ✓ **Edit existing pages** (needed for reviewing)
      - ✓ **Patrol changes to pages** (needed for approval)
-     - **High-volume (bot) access** (optional - only if needed)
      - **Rollback changes to pages** (optional - has vandalism risk)
 
      **Note**: Grants with risk ratings (vandalism, security) should only be requested if absolutely necessary. See the form's "Risky grants" explanation for details.
    - **Allowed IP ranges**: Use default (`0.0.0.0/0` and `::/0`)
-   - **Allowed pages for editing**: Leave blank (allow all pages)
    - ✓ **Check the acknowledgment box** (required - acknowledges the Application Policy)
 4. **Submit** the application
 
-   You'll immediately receive:
-   ```
-   Your OAuth 2.0 client request has been received. An administrator will
-   review your request; you will receive a notification when it gets approved.
+   After submission, you'll receive **4 tokens**:
+   - Consumer Token
+   - Consumer Secret
+   - Access Token
+   - Access Secret
 
-   You have been assigned a client application key of [long hex string]
-   and a client application secret of [long hex string].
-   Please record these for future reference.
-   ```
-
-   **Important Notes**:
-   - **Save your Client Key and Secret immediately** - you won't see them again!
-   - Your client is in **pending approval** status (usually approved in 1-2 days)
-   - Test apps with "test" in the name or localhost callbacks may be ignored
-   - For test apps needing multi-user access or longer duration, request approval at [Steward requests/Miscellaneous](https://meta.wikimedia.org/wiki/Steward_requests/Miscellaneous)
-   - You'll receive a notification when an administrator approves your request
+   **Important**: Save all 4 tokens immediately - you won't see them again!
 
 ### Step 2: Install Dependencies
 
-**Note**: The `social-auth-app-django` library's MediaWiki backend primarily supports OAuth 1.0a. For OAuth 2.0 integration, you may need to implement a custom backend or use direct OAuth 2.0 flow. See the [MediaWiki OAuth 2.0 documentation](https://www.mediawiki.org/wiki/OAuth/Owner-only_consumers#OAuth_2.0) for implementation details.
+The `social-auth-app-django` library includes MediaWiki OAuth 1.0a backend support:
 
 ```bash
 pip install social-auth-app-django
@@ -113,20 +102,20 @@ TEMPLATES = [
     },
 ]
 
-# OAuth Configuration
+# OAuth 1.0a Configuration
 AUTHENTICATION_BACKENDS = (
     'social_core.backends.mediawiki.MediaWiki',
     'django.contrib.auth.backends.ModelBackend',
 )
 
-SOCIAL_AUTH_MEDIAWIKI_KEY = 'YOUR_CLIENT_APPLICATION_KEY'  # From OAuth registration
-SOCIAL_AUTH_MEDIAWIKI_SECRET = 'YOUR_CLIENT_APPLICATION_SECRET'  # From OAuth registration
+# Use the 4 tokens from your OAuth 1.0a consumer registration
+SOCIAL_AUTH_MEDIAWIKI_KEY = 'YOUR_CONSUMER_TOKEN'  # From OAuth registration
+SOCIAL_AUTH_MEDIAWIKI_SECRET = 'YOUR_CONSUMER_SECRET'  # From OAuth registration
 SOCIAL_AUTH_MEDIAWIKI_URL = 'https://meta.wikimedia.org/w/index.php'
-SOCIAL_AUTH_MEDIAWIKI_CALLBACK = 'https://your-toolforge-url.toolforge.org/oauth/callback/'
 
 # IMPORTANT: Use environment variables in production!
-# SOCIAL_AUTH_MEDIAWIKI_KEY = os.environ.get('OAUTH_CLIENT_KEY')
-# SOCIAL_AUTH_MEDIAWIKI_SECRET = os.environ.get('OAUTH_CLIENT_SECRET')
+# SOCIAL_AUTH_MEDIAWIKI_KEY = os.environ.get('OAUTH_CONSUMER_TOKEN')
+# SOCIAL_AUTH_MEDIAWIKI_SECRET = os.environ.get('OAUTH_CONSUMER_SECRET')
 ```
 
 In `app/reviewer/urls.py`:
@@ -165,13 +154,13 @@ If your production setup requires direct Pywikibot API access (without Django), 
 
 ## Troubleshooting
 
-**`redirect_uri_mismatch` error**
-- Callback URL must match exactly (include trailing slash)
-- Check `SOCIAL_AUTH_MEDIAWIKI_CALLBACK` in settings matches OAuth registration
+**`Invalid consumer_key` error**
+- Verify `SOCIAL_AUTH_MEDIAWIKI_KEY` matches your **Consumer Token** from OAuth 1.0a registration
+- Make sure you're using OAuth 1.0a tokens, not OAuth 2.0 credentials
 
-**`Invalid client_id` error**
-- Verify `SOCIAL_AUTH_MEDIAWIKI_KEY` matches your **Client application key** from OAuth registration
-- The key is a long hexadecimal string (e.g., `c1edfd44cddb9a9271898d8875a0a7b5`)
+**`Invalid token` error**
+- Check that Access Token and Access Secret are correctly stored
+- OAuth 1.0a requires all 4 tokens (Consumer Token, Consumer Secret, Access Token, Access Secret)
 
 **User authenticated but Pywikibot operations fail**
 - Check `get_user_pywikibot_credentials()` function
@@ -183,12 +172,14 @@ If your production setup requires direct Pywikibot API access (without Django), 
 ## Security Best Practices
 
 - **Never commit OAuth credentials to version control**
-  - Client application key and secret should never be in your code
+  - Consumer tokens and secrets should never be in your code
   - Add them to `.gitignore` if stored in files
 - **Use environment variables** for production:
   ```bash
-  export OAUTH_CLIENT_KEY="your_client_application_key"
-  export OAUTH_CLIENT_SECRET="your_client_application_secret"
+  export OAUTH_CONSUMER_TOKEN="your_consumer_token"
+  export OAUTH_CONSUMER_SECRET="your_consumer_secret"
+  export OAUTH_ACCESS_TOKEN="your_access_token"
+  export OAUTH_ACCESS_SECRET="your_access_secret"
   ```
 - **Toolforge secure storage**: Use Toolforge's credential management for production
 - **Regenerate immediately** if credentials are accidentally exposed
