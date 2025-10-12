@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 from http import HTTPStatus
+
 import requests
 from django.core.cache import cache
-
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import csrf_exempt
@@ -391,7 +391,7 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             "auto_approved_groups": configuration.auto_approved_groups,
         }
     )
-    
+
 def fetch_diff(request):
     url = request.GET.get("url")
     if not url:
@@ -412,9 +412,9 @@ def fetch_diff(request):
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        
+
         html_content = response.text
-        
+
         cache.set(url, html_content, CACHE_TTL)
 
         return HttpResponse(html_content, content_type="text/html")

@@ -537,9 +537,9 @@ class ViewTests(TestCase):
         mock_response.text = '<html><div class="diff-content">Mock data for testing</div></html>'
 
         external_wiki_url = "https://fi.wikipedia.org/w/index.php?diff=12345"
-        
+
         response = self.client.get(reverse('fetch_diff'), {'url': external_wiki_url})
- 
+
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'text/html')
         self.assertIn(b'Mock data for testing', response.content)
@@ -549,6 +549,6 @@ class ViewTests(TestCase):
         Tests the API returns 400 Bad Request when 'url' parameter is not passed.
         """
         response = self.client.get(reverse('fetch_diff'))
-        
+
         self.assertEqual(response.status_code, 400)
         self.assertIn(b"Missing 'url' parameter", response.content)
