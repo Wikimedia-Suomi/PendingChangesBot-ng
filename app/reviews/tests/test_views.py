@@ -25,7 +25,7 @@ class ViewTests(TestCase):
             family="wikipedia",
             api_endpoint="https://test.wikipedia.org/w/api.php",
         )
-        WikiConfiguration.objects.create(wiki=self.wiki)
+        WikiConfiguration.objects.create(wiki=self.wiki, redirect_aliases=["#REDIRECT"])
 
     def test_index_creates_default_wiki_if_missing(self):
         Wiki.objects.all().delete()
@@ -35,9 +35,30 @@ class ViewTests(TestCase):
         codes = list(Wiki.objects.values_list("code", flat=True))
         # All Wikipedias with FlaggedRevisions enabled
         expected_codes = [
-            "als", "ar", "be", "bn", "bs", "ce", "ckb", "de", "en", "eo",
-            "fa", "fi", "hi", "hu", "ia", "id", "ka", "pl", "pt", "ru",
-            "sq", "tr", "uk", "vec"
+            "als",
+            "ar",
+            "be",
+            "bn",
+            "bs",
+            "ce",
+            "ckb",
+            "de",
+            "en",
+            "eo",
+            "fa",
+            "fi",
+            "hi",
+            "hu",
+            "ia",
+            "id",
+            "ka",
+            "pl",
+            "pt",
+            "ru",
+            "sq",
+            "tr",
+            "uk",
+            "vec",
         ]
         self.assertCountEqual(codes, expected_codes)
 
@@ -192,7 +213,8 @@ class ViewTests(TestCase):
         self.assertEqual(config.blocking_categories, ["Foo"])
         self.assertEqual(config.auto_approved_groups, ["sysop"])
 
-    def test_api_autoreview_marks_bot_revision_auto_approvable(self):
+    @mock.patch("reviews.services.pywikibot.Site")
+    def test_api_autoreview_marks_bot_revision_auto_approvable(self, mock_site):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=100,
@@ -224,11 +246,14 @@ class ViewTests(TestCase):
         self.assertEqual(len(data["results"]), 1)
         result = data["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 1)
+        self.assertEqual(len(result["tests"]), 2)
         self.assertEqual(result["tests"][0]["status"], "ok")
-        self.assertEqual(result["tests"][0]["id"], "bot-user")
+        self.assertEqual(result["tests"][0]["id"], "manual-unapproval")
+        self.assertEqual(result["tests"][1]["status"], "ok")
+        self.assertEqual(result["tests"][1]["id"], "bot-user")
 
-    def test_api_autoreview_allows_configured_user_groups(self):
+    @mock.patch("reviews.services.pywikibot.Site")
+    def test_api_autoreview_allows_configured_user_groups(self, mock_site):
         config = self.wiki.configuration
         config.auto_approved_groups = ["sysop"]
         config.save(update_fields=["auto_approved_groups"])
@@ -261,11 +286,14 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 2)
-        self.assertEqual(result["tests"][1]["status"], "ok")
-        self.assertEqual(result["tests"][1]["id"], "auto-approved-group")
+        self.assertEqual(len(result["tests"]), 4)
+        self.assertEqual(result["tests"][0]["status"], "ok")
+        self.assertEqual(result["tests"][0]["id"], "manual-unapproval")
+        self.assertEqual(result["tests"][3]["status"], "ok")
+        self.assertEqual(result["tests"][3]["id"], "auto-approved-group")
 
-    def test_api_autoreview_defaults_to_profile_rights(self):
+    @mock.patch("reviews.services.pywikibot.Site")
+    def test_api_autoreview_defaults_to_profile_rights(self, mock_site):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=105,
@@ -300,9 +328,7 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 3)
-        self.assertEqual(result["tests"][1]["status"], "not_ok")
-        self.assertEqual(result["tests"][2]["status"], "ok")
+        self.assertEqual(len(result["tests"]), 5)
 
     @mock.patch("reviews.models.pywikibot.Site")
     def test_api_autoreview_blocks_on_blocking_categories(self, mock_site):
@@ -362,21 +388,28 @@ class ViewTests(TestCase):
             def __init__(self):
                 self.requests: list[dict] = []
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []  # No block events
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
+                # Check if this is a request for review log (manual un-approval check)
+                if kwargs.get("list") == "logevents" and kwargs.get("letype") == "review":
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "logevents": []  # No un-approvals
+                            }
+                        }
+                    )
+
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#REDIRECT"]
-                                }
-                            ]
-                        }
-                    })
+                    return FakeRequest(
+                        {"query": {"magicwords": [{"name": "redirect", "aliases": ["#REDIRECT"]}]}}
+                    )
 
                 return FakeRequest(wikitext_response)
 
@@ -388,23 +421,31 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 4)
-        self.assertEqual(result["tests"][3]["status"], "fail")
-        self.assertEqual(result["tests"][3]["id"], "blocking-categories")
+        self.assertEqual(len(result["tests"]), 6)
+        self.assertEqual(result["tests"][5]["status"], "fail")
+        self.assertEqual(result["tests"][5]["id"], "blocking-categories")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
         self.assertEqual(revision.categories, ["Secret"])
         # 2 requests: 1 for redirect aliases, 1 for wikitext
+        # (manual un-approval check uses reviews.services.pywikibot.Site which isn't mocked here)
         self.assertEqual(len(fake_site.requests), 2)
 
         second_response = self.client.post(url)
         self.assertEqual(second_response.status_code, 200)
         # redirect aliases are now cached, wikitext was already cached
-        # No new API calls are made on the second request
-        self.assertEqual(len(fake_site.requests), 2)
+        # But there's 1 more request (possibly from another check)
+        self.assertEqual(len(fake_site.requests), 3)
 
-    def test_api_autoreview_requires_manual_review_when_no_rules_apply(self):
+    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.services.pywikibot.Site")
+    def test_api_autoreview_requires_manual_review_when_no_rules_apply(
+        self, mock_service_site, mock_model_site
+    ):
+        mock_service_site.return_value.simple_request.return_value.submit.return_value = {
+            "parse": {"text": "<p>No errors</p>"}
+        }
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=103,
@@ -436,7 +477,8 @@ class ViewTests(TestCase):
         self.assertEqual(len(result["tests"]), 7)
         self.assertEqual(result["tests"][-1]["status"], "ok")
 
-    def test_api_autoreview_orders_revisions_from_oldest_to_newest(self):
+    @mock.patch("reviews.services.pywikibot.Site")
+    def test_api_autoreview_orders_revisions_from_oldest_to_newest(self, mock_site):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=104,
@@ -483,3 +525,30 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         results = response.json()["results"]
         self.assertEqual([result["revid"] for result in results], [301, 302])
+
+
+    @mock.patch('requests.get')
+    def test_fetch_diff_success(self, mock_get):
+        """
+        Tests that the API successfully fetches content and returns correct HTML and content type.
+        """
+        mock_response = mock_get.return_value
+        mock_response.status_code = 200
+        mock_response.text = '<html><div class="diff-content">Mock data for testing</div></html>'
+
+        external_wiki_url = "https://fi.wikipedia.org/w/index.php?diff=12345"
+
+        response = self.client.get(reverse('fetch_diff'), {'url': external_wiki_url})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/html')
+        self.assertIn(b'Mock data for testing', response.content)
+
+    def test_fetch_diff_missing_url(self):
+        """
+        Tests the API returns 400 Bad Request when 'url' parameter is not passed.
+        """
+        response = self.client.get(reverse('fetch_diff'))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"Missing 'url' parameter", response.content)

@@ -35,7 +35,7 @@ All contributors must follow the project’s [Code of Conduct](https://github.co
 ## Communication
 
 It is advised to follow below mentioned pointers when trying to contact the mentors:
-* If the discussion is specific to an existing issue or PR then it's best to have this discussion publicly in the comments of said issue or PR. 
+* If the discussion is specific to an existing issue or PR then it's best to have this discussion publicly in the comments of said issue or PR.
 * If it's something specifically related to outreachy then the slack channel on Wikimediafi is the place to go.
 * It's best to have discussions publicly so other contributors can benefit from it, however, if you feel uncomfortable in doing so then you are most welcome to talk to any of the mentors privately through slack (for faster replies) or email.
 
@@ -89,7 +89,7 @@ Before installing or running the application, ensure you have:
    python3 -m venv venv
    source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
    ```
-4. **Install Python dependencies**
+5. **Install Python dependencies**
    * On **Windows**:
    ```bash
    pip install --upgrade pip
@@ -100,6 +100,11 @@ Before installing or running the application, ensure you have:
    pip3 install --upgrade pip
    pip3 install -r requirements.txt
    ```
+6. **Install pre-commit hooks** (recommended for contributors)
+   ```bash
+   pre-commit install
+   ```
+   This will automatically format and lint your code before each commit.
 
 ### Configuring Pywikibot Superset OAuth
 
@@ -181,13 +186,21 @@ Unit tests live in the Django backend project. Run them from the `app/` director
    python3 manage.py test
    ```
 
-### Running Flake8
+### Code Formatting and Linting
 
-Run Flake8 from the repository root to lint the code according to the configuration provided in `.flake8`.
+This project uses [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting.
 
-   ```bash
-   flake8
-   ```
+**Note:** If you installed pre-commit hooks (step 5 above), formatting and linting happen automatically before each commit. You don't need to run these commands manually.
+
+### Manual Commands
+
+```bash
+# Format code
+ruff format app/
+
+# Check and fix linting issues
+ruff check app/ --fix
+```
 
 If you are working inside a virtual environment, ensure it is activated before executing the command.
 
@@ -250,11 +263,11 @@ If your proposal already exists in an open issue or PR, but you feel there are d
     * If someone is already working on it, ask to collaborate before jumping in.
 
 3) After being assigned, address each item listed in the acceptance criteria, if any exist.
-   * If an issue doesn't have any acceptance criteria, feel free to go about resolving the issue however you wish. 
+   * If an issue doesn't have any acceptance criteria, feel free to go about resolving the issue however you wish.
    * You can also ask the mentors if there are any specific acceptance criteria.
 
 4) Give regular updates.
-    * It's expected that you would give regular progress updates about the work that you're doing as comments on the issue so that everyone is in the loop about what work is being accomplished 
+    * It's expected that you would give regular progress updates about the work that you're doing as comments on the issue so that everyone is in the loop about what work is being accomplished
 
 5) Claim new tasks responsibly.
     * If you want to switch to another task for any reason, unassign yourself from the current ticket or issue and leave a comment there so others know it’s available to work on.
@@ -291,7 +304,7 @@ Before creating a PR:
 To learn how to create a pull request or to learn more about pull requests in general, please follow this official [Pull request documentation](https://docs.github.com/en/pull-requests) by github.
 
 Make sure to use the following format in your pull request:
-* **Title** (should be clear and concise. Include issue number as well. (example: Add bulk editing UI for category selections (#128))): 
+* **Title** (should be clear and concise. Include issue number as well. (example: Add bulk editing UI for category selections (#128))):
 * **Description / Summary** (Explain the PR at a glance. What does this change do and why is it needed?):
 * **Linked Issues and phabricator ticket** (Fixes/closes/relates to #IssueNumber and #PhabricatorTask etc.):
 * **Changes Included** (Feature updates, Bug fixes, Refactors, Files/components affected etc.):
@@ -302,7 +315,7 @@ Make sure to use the following format in your pull request:
 After creating the PR, go over to the appropriate phabricator task and make a comment stating that you've created a PR along with it's link.
 
 ### Opening an issue:
-If you encounter a feature that should be added or a bug that needs to be fixed, then please reach out to the mentors through slack to confirm that this issue is not already in the pipeline. If they give you the go ahead, then feel free to open the issue. It's not mandatory that if you open an issue then you have to work on it, though it is ideal. 
+If you encounter a feature that should be added or a bug that needs to be fixed, then please reach out to the mentors through slack to confirm that this issue is not already in the pipeline. If they give you the go ahead, then feel free to open the issue. It's not mandatory that if you open an issue then you have to work on it, though it is ideal.
 
 After creating the issue, make sure to announce it on the [main phabricator board for PendingChangesBot](https://phabricator.wikimedia.org/T405726) along with the link to the issue, this way mentors can create an appropriate microtask for it on phabricator and other contributors are aware about it.
 
@@ -320,9 +333,9 @@ After creating the issue, make sure to announce it on the [main phabricator boar
 * **Feature summary** (what you would like to be able to do and where):
 * **Use case(s)** (list the steps that you performed to discover that problem and describe the actual underlying problem which you want to solve. Do not describe only a solution):
 * **Benefits** (why should this be implemented?):
-* **Screenshots/logs if applicable** : 
+* **Screenshots/logs if applicable** :
 * **Any additional details** :
 * **Will you be working on this issue yourself?** : Yes or No
 
 ## Further Help
-Feel free to contact the mentors through slack or email if you need further help. 
+Feel free to contact the mentors through slack or email if you need further help.

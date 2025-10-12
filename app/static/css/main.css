@@ -1,0 +1,19 @@
+.mw-diffPage-inlineToggle-container { display:none; }
+.diff-title { text-align:center; }
+.mw-revslider-container {display:none }
+.mw-diff-inline-legend { margin:auto; }
+
+.show-diff-checkbox {
+    margin-left: 10px;
+    margin-right: 10px;
+    align-items: center;
+    justify-content: center;
+    display: flex;
+    gap: 5px;
+}
+
+.large-checkbox {
+    transform: scale(2); 
+    transform-origin: center;
+    margin-right: 5px; 
+}
