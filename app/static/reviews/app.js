@@ -580,6 +580,12 @@ createApp({
       
       page.revisions.forEach(async (revision)=> {
         state.diffs.loadingDiff[revision.revid] = true;
+        // when running autoreview all
+        // add show checkbox for all auto review is checked
+        // update individual page checkbox to true
+        if(state.diffs.showDiffs){
+          state.diffs.showDiffsByPage[page.pageid]=true
+        }
         try {
           const title = page.title;
           const oldid = revision.parentid;
