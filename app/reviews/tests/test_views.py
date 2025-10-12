@@ -26,6 +26,11 @@ class ViewTests(TestCase):
             api_endpoint="https://test.wikipedia.org/w/api.php",
         )
         WikiConfiguration.objects.create(wiki=self.wiki)
+        self.wiki_client_patcher = mock.patch("reviews.views.WikiClient")
+        self.mock_wiki_client_cls = self.wiki_client_patcher.start()
+        self.addCleanup(self.wiki_client_patcher.stop)
+        self.mock_wiki_client = self.mock_wiki_client_cls.return_value
+        self.mock_wiki_client.ensure_page_is_current.side_effect = lambda page: page
 
     def test_index_creates_default_wiki_if_missing(self):
         Wiki.objects.all().delete()
@@ -438,6 +443,38 @@ class ViewTests(TestCase):
         self.assertEqual(result["tests"][3]["id"], "external-link-domains")
         self.assertEqual(result["tests"][3]["status"], "ok")
         self.assertEqual(result["tests"][4]["status"], "ok")
+
+    def test_api_autoreview_returns_not_found_if_page_removed(self):
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=999,
+            title="Gone Page",
+            stable_revid=1,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=2,
+            parentid=1,
+            user_name="Editor",
+            user_id=1002,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=2),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=2),
+            sha1="hash4",
+            comment="Edit",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+            superset_data={"user_groups": ["user"]},
+        )
+
+        self.mock_wiki_client.ensure_page_is_current.side_effect = lambda _: None
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+        payload = response.json()
+        self.assertIn("error", payload)
 
     @mock.patch("reviews.autoreview.domains_previously_used")
     @mock.patch("reviews.autoreview.pywikibot.Site")

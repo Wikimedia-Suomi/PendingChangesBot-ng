@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from unittest import mock
+
+from django.utils import timezone
 
 from django.test import TestCase
 
@@ -176,6 +179,162 @@ class WikiClientTests(TestCase):
         self.assertTrue(profile.is_bot)
         self.assertTrue(profile.is_autoreviewed)
         self.assertFalse(profile.is_autopatrolled)
+
+    def test_ensure_page_is_current_refreshes_when_remote_newer(self):
+        client = WikiClient(self.wiki)
+        self.mock_superset.query.reset_mock()
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=10,
+            title="Example",
+            stable_revid=5,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=8,
+            parentid=7,
+            user_name="Existing",
+            user_id=1,
+            timestamp=timezone.now(),
+            fetched_at=timezone.now(),
+            age_at_fetch=timedelta(seconds=0),
+            sha1="old",
+            comment="Old revision",
+            change_tags=[],
+            wikitext="Old text",
+            categories=[],
+        )
+
+        self.fake_site.response = {
+            "query": {
+                "pages": [
+                    {"pageid": 10, "revisions": [{"revid": 9}]},
+                ]
+            }
+        }
+
+        self.mock_superset.query.return_value = [
+            {
+                "fp_page_id": 10,
+                "page_title": "Example",
+                "fp_stable": 5,
+                "fp_pending_since": "2024-01-01T00:00:00Z",
+                "rev_id": 8,
+                "rev_timestamp": "2024-01-01 12:00:00",
+                "rev_parent_id": 7,
+                "comment_text": "Old revision",
+                "rev_sha1": "old",
+                "actor_name": "Existing",
+                "actor_user": 1,
+                "change_tags": "",
+                "page_categories": "Foo",
+                "rc_bot": 0,
+            },
+            {
+                "fp_page_id": 10,
+                "page_title": "Example",
+                "fp_stable": 5,
+                "fp_pending_since": "2024-01-01T00:00:00Z",
+                "rev_id": 9,
+                "rev_timestamp": "2024-01-02 00:00:00",
+                "rev_parent_id": 8,
+                "comment_text": "New revision",
+                "rev_sha1": "new",
+                "actor_name": "NewUser",
+                "actor_user": 2,
+                "change_tags": "mobile",
+                "page_categories": "Foo",
+                "rc_bot": 0,
+            }
+        ]
+
+        refreshed = client.ensure_page_is_current(page)
+        self.assertIsNotNone(refreshed)
+        self.assertTrue(self.mock_superset.query.called)
+        refreshed_page = PendingPage.objects.get(pk=page.pk)
+        self.assertEqual(refreshed_page.categories, ["Foo"])
+        revisions = list(
+            PendingRevision.objects.filter(page=refreshed_page).order_by("revid")
+        )
+        self.assertEqual([8, 9], [rev.revid for rev in revisions])
+        self.assertEqual(revisions[-1].comment, "New revision")
+
+    def test_ensure_page_is_current_skips_when_up_to_date(self):
+        client = WikiClient(self.wiki)
+        self.mock_superset.query.reset_mock()
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=20,
+            title="Fresh",
+            stable_revid=3,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=6,
+            parentid=5,
+            user_name="Existing",
+            user_id=1,
+            timestamp=timezone.now(),
+            fetched_at=timezone.now(),
+            age_at_fetch=timedelta(seconds=0),
+            sha1="hash",
+            comment="Current revision",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+        )
+
+        self.fake_site.response = {
+            "query": {
+                "pages": [
+                    {"pageid": 20, "revisions": [{"revid": 6}]},
+                ]
+            }
+        }
+
+        refreshed = client.ensure_page_is_current(page)
+        self.assertEqual(refreshed.pk, page.pk)
+        self.assertFalse(self.mock_superset.query.called)
+
+    def test_ensure_page_is_current_removes_page_if_not_pending(self):
+        client = WikiClient(self.wiki)
+        self.mock_superset.query.reset_mock()
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=30,
+            title="Gone",
+            stable_revid=1,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=2,
+            parentid=1,
+            user_name="Existing",
+            user_id=1,
+            timestamp=timezone.now(),
+            fetched_at=timezone.now(),
+            age_at_fetch=timedelta(seconds=0),
+            sha1="hash",
+            comment="Pending",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+        )
+
+        self.fake_site.response = {
+            "query": {
+                "pages": [
+                    {"pageid": 30, "revisions": [{"revid": 3}]},
+                ]
+            }
+        }
+        self.mock_superset.query.return_value = []
+
+        refreshed = client.ensure_page_is_current(page)
+        self.assertIsNone(refreshed)
+        self.assertFalse(
+            PendingPage.objects.filter(pk=page.pk).exists()
+        )
 
 
 class RefreshWorkflowTests(TestCase):
