@@ -152,7 +152,7 @@ createApp({
         showDiffs: showDiffSetting,
         loadingDiff: [],
         diffHtml: [],
-      }
+      },
       searchQuery: "",
     });
 
