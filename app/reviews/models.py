@@ -49,6 +49,15 @@ class WikiConfiguration(models.Model):
             "action=query&meta=siteinfo&siprop=magicwords)"
         ),
     )
+    superseded_similarity_threshold = models.FloatField(
+        default=0.2,
+        help_text=(
+            "Similarity threshold (0.0-1.0) for detecting superseded additions. "
+            "Lower values are more strict. If text additions from a pending revision "
+            "have similarity below this threshold in the current stable version, "
+            "the revision is considered superseded and can be auto-approved."
+        ),
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:  # pragma: no cover - debug helper
