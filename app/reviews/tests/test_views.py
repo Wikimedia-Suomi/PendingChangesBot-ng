@@ -184,7 +184,8 @@ class ViewTests(TestCase):
         self.assertEqual(config.blocking_categories, ["Foo"])
         self.assertEqual(config.auto_approved_groups, ["sysop"])
 
-    def test_api_autoreview_marks_bot_revision_auto_approvable(self):
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
+    def test_api_autoreview_marks_bot_revision_auto_approvable(self, mock_html):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=100,
@@ -216,11 +217,14 @@ class ViewTests(TestCase):
         self.assertEqual(len(data["results"]), 1)
         result = data["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 1)
+        self.assertEqual(len(result["tests"]), 2)  # Now includes broken wikicode check
         self.assertEqual(result["tests"][0]["status"], "ok")
-        self.assertEqual(result["tests"][0]["id"], "bot-user")
+        self.assertEqual(result["tests"][0]["id"], "broken-wikicode")
+        self.assertEqual(result["tests"][1]["status"], "ok")
+        self.assertEqual(result["tests"][1]["id"], "bot-user")
 
-    def test_api_autoreview_allows_configured_user_groups(self):
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
+    def test_api_autoreview_allows_configured_user_groups(self, mock_html):
         config = self.wiki.configuration
         config.auto_approved_groups = ["sysop"]
         config.save(update_fields=["auto_approved_groups"])
@@ -253,11 +257,14 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 2)
-        self.assertEqual(result["tests"][1]["status"], "ok")
-        self.assertEqual(result["tests"][1]["id"], "auto-approved-group")
+        self.assertEqual(len(result["tests"]), 3)  # Now includes broken wikicode check
+        self.assertEqual(result["tests"][0]["status"], "ok")
+        self.assertEqual(result["tests"][0]["id"], "broken-wikicode")
+        self.assertEqual(result["tests"][2]["status"], "ok")
+        self.assertEqual(result["tests"][2]["id"], "auto-approved-group")
 
-    def test_api_autoreview_defaults_to_profile_rights(self):
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
+    def test_api_autoreview_defaults_to_profile_rights(self, mock_html):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=105,
@@ -292,12 +299,15 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 2)
-        self.assertEqual(result["tests"][1]["status"], "ok")
-        self.assertIn("Autopatrolled", result["tests"][1]["message"])
+        self.assertEqual(len(result["tests"]), 3)  # Now includes broken wikicode check
+        self.assertEqual(result["tests"][0]["status"], "ok")
+        self.assertEqual(result["tests"][0]["id"], "broken-wikicode")
+        self.assertEqual(result["tests"][2]["status"], "ok")
+        self.assertIn("Autopatrolled", result["tests"][2]["message"])
 
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.models.pywikibot.Site")
-    def test_api_autoreview_blocks_on_blocking_categories(self, mock_site):
+    def test_api_autoreview_blocks_on_blocking_categories(self, mock_site, mock_html):
         config = self.wiki.configuration
         config.blocking_categories = ["Secret"]
         config.save(update_fields=["blocking_categories"])
@@ -366,9 +376,9 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 3)
-        self.assertEqual(result["tests"][2]["status"], "fail")
-        self.assertEqual(result["tests"][2]["id"], "blocking-categories")
+        self.assertEqual(len(result["tests"]), 4)  # Now includes broken wikicode check
+        self.assertEqual(result["tests"][3]["status"], "fail")  # Updated index
+        self.assertEqual(result["tests"][3]["id"], "blocking-categories")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
@@ -379,7 +389,8 @@ class ViewTests(TestCase):
         self.assertEqual(second_response.status_code, 200)
         self.assertEqual(len(fake_site.requests), 1)
 
-    def test_api_autoreview_requires_manual_review_when_no_rules_apply(self):
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
+    def test_api_autoreview_requires_manual_review_when_no_rules_apply(self, mock_html):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=103,
@@ -408,10 +419,11 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 3)
-        self.assertEqual(result["tests"][2]["status"], "ok")
+        self.assertEqual(len(result["tests"]), 4)  # Now includes broken wikicode check
+        self.assertEqual(result["tests"][3]["status"], "ok")  # Updated index
 
-    def test_api_autoreview_orders_revisions_from_oldest_to_newest(self):
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
+    def test_api_autoreview_orders_revisions_from_oldest_to_newest(self, mock_html):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=104,
