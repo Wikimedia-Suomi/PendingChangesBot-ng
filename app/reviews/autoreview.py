@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable
 
 from .models import EditorProfile, PendingPage, PendingRevision
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -42,8 +45,12 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     stable_revision = None
     try:
         stable_revision = page.revisions.get(revid=page.stable_revid)
-    except Exception:
-        pass  # No stable revision available
+    except page.revisions.model.DoesNotExist:
+        logger.debug(
+            "No stable revision %s for page %s",
+            page.stable_revid,
+            page.pageid,
+        )
 
     results: list[dict] = []
     for i, revision in enumerate(revisions):
