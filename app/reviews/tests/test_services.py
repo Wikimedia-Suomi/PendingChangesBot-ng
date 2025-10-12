@@ -25,6 +25,10 @@ class FakeSite:
         self.users_data: dict[str, dict] = {}
         self.requests: list[dict] = []
 
+    def logevents(self, **kwargs):
+        """Mock logevents for block checking."""
+        return []
+
     def simple_request(self, **kwargs):
         self.requests.append(kwargs)
         return FakeRequest(self.response)
@@ -63,8 +67,7 @@ class WikiClientTests(TestCase):
 
     def test_parse_categories_extracts_unique_names(self):
         wikitext = (
-            "Some text [[Category:Example]] and [[category:Second|label]] "
-            "and [[Category:Example]]"
+            "Some text [[Category:Example]] and [[category:Second|label]] and [[Category:Example]]"
         )
         categories = parse_categories(wikitext)
         self.assertEqual(categories, ["Example", "Second"])
@@ -145,9 +148,7 @@ class WikiClientTests(TestCase):
         client.fetch_pending_pages(limit=2)
 
         page = PendingPage.objects.get(pageid=555)
-        revisions = list(
-            PendingRevision.objects.filter(page=page).order_by("revid")
-        )
+        revisions = list(PendingRevision.objects.filter(page=page).order_by("revid"))
         self.assertEqual([30, 31], [revision.revid for revision in revisions])
         self.assertEqual(page.stable_revid, 30)
 
@@ -356,9 +357,7 @@ class RefreshWorkflowTests(TestCase):
 
     @mock.patch("reviews.services.SupersetQuery")
     @mock.patch("reviews.services.pywikibot.Site")
-    def test_refresh_does_not_call_pywikibot_requests(
-        self, mock_site, mock_superset
-    ):
+    def test_refresh_does_not_call_pywikibot_requests(self, mock_site, mock_superset):
         wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",

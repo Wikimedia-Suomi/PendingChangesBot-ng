@@ -63,48 +63,58 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"]
-                                }
-                            ]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "magicwords": [
+                                    {
+                                        "name": "redirect",
+                                        "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+                                    }
+                                ]
+                            }
                         }
-                    })
+                    )
 
                 # Otherwise, it's a wikitext request
                 if self.wikitext_call_count == 0:
                     self.wikitext_call_count += 1
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {
-                                        "main": {"content": old_article_wikitext}
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {
+                                        "revisions": [
+                                            {"slots": {"main": {"content": old_article_wikitext}}}
+                                        ]
                                     }
-                                }]
-                            }]
+                                ]
+                            }
                         }
-                    })
+                    )
                 else:
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {
-                                        "main": {"content": new_redirect_wikitext}
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {
+                                        "revisions": [
+                                            {"slots": {"main": {"content": new_redirect_wikitext}}}
+                                        ]
                                     }
-                                }]
-                            }]
+                                ]
+                            }
                         }
-                    })
+                    )
 
         fake_site = FakeSite()
         mock_site.return_value = fake_site
@@ -165,7 +175,7 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
         self.assertEqual(
             result["decision"]["status"],
             "blocked",
-            "Article-to-redirect conversions should be blocked for autopatrolled-only users"
+            "Article-to-redirect conversions should be blocked for autopatrolled-only users",
         )
 
     @mock.patch("reviews.models.pywikibot.Site")
@@ -193,43 +203,49 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"]
-                                }
-                            ]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "magicwords": [
+                                    {
+                                        "name": "redirect",
+                                        "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+                                    }
+                                ]
+                            }
                         }
-                    })
+                    )
 
                 # Otherwise, it's a wikitext request
                 if self.wikitext_call_count == 0:
                     self.wikitext_call_count += 1
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {"main": {"content": old_redirect}}
-                                }]
-                            }]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {"revisions": [{"slots": {"main": {"content": old_redirect}}}]}
+                                ]
+                            }
                         }
-                    })
-                return FakeRequest({
-                    "query": {
-                        "pages": [{
-                            "revisions": [{
-                                "slots": {"main": {"content": new_redirect}}
-                            }]
-                        }]
+                    )
+                return FakeRequest(
+                    {
+                        "query": {
+                            "pages": [
+                                {"revisions": [{"slots": {"main": {"content": new_redirect}}}]}
+                            ]
+                        }
                     }
-                })
+                )
 
         fake_site = FakeSite()
         mock_site.return_value = fake_site
@@ -310,43 +326,49 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"]
-                                }
-                            ]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "magicwords": [
+                                    {
+                                        "name": "redirect",
+                                        "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+                                    }
+                                ]
+                            }
                         }
-                    })
+                    )
 
                 # Otherwise, it's a wikitext request
                 if self.wikitext_call_count == 0:
                     self.wikitext_call_count += 1
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {"main": {"content": old_article}}
-                                }]
-                            }]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {"revisions": [{"slots": {"main": {"content": old_article}}}]}
+                                ]
+                            }
                         }
-                    })
-                return FakeRequest({
-                    "query": {
-                        "pages": [{
-                            "revisions": [{
-                                "slots": {"main": {"content": new_redirect}}
-                            }]
-                        }]
+                    )
+                return FakeRequest(
+                    {
+                        "query": {
+                            "pages": [
+                                {"revisions": [{"slots": {"main": {"content": new_redirect}}}]}
+                            ]
+                        }
                     }
-                })
+                )
 
         fake_site = FakeSite()
         mock_site.return_value = fake_site
@@ -399,43 +421,49 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"]
-                                }
-                            ]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "magicwords": [
+                                    {
+                                        "name": "redirect",
+                                        "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+                                    }
+                                ]
+                            }
                         }
-                    })
+                    )
 
                 # Otherwise, it's a wikitext request
                 if self.wikitext_call_count == 0:
                     self.wikitext_call_count += 1
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {"main": {"content": old_article}}
-                                }]
-                            }]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {"revisions": [{"slots": {"main": {"content": old_article}}}]}
+                                ]
+                            }
                         }
-                    })
-                return FakeRequest({
-                    "query": {
-                        "pages": [{
-                            "revisions": [{
-                                "slots": {"main": {"content": new_redirect}}
-                            }]
-                        }]
+                    )
+                return FakeRequest(
+                    {
+                        "query": {
+                            "pages": [
+                                {"revisions": [{"slots": {"main": {"content": new_redirect}}}]}
+                            ]
+                        }
                     }
-                })
+                )
 
         fake_site = FakeSite()
         mock_site.return_value = fake_site
