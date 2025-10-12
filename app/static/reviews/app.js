@@ -152,6 +152,7 @@ createApp({
         showDiffs: showDiffSetting,
         loadingDiff: [],
         diffHtml: [],
+        showDiffsByPage: {}
       },
       searchQuery: "",
     });
@@ -457,7 +458,7 @@ createApp({
       state.configurationOpen = !state.configurationOpen;
     }
 
-    async function runAutoreview(page, showDiffs=true) {
+    async function runAutoreview(page, showDiffs=false) {
       if (!page || !state.selectedWikiId) {
         return;
       }
@@ -478,6 +479,8 @@ createApp({
         });
         setReviewResults(pageId, mapping);
         if(showDiffs){
+          showDiff(page)
+        }else if (state.diffs.showDiffsByPage[page.pageid]){
           showDiff(page)
         }
       } catch (error) {

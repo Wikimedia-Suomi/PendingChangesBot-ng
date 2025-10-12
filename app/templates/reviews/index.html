@@ -178,6 +178,16 @@
                   >
                     Autoreview edits
                   </button>
+                  <div class="show-diff-checkbox">
+                    <input
+                      class="large-checkbox"
+                      type="checkbox" 
+                      id="showPagediff" 
+                      name="showPagediff" 
+                      v-model="state.diffs.showDiffsByPage[page.pageid]"
+                    >
+                    <label for="showPagediff">Show Diffs</label>
+                  </div>
                 </div>
                 <div class="table-container">
                   <table class="table is-fullwidth is-striped">
