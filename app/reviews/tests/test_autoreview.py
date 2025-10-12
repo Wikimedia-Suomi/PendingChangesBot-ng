@@ -209,6 +209,25 @@ class ISBNDetectionTests(TestCase):
         # Should recognize valid ISBN with spaces around hyphens
         self.assertEqual(len(invalid), 0)
 
+    def test_isbn_followed_by_punctuation(self):
+        """Test that ISBNs followed by punctuation are correctly detected."""
+        # ISBN followed by comma
+        text1 = "isbn: 9780306406157, 2020"
+        self.assertEqual(_find_invalid_isbns(text1), [])
+
+        # ISBN followed by period
+        text2 = "isbn: 0-306-40615-2."
+        self.assertEqual(_find_invalid_isbns(text2), [])
+
+        # ISBN followed by semicolon
+        text3 = "isbn: 978-0-306-40615-7; another book"
+        self.assertEqual(_find_invalid_isbns(text3), [])
+
+        # Invalid ISBN followed by comma
+        text4 = "isbn: 9780306406158, 2020"
+        invalid = _find_invalid_isbns(text4)
+        self.assertEqual(len(invalid), 1)
+
 
 class AutoreviewBlockedUserTests(TestCase):
     def setUp(self):
