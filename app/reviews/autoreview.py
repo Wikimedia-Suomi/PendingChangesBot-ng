@@ -482,6 +482,63 @@ def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bo
 
     return False
 
+def _get_redirect_aliases(wiki: Wiki) -> list[str]:
+    config = wiki.configuration
+    if config.redirect_aliases:
+        return config.redirect_aliases
+
+    try:
+        site = pywikibot.Site(code=wiki.code, fam=wiki.family)
+        request = site.simple_request(
+            action="query",
+            meta="siteinfo",
+            siprop="magicwords",
+            formatversion=2,
+        )
+        response = request.submit()
+
+        magic_words = response.get("query", {}).get("magicwords", [])
+        if not isinstance(magic_words, list):
+            try:
+                magic_words = list(magic_words)
+            except TypeError:
+                magic_words = []
+
+        for magic_word in magic_words:
+            if not isinstance(magic_word, dict):
+                continue
+            if magic_word.get("name") != "redirect":
+                continue
+            aliases = magic_word.get("aliases", [])
+            if not isinstance(aliases, list):
+                continue
+
+            config.redirect_aliases = aliases
+            config.save(update_fields=["redirect_aliases", "updated_at"])
+            return aliases
+    except Exception:  # pragma: no cover - network failure fallback
+        logger.exception("Failed to fetch redirect magic words for %s", wiki.code)
+
+    language_fallbacks = {
+        "de": ["#WEITERLEITUNG", "#REDIRECT"],
+        "en": ["#REDIRECT"],
+        "pl": ["#PATRZ", "#PRZEKIERUJ", "#TAM", "#REDIRECT"],
+        "fi": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+    }
+
+    fallback_aliases = language_fallbacks.get(
+        wiki.code,
+        ["#REDIRECT"]  # fallback for non default languages
+    )
+
+    logger.warning(
+        "Using fallback redirect aliases for %s: %s",
+        wiki.code,
+        fallback_aliases,
+    )
+
+    # Not saving fallback to cache, so it can be updated later using the API
+    return fallback_aliases
 
 def _matched_user_groups(
     revision: PendingRevision,

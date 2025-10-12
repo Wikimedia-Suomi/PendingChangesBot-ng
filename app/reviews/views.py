@@ -208,7 +208,6 @@ def _get_wiki(pk: int) -> Wiki:
     WikiConfiguration.objects.get_or_create(wiki=wiki)
     return wiki
 
-
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_refresh(request: HttpRequest, pk: int) -> JsonResponse:
@@ -217,13 +216,16 @@ def api_refresh(request: HttpRequest, pk: int) -> JsonResponse:
     try:
         pages = client.refresh()
     except Exception as exc:  # pragma: no cover - network failures handled in UI
-        logger.exception("Failed to refresh pending changes for %s", wiki.code)
+        logger.warning(
+            "Failed to refresh pending changes for %s: %s",
+            wiki.code,
+            exc,
+        )
         return JsonResponse(
             {"error": str(exc)},
             status=HTTPStatus.BAD_GATEWAY,
         )
     return JsonResponse({"pages": [page.pageid for page in pages]})
-
 
 def _build_revision_payload(revisions, wiki):
     usernames: set[str] = {revision.user_name for revision in revisions if revision.user_name}

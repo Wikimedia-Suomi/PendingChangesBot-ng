@@ -27,6 +27,27 @@ class ViewTests(TestCase):
         )
         WikiConfiguration.objects.create(wiki=self.wiki, redirect_aliases=["#REDIRECT"])
 
+    def _create_parent_revision(self, page: PendingPage, revid: int, wikitext: str = "Parent content") -> PendingRevision:
+        timestamp = datetime.now(timezone.utc) - timedelta(days=2)
+        if page.stable_revid != revid:
+            page.stable_revid = revid
+            page.save(update_fields=["stable_revid"])
+        return PendingRevision.objects.create(
+            page=page,
+            revid=revid,
+            parentid=None,
+            user_name="ParentEditor",
+            user_id=0,
+            timestamp=timestamp,
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=datetime.now(timezone.utc) - timestamp,
+            sha1=f"parent-{revid}",
+            comment="Parent revision",
+            change_tags=[],
+            wikitext=wikitext,
+            categories=[],
+        )
+
     def test_index_creates_default_wiki_if_missing(self):
         Wiki.objects.all().delete()
         response = self.client.get(reverse("index"))
@@ -66,9 +87,11 @@ class ViewTests(TestCase):
     @mock.patch("reviews.views.WikiClient")
     def test_api_refresh_returns_error_on_failure(self, mock_client, mock_logger):
         mock_client.return_value.refresh.side_effect = RuntimeError("failure")
-        response = self.client.post(reverse("api_refresh", args=[self.wiki.pk]))
+        with self.assertLogs("reviews.views", level="WARNING") as logs:
+            response = self.client.post(reverse("api_refresh", args=[self.wiki.pk]))
         self.assertEqual(response.status_code, 502)
         self.assertIn("error", response.json())
+        self.assertTrue(any("Failed to refresh pending changes" in record for record in logs.output))
 
     @mock.patch("reviews.views.WikiClient")
     def test_api_refresh_success(self, mock_client):
@@ -221,6 +244,7 @@ class ViewTests(TestCase):
             title="Bot Page",
             stable_revid=1,
         )
+        self._create_parent_revision(page, 150)
         PendingRevision.objects.create(
             page=page,
             revid=200,
@@ -264,6 +288,7 @@ class ViewTests(TestCase):
             title="Group Page",
             stable_revid=1,
         )
+        self._create_parent_revision(page, 150)
         PendingRevision.objects.create(
             page=page,
             revid=201,
@@ -300,6 +325,7 @@ class ViewTests(TestCase):
             title="Default Rights",
             stable_revid=1,
         )
+        self._create_parent_revision(page, 300)
         PendingRevision.objects.create(
             page=page,
             revid=401,
@@ -342,6 +368,7 @@ class ViewTests(TestCase):
             title="Blocked Page",
             stable_revid=1,
         )
+        self._create_parent_revision(page, 160, wikitext="Prior version content")
         revision = PendingRevision.objects.create(
             page=page,
             revid=202,
@@ -457,6 +484,7 @@ class ViewTests(TestCase):
             title="Manual Page",
             stable_revid=1,
         )
+        self._create_parent_revision(page, 170, wikitext="Parent article content")
         PendingRevision.objects.create(
             page=page,
             revid=203,
@@ -482,6 +510,7 @@ class ViewTests(TestCase):
         self.assertEqual(len(result["tests"]), 5)
         self.assertEqual(result["tests"][3]["id"], "external-link-domains")
         self.assertEqual(result["tests"][3]["status"], "ok")
+        self.assertEqual(result["tests"][4]["id"], "blocking-categories")
         self.assertEqual(result["tests"][4]["status"], "ok")
 
     @mock.patch("reviews.autoreview.domains_previously_used")
@@ -632,6 +661,7 @@ class ViewTests(TestCase):
             title="Multiple Revisions",
             stable_revid=1,
         )
+        self._create_parent_revision(page, 200, wikitext="Base revision text")
         older_timestamp = datetime.now(timezone.utc) - timedelta(days=2)
         newer_timestamp = datetime.now(timezone.utc) - timedelta(days=1)
         PendingRevision.objects.create(

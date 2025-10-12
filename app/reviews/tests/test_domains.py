@@ -27,10 +27,16 @@ class FakeSite:
         if self.raises:
             raise self.raises
         # Return generator that yields a fake Page if domain exists in map True
-        if self.map.get(query):
-            # yield one item to represent that usage exists
+        count = 0
+        value = self.map.get(query)
+        if isinstance(value, int):
+            count = value
+        elif value:
+            count = 2
+
+        for _ in range(count):
             yield SimpleNamespace(title='FakePage')
-        else:
+        if count == 0:
             if False:
                 yield None  # unreachable; just to keep generator type
 
@@ -86,6 +92,14 @@ def test_multiple_all_trusted_approved():
     assert ok is True
     assert details["example.com"]["used"] is True
     assert details["bbc.com"]["used"] is True
+
+
+def test_single_usage_not_enough():
+    site = FakeSite(exturlusage_map={"example.com": 1})
+    clear_domain_cache()
+    ok, details = domains_previously_used(site, ["https://example.com/about"])  # single hit
+    assert ok is False
+    assert details["example.com"]["used"] is False
 
 
 def test_multiple_mixed_rejected():

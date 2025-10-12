@@ -76,9 +76,12 @@ def _cached_domain_usage(site_key: int, domain: str, bucket: Optional[int]) -> T
         raise RuntimeError("Site reference expired; cache needs refresh")
 
     try:
-        results = site.exturlusage(domain, total=1, namespaces=[0])
+        results = site.exturlusage(domain, total=2, namespaces=[0])
+        count = 0
         for _ in results:
-            return True, None
+            count += 1
+            if count >= 2:
+                return True, None
         return False, None
     except Exception as exc:  # pragma: no cover - network failure fallback
         return False, exc
