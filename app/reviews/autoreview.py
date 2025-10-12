@@ -356,9 +356,9 @@ def _evaluate_revision(
     current_wikitext = revision.get_wikitext()
     ref_check = _is_reference_only_edit(parent_wikitext, current_wikitext)
 
-    if ref_check['is_reference_only']:
+    if ref_check["is_reference_only"]:
         # Get domains from added and modified references
-        all_changed_refs = ref_check['added_refs'] + ref_check['modified_refs']
+        all_changed_refs = ref_check["added_refs"] + ref_check["modified_refs"]
         domains = _get_domains_from_references(all_changed_refs)
 
         if domains:
@@ -376,9 +376,7 @@ def _evaluate_revision(
                         "status": "fail",
                         "message": (
                             "Edit only modifies references, but contains "
-                            "unverified domains: {}.".format(
-                                ", ".join(sorted(unverified_domains))
-                            )
+                            "unverified domains: {}.".format(", ".join(sorted(unverified_domains)))
                         ),
                     }
                 )
@@ -396,9 +394,7 @@ def _evaluate_revision(
                         "id": "reference-only-edit",
                         "title": "Reference-only edit",
                         "status": "ok",
-                        "message": (
-                            "Edit only adds/modifies references with verified domains."
-                        ),
+                        "message": ("Edit only adds/modifies references with verified domains."),
                     }
                 )
                 return {
@@ -427,7 +423,9 @@ def _evaluate_revision(
                     reason="Edit only adds or modifies references without external links.",
                 ),
             }
-    elif ref_check['removed_refs'] and not ref_check['added_refs'] and not ref_check['modified_refs']:
+    elif (
+        ref_check["removed_refs"] and not ref_check["added_refs"] and not ref_check["modified_refs"]
+    ):
         # Only removed references, require manual review
         tests.append(
             {
@@ -710,42 +708,46 @@ def _extract_references(wikitext: str) -> list[dict[str, str]]:
     # Pattern for standard <ref>content</ref> tags (with optional attributes)
     # Captures: name attribute, group attribute, content
     standard_pattern = (
-        r'<ref'
+        r"<ref"
         r'(?:\s+name\s*=\s*"([^"]*)")?'  # Optional name attribute
         r'(?:\s+group\s*=\s*"([^"]*)")?'  # Optional group attribute
-        r'(?:\s+[^>]*)?'  # Any other attributes
-        r'>'
-        r'(.*?)'  # Content (non-greedy)
-        r'</ref>'
+        r"(?:\s+[^>]*)?"  # Any other attributes
+        r">"
+        r"(.*?)"  # Content (non-greedy)
+        r"</ref>"
     )
 
     # Pattern for self-closing <ref /> tags
     # Captures: name attribute, group attribute
     self_closing_pattern = (
-        r'<ref'
+        r"<ref"
         r'(?:\s+name\s*=\s*"([^"]*)")?'  # Optional name attribute
         r'(?:\s+group\s*=\s*"([^"]*)")?'  # Optional group attribute
-        r'(?:\s+[^>]*)?'  # Any other attributes
-        r'\s*/>'
+        r"(?:\s+[^>]*)?"  # Any other attributes
+        r"\s*/>"
     )
 
     # Find all standard refs
     for match in re.finditer(standard_pattern, wikitext, re.DOTALL | re.IGNORECASE):
-        references.append({
-            'full_match': match.group(0),
-            'name': match.group(1) or '',
-            'group': match.group(2) or '',
-            'content': match.group(3) or '',
-        })
+        references.append(
+            {
+                "full_match": match.group(0),
+                "name": match.group(1) or "",
+                "group": match.group(2) or "",
+                "content": match.group(3) or "",
+            }
+        )
 
     # Find all self-closing refs
     for match in re.finditer(self_closing_pattern, wikitext, re.IGNORECASE):
-        references.append({
-            'full_match': match.group(0),
-            'name': match.group(1) or '',
-            'group': match.group(2) or '',
-            'content': '',
-        })
+        references.append(
+            {
+                "full_match": match.group(0),
+                "name": match.group(1) or "",
+                "group": match.group(2) or "",
+                "content": "",
+            }
+        )
 
     return references
 
@@ -760,23 +762,13 @@ def _remove_references(wikitext: str) -> str:
         Wikitext with all <ref>...</ref> and <ref /> tags removed
     """
     if not wikitext:
-        return ''
+        return ""
 
     # Remove standard refs
-    result = re.sub(
-        r'<ref(?:\s+[^>]*)?>.*?</ref>',
-        '',
-        wikitext,
-        flags=re.DOTALL | re.IGNORECASE
-    )
+    result = re.sub(r"<ref(?:\s+[^>]*)?>.*?</ref>", "", wikitext, flags=re.DOTALL | re.IGNORECASE)
 
     # Remove self-closing refs
-    result = re.sub(
-        r'<ref(?:\s+[^>]*)?/>',
-        '',
-        result,
-        flags=re.IGNORECASE
-    )
+    result = re.sub(r"<ref(?:\s+[^>]*)?/>", "", result, flags=re.IGNORECASE)
 
     return result
 
@@ -810,14 +802,14 @@ def _extract_domain_from_url(url: str) -> str:
         Domain extracted from URL, empty string if invalid
     """
     if not url:
-        return ''
+        return ""
 
     # Simple domain extraction from URL
     # Match pattern: protocol://domain/path
-    match = re.match(r'https?://([^/\s:]+)', url, re.IGNORECASE)
+    match = re.match(r"https?://([^/\s:]+)", url, re.IGNORECASE)
     if match:
         return match.group(1).lower()
-    return ''
+    return ""
 
 
 def _get_domains_from_references(refs: list[dict]) -> set[str]:
@@ -831,7 +823,7 @@ def _get_domains_from_references(refs: list[dict]) -> set[str]:
     """
     domains = set()
     for ref in refs:
-        content = ref.get('content', '')
+        content = ref.get("content", "")
         urls = _extract_urls_from_text(content)
         for url in urls:
             domain = _extract_domain_from_url(url)
@@ -857,10 +849,10 @@ def _check_domain_exists_on_wiki(domain: str, wiki: Wiki) -> bool:
         site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
         # Use exturlusage to check if domain exists in article namespace (0)
-        # We only need to check if at least one result exists
-        results = list(site.exturlusage(domain, namespaces=[0], total=1))
+        # We need to check for at least 2 results since the new link will match itself
+        results = list(site.exturlusage(domain, namespaces=[0], total=2))
 
-        return len(results) > 0
+        return len(results) > 1
 
     except Exception:  # pragma: no cover - network failure fallback
         logger.exception("Failed to check domain %s on wiki %s", domain, wiki.code)
@@ -891,32 +883,54 @@ def _is_reference_only_edit(old_wikitext: str, new_wikitext: str) -> dict:
     new_without_refs = _remove_references(new_wikitext)
 
     # Normalize whitespace for comparison
-    old_normalized = ' '.join(old_without_refs.split())
-    new_normalized = ' '.join(new_without_refs.split())
+    old_normalized = " ".join(old_without_refs.split())
+    new_normalized = " ".join(new_without_refs.split())
 
     non_ref_changed = old_normalized != new_normalized
 
-    # Build ref lookup by name (for named refs) or content (for unnamed refs)
-    def ref_key(ref: dict) -> str:
-        """Create unique key for reference matching."""
-        if ref['name']:
-            return f"name:{ref['name']}"
-        return f"content:{ref['content']}"
+    # Separate named and unnamed references
+    old_named = [ref for ref in old_refs if ref["name"]]
+    new_named = [ref for ref in new_refs if ref["name"]]
+    old_unnamed = [ref for ref in old_refs if not ref["name"]]
+    new_unnamed = [ref for ref in new_refs if not ref["name"]]
 
-    old_ref_map = {ref_key(ref): ref for ref in old_refs}
-    new_ref_map = {ref_key(ref): ref for ref in new_refs}
+    # Match named references by name
+    old_named_map = {ref["name"]: ref for ref in old_named}
+    new_named_map = {ref["name"]: ref for ref in new_named}
 
-    old_keys = set(old_ref_map.keys())
-    new_keys = set(new_ref_map.keys())
+    old_named_keys = set(old_named_map.keys())
+    new_named_keys = set(new_named_map.keys())
 
-    added_refs = [new_ref_map[key] for key in (new_keys - old_keys)]
-    removed_refs = [old_ref_map[key] for key in (old_keys - new_keys)]
+    added_refs = [new_named_map[key] for key in (new_named_keys - old_named_keys)]
+    removed_refs = [old_named_map[key] for key in (old_named_keys - new_named_keys)]
 
-    # Check for modifications (same key but different content)
+    # Check for modifications in named refs (same name but different content)
     modified_refs = []
-    for key in old_keys & new_keys:
-        if old_ref_map[key]['content'] != new_ref_map[key]['content']:
-            modified_refs.append(new_ref_map[key])
+    for key in old_named_keys & new_named_keys:
+        if old_named_map[key]["content"] != new_named_map[key]["content"]:
+            modified_refs.append(new_named_map[key])
+
+    # Match unnamed references by position
+    # If counts match and non-ref content hasn't changed, pair them by position
+    if len(old_unnamed) == len(new_unnamed) and not non_ref_changed:
+        for old_ref, new_ref in zip(old_unnamed, new_unnamed):
+            if old_ref["content"] != new_ref["content"]:
+                modified_refs.append(new_ref)
+    else:
+        # Different counts or content changed - treat as additions/removals
+        # Match by exact content
+        old_unnamed_content = {ref["content"]: ref for ref in old_unnamed}
+        new_unnamed_content = {ref["content"]: ref for ref in new_unnamed}
+
+        old_unnamed_keys = set(old_unnamed_content.keys())
+        new_unnamed_keys = set(new_unnamed_content.keys())
+
+        added_refs.extend(
+            [new_unnamed_content[key] for key in (new_unnamed_keys - old_unnamed_keys)]
+        )
+        removed_refs.extend(
+            [old_unnamed_content[key] for key in (old_unnamed_keys - new_unnamed_keys)]
+        )
 
     # It's reference-only if:
     # 1. Non-ref content hasn't changed
@@ -929,9 +943,9 @@ def _is_reference_only_edit(old_wikitext: str, new_wikitext: str) -> dict:
     )
 
     return {
-        'is_reference_only': is_reference_only,
-        'added_refs': added_refs,
-        'modified_refs': modified_refs,
-        'removed_refs': removed_refs,
-        'non_ref_changed': non_ref_changed,
+        "is_reference_only": is_reference_only,
+        "added_refs": added_refs,
+        "modified_refs": modified_refs,
+        "removed_refs": removed_refs,
+        "non_ref_changed": non_ref_changed,
     }
