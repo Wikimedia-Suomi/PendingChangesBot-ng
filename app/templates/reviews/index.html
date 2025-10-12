@@ -170,14 +170,6 @@
               </header>
               <div class="card-content">
                 <div class="is-flex is-justify-content-flex-end mb-3">
-                  <button
-                    class="button is-primary is-light"
-                    :class="{ 'is-loading': isAutoreviewRunning(page) }"
-                    @click="runAutoreview(page)"
-                    :disabled="isAutoreviewRunning(page) || state.runningBulkReview"
-                  >
-                    Autoreview edits
-                  </button>
                   <div class="show-diff-checkbox">
                     <input
                       class="large-checkbox"
@@ -188,6 +180,14 @@
                     >
                     <label for="showPagediff">Show Diffs</label>
                   </div>
+                  <button
+                    class="button is-primary is-light"
+                    :class="{ 'is-loading': isAutoreviewRunning(page) }"
+                    @click="runAutoreview(page)"
+                    :disabled="isAutoreviewRunning(page) || state.runningBulkReview"
+                  >
+                    Autoreview edits
+                  </button>
                 </div>
                 <div class="table-container">
                   <table class="table is-fullwidth is-striped">
@@ -240,7 +240,7 @@
                         </tr>
                         <tr v-if="getRevisionReview(page, revision)">
                           <td colspan="4" class="has-background-light">
-                            <div :id="'diff-container-' + revision.revid">
+                            <div v-if="state.diffs.showDiffsByPage[page.pageid]" :id="'diff-container-' + revision.revid">
                               <p v-if="state.diffs.loadingDiff[revision.revid]">Loading diff…</p>
                               <div v-else v-html="state.diffs.diffHtml[revision.revid]"></div>
                             </div>
