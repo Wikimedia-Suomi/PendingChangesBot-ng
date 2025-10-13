@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 from reviews.check_domains import (
     clear_domain_cache,
+    domains_previously_used,
     get_default_ttl,
     set_default_ttl,
-    domains_previously_used,
 )
 
 
@@ -18,7 +18,7 @@ class CountingFakeSite:
     def exturlusage(self, query, total=None, namespaces=None):
         self.calls += 1
         if self.map.get(query):
-            yield SimpleNamespace(title='FakePage')
+            yield SimpleNamespace(title="FakePage")
         else:
             if False:
                 yield None

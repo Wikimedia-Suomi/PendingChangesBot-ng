@@ -27,7 +27,9 @@ class ViewTests(TestCase):
         )
         WikiConfiguration.objects.create(wiki=self.wiki, redirect_aliases=["#REDIRECT"])
 
-    def _create_parent_revision(self, page: PendingPage, revid: int, wikitext: str = "Parent content") -> PendingRevision:
+    def _create_parent_revision(
+        self, page: PendingPage, revid: int, wikitext: str = "Parent content"
+    ) -> PendingRevision:
         timestamp = datetime.now(timezone.utc) - timedelta(days=2)
         if page.stable_revid != revid:
             page.stable_revid = revid
@@ -91,7 +93,9 @@ class ViewTests(TestCase):
             response = self.client.post(reverse("api_refresh", args=[self.wiki.pk]))
         self.assertEqual(response.status_code, 502)
         self.assertIn("error", response.json())
-        self.assertTrue(any("Failed to refresh pending changes" in record for record in logs.output))
+        self.assertTrue(
+            any("Failed to refresh pending changes" in record for record in logs.output)
+        )
 
     @mock.patch("reviews.views.WikiClient")
     def test_api_refresh_success(self, mock_client):
@@ -448,14 +452,13 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 5)
-        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
-        self.assertEqual(result["tests"][3]["status"], "ok")
-        self.assertEqual(result["tests"][4]["status"], "fail")
-        self.assertEqual(result["tests"][4]["id"], "blocking-categories")
-        self.assertEqual(len(result["tests"]), 6)
-        self.assertEqual(result["tests"][5]["status"], "fail")
-        self.assertEqual(result["tests"][5]["id"], "blocking-categories")
+        tests = result["tests"]
+        self.assertEqual(len(tests), 7)
+        tests_by_id = {test["id"]: test for test in tests}
+        self.assertIn("external-link-domains", tests_by_id)
+        self.assertEqual(tests_by_id["external-link-domains"]["status"], "ok")
+        self.assertIn("blocking-categories", tests_by_id)
+        self.assertEqual(tests_by_id["blocking-categories"]["status"], "fail")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
@@ -507,11 +510,13 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 5)
-        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
-        self.assertEqual(result["tests"][3]["status"], "ok")
-        self.assertEqual(result["tests"][4]["id"], "blocking-categories")
-        self.assertEqual(result["tests"][4]["status"], "ok")
+        tests = result["tests"]
+        self.assertEqual(len(tests), 9)
+        tests_by_id = {test["id"]: test for test in tests}
+        self.assertEqual(tests_by_id["external-link-domains"]["status"], "ok")
+        self.assertEqual(tests_by_id["blocking-categories"]["status"], "ok")
+        self.assertEqual(tests_by_id["new-render-errors"]["status"], "ok")
+        self.assertEqual(tests_by_id["invalid-isbn"]["status"], "ok")
 
     @mock.patch("reviews.autoreview.domains_previously_used")
     @mock.patch("reviews.autoreview.pywikibot.Site")
@@ -572,10 +577,11 @@ class ViewTests(TestCase):
         result = response.json()["results"][0]
 
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 4)
-        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
-        self.assertEqual(result["tests"][3]["status"], "fail")
-        self.assertIn("newexample.test", result["tests"][3]["message"])
+        tests = result["tests"]
+        self.assertEqual(len(tests), 6)
+        tests_by_id = {test["id"]: test for test in tests}
+        self.assertEqual(tests_by_id["external-link-domains"]["status"], "fail")
+        self.assertIn("newexample.test", tests_by_id["external-link-domains"]["message"])
 
         mock_domains.assert_called_once()
         called_site, called_urls = mock_domains.call_args[0]
@@ -641,18 +647,16 @@ class ViewTests(TestCase):
         result = response.json()["results"][0]
 
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 5)
-        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
-        self.assertEqual(result["tests"][3]["status"], "ok")
-        self.assertIn("previously used", result["tests"][3]["message"])
+        tests = result["tests"]
+        self.assertEqual(len(tests), 9)
+        tests_by_id = {test["id"]: test for test in tests}
+        self.assertEqual(tests_by_id["external-link-domains"]["status"], "ok")
+        self.assertIn("previously used", tests_by_id["external-link-domains"]["message"])
 
         mock_domains.assert_called_once()
         called_site, called_urls = mock_domains.call_args[0]
         self.assertIs(called_site, mock_site.return_value)
         self.assertEqual(called_urls, ["https://known.example/path"])
-        self.assertEqual(len(result["tests"]), 7)
-        self.assertEqual(len(result["tests"]), 8)
-        self.assertEqual(result["tests"][-1]["status"], "ok")
 
     @mock.patch("reviews.services.pywikibot.Site")
     def test_api_autoreview_orders_revisions_from_oldest_to_newest(self, mock_site):

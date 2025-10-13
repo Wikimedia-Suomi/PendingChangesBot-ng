@@ -11,8 +11,8 @@ import mwparserfromhell
 import pywikibot
 from bs4 import BeautifulSoup
 
-from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 from .check_domains import domains_previously_used
+from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
@@ -307,9 +307,10 @@ def _evaluate_revision(
                     "title": "External link domains",
                     "status": "fail",
                     "message": (
-                        "New external links reference domains without prior "
-                        "usage: {}.".format(
-                            ", ".join(sorted(problematic_domains)) if problematic_domains else "unknown"
+                        "New external links reference domains without prior usage: {}.".format(
+                            ", ".join(sorted(problematic_domains))
+                            if problematic_domains
+                            else "unknown"
                         )
                     ),
                 }
@@ -514,6 +515,7 @@ def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bo
 
     return False
 
+
 def _get_redirect_aliases(wiki: Wiki) -> list[str]:
     config = wiki.configuration
     if config.redirect_aliases:
@@ -560,7 +562,7 @@ def _get_redirect_aliases(wiki: Wiki) -> list[str]:
 
     fallback_aliases = language_fallbacks.get(
         wiki.code,
-        ["#REDIRECT"]  # fallback for non default languages
+        ["#REDIRECT"],  # fallback for non default languages
     )
 
     logger.warning(
@@ -571,6 +573,7 @@ def _get_redirect_aliases(wiki: Wiki) -> list[str]:
 
     # Not saving fallback to cache, so it can be updated later using the API
     return fallback_aliases
+
 
 def _matched_user_groups(
     revision: PendingRevision,
@@ -735,7 +738,6 @@ def _is_article_to_redirect_conversion(
     return True
 
 
-
 def _get_added_external_links(revision: PendingRevision) -> list[str]:
     current_links = _extract_external_links(revision.get_wikitext())
     parent_links = _extract_external_links(_get_parent_wikitext(revision))
@@ -775,6 +777,7 @@ def _problematic_external_domains(domain_details: dict[str, dict]) -> list[str]:
             label = f"{label} (error)"
         problematic.append(label)
     return problematic
+
 
 def _validate_isbn_10(isbn: str) -> bool:
     """Validate ISBN-10 checksum."""
@@ -845,4 +848,3 @@ def _find_invalid_isbns(text: str) -> list[str]:
             invalid_isbns.append(isbn_raw.strip())
 
     return invalid_isbns
-

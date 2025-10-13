@@ -18,12 +18,13 @@ Notes:
 - Caches domain results in-memory using functools.lru_cache().
 """
 
-from typing import Iterable, List, Optional, Dict, Any, Tuple, TYPE_CHECKING
-from urllib.parse import urlparse
-from functools import lru_cache
-import weakref
 import re
 import time
+import weakref
+from collections.abc import Iterable
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, Optional
+from urllib.parse import urlparse
 
 # Make pywikibot import optional so unit tests and static tools can run without it.
 if TYPE_CHECKING:
@@ -70,7 +71,9 @@ def _cache_bucket(ttl_seconds: Optional[float]) -> Optional[int]:
 
 
 @lru_cache(maxsize=4096)
-def _cached_domain_usage(site_key: int, domain: str, bucket: Optional[int]) -> Tuple[bool, Optional[Exception]]:
+def _cached_domain_usage(
+    site_key: int, domain: str, bucket: Optional[int]
+) -> tuple[bool, Optional[Exception]]:
     site = _SITE_REGISTRY.get(site_key)
     if site is None:
         raise RuntimeError("Site reference expired; cache needs refresh")
@@ -96,11 +99,35 @@ def _effective_ttl_seconds(ttl_override: Optional[float]) -> Optional[float]:
 # MediaWiki URL protocols (as guidance for parsing); not all protocols include a hostname.
 # We will accept typical network protocols and special-case mailto: to extract domain part.
 _WG_URL_PROTOCOLS = [
-    'bitcoin:', 'ftp://', 'ftps://', 'geo:', 'git://', 'gopher://', 'http://',
-    'https://', 'irc://', 'ircs://', 'magnet:', 'mailto:', 'matrix:', 'mms://',
-    'news:', 'nntp://', 'redis://', 'sftp://', 'sip:', 'sips:', 'sms:',
-    'ssh://', 'svn://', 'tel:', 'telnet://', 'urn:', 'worldwind://', 'xmpp:',
-    '//',
+    "bitcoin:",
+    "ftp://",
+    "ftps://",
+    "geo:",
+    "git://",
+    "gopher://",
+    "http://",
+    "https://",
+    "irc://",
+    "ircs://",
+    "magnet:",
+    "mailto:",
+    "matrix:",
+    "mms://",
+    "news:",
+    "nntp://",
+    "redis://",
+    "sftp://",
+    "sip:",
+    "sips:",
+    "sms:",
+    "ssh://",
+    "svn://",
+    "tel:",
+    "telnet://",
+    "urn:",
+    "worldwind://",
+    "xmpp:",
+    "//",
 ]
 
 
@@ -125,44 +152,47 @@ def extract_domain(raw_url: str) -> Optional[str]:
     url = raw_url.strip()
 
     # remove surrounding angle brackets occasionally used in wikitext <https://...>
-    if url.startswith('<') and url.endswith('>'):
+    if url.startswith("<") and url.endswith(">"):
         url = url[1:-1].strip()
 
     # If it starts with '//' which is protocol-relative, prepend http:
-    if url.startswith('//'):
-        url = 'http:' + url
+    if url.startswith("//"):
+        url = "http:" + url
 
-    # If there's no scheme but it has typical host-like form (www. or contains a dot before a slash),
+   # If there's no scheme but it has a typical host-like form
+   # (starts with 'www.' or contains a dot before a slash),
     # prepend http:// to make urlparse give us a netloc.
-    if '://' not in url:
+    if "://" not in url:
         # heuristics: starts with 'www.' or contains '.' before first '/'
-        first_slash = url.find('/')
+        first_slash = url.find("/")
         head = url if first_slash == -1 else url[:first_slash]
-        if head.startswith('www.') or ('.' in head and not head.startswith('mailto:') and not head.startswith('urn:')):
-            url = 'http://' + url
+        if head.startswith("www.") or (
+            "." in head and not head.startswith("mailto:") and not head.startswith("urn:")
+        ):
+            url = "http://" + url
 
     try:
         parsed = urlparse(url)
     except Exception:
         return None
 
-    host = parsed.netloc or ''
-    scheme = (parsed.scheme or '').lower()
+    host = parsed.netloc or ""
+    scheme = (parsed.scheme or "").lower()
 
     # Special-case mailto: scheme -> parse path for 'user@domain'
-    if scheme == 'mailto':
-        path = parsed.path or ''
-        if '@' in path:
-            domain_part = path.split('@', 1)[1]
+    if scheme == "mailto":
+        path = parsed.path or ""
+        if "@" in path:
+            domain_part = path.split("@", 1)[1]
             # strip possible query or fragment
-            domain_part = domain_part.split('?')[0].split('#')[0]
+            domain_part = domain_part.split("?")[0].split("#")[0]
             domain = domain_part.lower()
             # strip port if present (unlikely)
-            domain = domain.split(':')[0]
+            domain = domain.split(":")[0]
             domain = domain.strip()
             if domain:
                 # Normalize www and return
-                if domain.startswith('www.'):
+                if domain.startswith("www."):
                     domain = domain[4:]
                 return domain
         return None
@@ -172,17 +202,17 @@ def extract_domain(raw_url: str) -> Optional[str]:
         return None
 
     # Remove credentials user:pass@host
-    if '@' in host:
-        host = host.split('@', 1)[1]
+    if "@" in host:
+        host = host.split("@", 1)[1]
 
     # Remove port
-    if ':' in host:
-        host = host.split(':', 1)[0]
+    if ":" in host:
+        host = host.split(":", 1)[0]
 
     host = host.lower().strip()
 
     # Normalize leading www.
-    if host.startswith('www.'):
+    if host.startswith("www."):
         host = host[4:]
 
     # Convert internationalized domain names (IDN) to ASCII using IDNA (punycode).
@@ -190,27 +220,27 @@ def extract_domain(raw_url: str) -> Optional[str]:
     try:
         # idna encoding expects a str and returns bytes; decode back to str
         # but Python's codec can directly produce the 'xn--' form via encode/decode.
-        host = host.encode('idna').decode('ascii')
+        host = host.encode("idna").decode("ascii")
     except Exception:
         return None
 
     # Basic validation: host should contain at least one dot, or be localhost
-    if host == 'localhost' or '.' in host:
+    if host == "localhost" or "." in host:
         # remove trailing dots
-        host = host.rstrip('.')
+        host = host.rstrip(".")
         # remove any characters not valid in hostnames (be conservative)
-        host = re.sub(r'[^a-z0-9\.\-]', '', host)
+        host = re.sub(r"[^a-z0-9\.\-]", "", host)
         return host or None
 
     return None
 
 
 def _check_domain_used_with_site(
-    site: Any,
+    site: any,
     domain: str,
     *,
     cache_ttl_seconds: Optional[float] = None,
-) -> Tuple[bool, Optional[Exception]]:
+) -> tuple[bool, Optional[Exception]]:
     """Return (used, error) for namespace=0 domain usage on the given site."""
 
     effective_ttl = _effective_ttl_seconds(cache_ttl_seconds)
@@ -226,17 +256,17 @@ def _check_domain_used_with_site(
         return _cached_domain_usage(site_key, domain, bucket)
 
 
-def domains_previously_used(site: Any,
-                            urls: Iterable[str],
-                            raise_on_error: bool = False
-                            ) -> Tuple[bool, Dict[str, Dict]]:
+def domains_previously_used(
+    site: any, urls: Iterable[str], raise_on_error: bool = False
+) -> tuple[bool, dict[str, dict]]:
     """
     Main check function.
 
     Parameters
     - site: pywikibot.Site instance
     - urls: iterable of URL strings newly added in an edit
-    - raise_on_error: if True, re-raise API exceptions; otherwise, swallow and return (False, details)
+    - raise_on_error: if True, re-raise API exceptions;
+      otherwise, swallow and return (False, details)
 
     Returns:
     - (all_domains_previously_used, details)
@@ -248,30 +278,33 @@ def domains_previously_used(site: Any,
         }
 
     Rules applied:
-    - If any domain is not previously used (used == False) -> overall result is False (manual review).
-    - If any domain check results in an API error -> overall result is False (manual review) and error recorded.
-    - If no domains were extractable (e.g., all links are protocol types without host) -> conservative behavior: require manual review (returns False).
+    - If any domain is not previously used (used == False)
+    -> overall result is False (manual review).
+    - If any domain check results in an API error
+    -> overall result is False (manual review) and error recorded.
+    - If no domains were extractable (e.g., all links are protocol types without host)
+    -> conservative behavior: require manual review (returns False).
     """
     # Build mapping domain -> list of sample urls
-    domain_to_urls: Dict[str, List[str]] = {}
+    domain_to_urls: dict[str, list[str]] = {}
     for u in urls:
         dom = extract_domain(u)
         if dom:
             domain_to_urls.setdefault(dom, []).append(u)
         else:
             # track None domains under a special key
-            domain_to_urls.setdefault('__malformed__', []).append(u)
+            domain_to_urls.setdefault("__malformed__", []).append(u)
 
-    details: Dict[str, Dict] = {}
+    details: dict[str, dict] = {}
     overall_ok = True
 
     # If any malformed URLs (no domain), conservative: require manual review
-    if '__malformed__' in domain_to_urls:
-        details['__malformed__'] = {
-            'url_examples': domain_to_urls['__malformed__'],
-            'domain': None,
-            'used': False,
-            'error': 'Malformed or protocol-only URLs detected; manual review recommended'
+    if "__malformed__" in domain_to_urls:
+        details["__malformed__"] = {
+            "url_examples": domain_to_urls["__malformed__"],
+            "domain": None,
+            "used": False,
+            "error": "Malformed or protocol-only URLs detected; manual review recommended",
         }
         return False, details
 
@@ -287,13 +320,13 @@ def domains_previously_used(site: Any,
         was_cached = after_hits > before_hits
 
         if error is not None:
-            err_str = f'API error: {type(error).__name__}: {error}'
+            err_str = f"API error: {type(error).__name__}: {error}"
             details[domain] = {
-                'url_examples': sample_urls,
-                'domain': domain,
-                'used': None,
-                'cached': False,
-                'error': err_str
+                "url_examples": sample_urls,
+                "domain": domain,
+                "used": None,
+                "cached": False,
+                "error": err_str,
             }
             overall_ok = False
             if raise_on_error:
@@ -301,11 +334,11 @@ def domains_previously_used(site: Any,
             continue
 
         details[domain] = {
-            'url_examples': sample_urls,
-            'domain': domain,
-            'used': bool(used),
-            'cached': was_cached,
-            'error': None
+            "url_examples": sample_urls,
+            "domain": domain,
+            "used": bool(used),
+            "cached": was_cached,
+            "error": None,
         }
         if not used:
             overall_ok = False
