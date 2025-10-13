@@ -620,25 +620,30 @@ def _is_addition_superseded(
         if len(normalized_addition) < 20:
             continue
 
-        # Find the best matching subsequence in the latest text
+        # Use SequenceMatcher to get matching blocks
         matcher = SequenceMatcher(None, normalized_addition, normalized_latest)
 
-        # Use find_longest_match to get the best match
-        match = matcher.find_longest_match(0, len(normalized_addition), 0, len(normalized_latest))
+        # Get all matching blocks and filter out very short matches (< 4 chars)
+        # to avoid counting incidental character matches
+        matching_blocks = matcher.get_matching_blocks()
+        significant_match_length = sum(
+            block.size for block in matching_blocks[:-1] if block.size >= 4
+        )
 
-        # Calculate similarity based on the longest match
+        # Calculate what percentage of the addition is present in the latest version
         if len(normalized_addition) > 0:
-            max_similarity = match.size / len(normalized_addition)
+            match_ratio = significant_match_length / len(normalized_addition)
         else:
-            max_similarity = 0.0
+            match_ratio = 0.0
 
-        # If any significant addition has low similarity, it's superseded
-        if max_similarity < threshold:
+        # If the match ratio is low (most of the addition is NOT in the latest version),
+        # then the addition has been superseded
+        if match_ratio < threshold:
             logger.info(
-                "Revision %s appears superseded: addition has similarity %.2f < %.2f",
+                "Revision %s appears superseded: addition has %.2f%% match (< %.2f%% threshold)",
                 revision.revid,
-                max_similarity,
-                threshold,
+                match_ratio * 100,
+                threshold * 100,
             )
             return True
 
