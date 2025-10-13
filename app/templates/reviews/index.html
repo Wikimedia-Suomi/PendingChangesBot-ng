@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pending Changes Review</title>
     <link rel="stylesheet" href="static/css/bulma.0.9.4.min.css" />
+    <link rel="stylesheet" href="static/css/main.css" />
+    <link
+      rel="stylesheet"
+      href="https://fi.wikipedia.org/w/load.php?modules=mediawiki.diff.styles&only=styles"
+    />
   </head>
   <body>
     {% verbatim %}
@@ -130,6 +135,17 @@
               >
                 Autoreview all listed pages
               </button>
+              <div class="show-diff-checkbox">
+                <input
+                  class="large-checkbox"
+                  type="checkbox" 
+                  id="showdiff" 
+                  name="showdiff" 
+                  v-model="state.diffs.showDiffs"
+                  @change="saveDiffsToLocalStorage"
+                >
+                <label for="showdiff">Show Diffs</label>
+              </div>
             </div>
             <article v-for="page in visiblePages" :key="page.pageid" class="card mb-5">
               <header class="card-header">
@@ -154,6 +170,16 @@
               </header>
               <div class="card-content">
                 <div class="is-flex is-justify-content-flex-end mb-3">
+                  <div class="show-diff-checkbox">
+                    <input
+                      class="large-checkbox"
+                      type="checkbox" 
+                      id="showPagediff" 
+                      name="showPagediff" 
+                      v-model="state.diffs.showDiffsByPage[page.pageid]"
+                    >
+                    <label for="showPagediff">Show Diffs</label>
+                  </div>
                   <button
                     class="button is-primary is-light"
                     :class="{ 'is-loading': isAutoreviewRunning(page) }"
@@ -214,6 +240,10 @@
                         </tr>
                         <tr v-if="getRevisionReview(page, revision)">
                           <td colspan="4" class="has-background-light">
+                            <div v-if="state.diffs.showDiffsByPage[page.pageid]" :id="'diff-container-' + revision.revid">
+                              <p v-if="state.diffs.loadingDiff[revision.revid]">Loading diff…</p>
+                              <div v-else v-html="state.diffs.diffHtml[revision.revid]"></div>
+                            </div>
                             <div class="content mb-0">
                               <p class="has-text-weight-semibold">Autoreview test results</p>
                               <ul class="mb-2">

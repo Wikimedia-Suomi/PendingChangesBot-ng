@@ -651,6 +651,7 @@ class ViewTests(TestCase):
         self.assertIs(called_site, mock_site.return_value)
         self.assertEqual(called_urls, ["https://known.example/path"])
         self.assertEqual(len(result["tests"]), 7)
+        self.assertEqual(len(result["tests"]), 8)
         self.assertEqual(result["tests"][-1]["status"], "ok")
 
     @mock.patch("reviews.services.pywikibot.Site")
@@ -702,3 +703,29 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         results = response.json()["results"]
         self.assertEqual([result["revid"] for result in results], [301, 302])
+
+    @mock.patch("requests.get")
+    def test_fetch_diff_success(self, mock_get):
+        """
+        Tests that the API successfully fetches content and returns correct HTML and content type.
+        """
+        mock_response = mock_get.return_value
+        mock_response.status_code = 200
+        mock_response.text = '<html><div class="diff-content">Mock data for testing</div></html>'
+
+        external_wiki_url = "https://fi.wikipedia.org/w/index.php?diff=12345"
+
+        response = self.client.get(reverse("fetch_diff"), {"url": external_wiki_url})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/html")
+        self.assertIn(b"Mock data for testing", response.content)
+
+    def test_fetch_diff_missing_url(self):
+        """
+        Tests the API returns 400 Bad Request when 'url' parameter is not passed.
+        """
+        response = self.client.get(reverse("fetch_diff"))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"Missing 'url' parameter", response.content)
