@@ -42,6 +42,53 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
+    def has_manual_unapproval(self, page_title: str, revid: int) -> bool:
+        """Check if the most recent review action for a revision is an un-approval."""
+        try:
+            request = self.site.simple_request(
+                action="query",
+                list="logevents",
+                letype="review",
+                letitle=page_title,
+                lelimit=50,
+                leprop="ids|type|details|timestamp|user",
+                formatversion=2,
+            )
+            response = request.submit()
+            log_events = response.get("query", {}).get("logevents", [])
+
+            for event in log_events:
+                params = event.get("params", {})
+                event_revid = params.get("0")
+
+                if event_revid == revid:
+                    action = event.get("action")
+                    if action in ("unapprove", "unapprove2"):
+                        logger.info(
+                            "Revision %s was manually un-approved (action: %s) at %s",
+                            revid,
+                            action,
+                            event.get("timestamp"),
+                        )
+                        return True
+                    else:
+                        logger.info(
+                            "Revision %s has review action '%s' at %s (not un-approved)",
+                            revid,
+                            action,
+                            event.get("timestamp"),
+                        )
+                        return False
+
+            return False
+        except Exception:  # pragma: no cover - network failure fallback
+            logger.exception(
+                "Failed to check review log for page %s, revision %s",
+                page_title,
+                revid,
+            )
+            return False
+
     def is_user_blocked_after_edit(self, username: str, edit_timestamp: datetime) -> bool:
         """Check if user was blocked after making an edit."""
         # Extract year from timestamp for cache efficiency

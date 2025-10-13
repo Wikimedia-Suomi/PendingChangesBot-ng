@@ -4,6 +4,8 @@ import json
 import logging
 from http import HTTPStatus
 
+import requests
+from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import csrf_exempt
@@ -14,6 +16,7 @@ from .models import EditorProfile, PendingPage, Wiki, WikiConfiguration
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
+CACHE_TTL = 60 * 60 * 1
 
 
 def index(request: HttpRequest) -> HttpResponse:
@@ -388,3 +391,32 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             "auto_approved_groups": configuration.auto_approved_groups,
         }
     )
+
+def fetch_diff(request):
+    url = request.GET.get("url")
+    if not url:
+        return JsonResponse(
+            {
+                "error": "Missing 'url' parameter"
+            }, status=400)
+
+    cached_html = cache.get(url)
+    if cached_html:
+        return HttpResponse(cached_html, content_type="text/html")
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; DiffFetcher/1.0; +https://yourdomain.com)",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        html_content = response.text
+
+        cache.set(url, html_content, CACHE_TTL)
+
+        return HttpResponse(html_content, content_type="text/html")
+    except requests.RequestException as e:
+        return JsonResponse({"error": str(e)}, status=500)
