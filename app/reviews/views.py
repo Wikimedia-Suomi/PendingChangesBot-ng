@@ -392,13 +392,11 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
         }
     )
 
+
 def fetch_diff(request):
     url = request.GET.get("url")
     if not url:
-        return JsonResponse(
-            {
-                "error": "Missing 'url' parameter"
-            }, status=400)
+        return JsonResponse({"error": "Missing 'url' parameter"}, status=400)
 
     cached_html = cache.get(url)
     if cached_html:

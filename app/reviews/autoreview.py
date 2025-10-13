@@ -311,7 +311,7 @@ def _evaluate_revision(
                         "status": "ok",
                         "message": (
                             "The additions from this revision have been superseded "
-                            "or removed in the current stable version."
+                            "or removed in the latest version."
                         ),
                     }
                 )
@@ -322,7 +322,7 @@ def _evaluate_revision(
                         label="Would be auto-approved",
                         reason=(
                             "The additions from this revision have been superseded "
-                            "or removed in the current stable version."
+                            "or removed in the latest version."
                         ),
                     ),
                 }
@@ -567,23 +567,39 @@ def _is_addition_superseded(
     """Check if text additions from a pending revision have been superseded.
 
     A revision is considered superseded if its text additions are not present
-    (or have very low similarity) in the current stable version, suggesting the
-    content was removed or replaced by subsequent edits.
+    (or have very low similarity) in the latest version of the article, suggesting
+    the content was removed or replaced by subsequent edits.
 
     Args:
         revision: The pending revision to check
-        current_stable_wikitext: The current stable version wikitext
+        current_stable_wikitext: The current stable version wikitext (not used anymore,
+                                 kept for backward compatibility)
         threshold: Similarity threshold (0.0-1.0). If max similarity < threshold,
                    the addition is considered superseded
 
     Returns:
         True if the additions appear to be superseded, False otherwise
     """
+    # Get the latest revision for the page
+    latest_revision = PendingRevision.objects.filter(page=revision.page).order_by("-revid").first()
+
+    if not latest_revision:
+        return False
+
+    # If the revision we're checking IS the latest revision, it cannot be superseded
+    if latest_revision.revid == revision.revid:
+        return False
+
+    # Get the latest version wikitext
+    latest_wikitext = latest_revision.get_wikitext()
+    if not latest_wikitext:
+        return False
+
     # Get parent and pending wikitext
     parent_wikitext = _get_parent_wikitext(revision)
     pending_wikitext = revision.get_wikitext()
 
-    if not pending_wikitext or not current_stable_wikitext:
+    if not pending_wikitext:
         return False
 
     # Extract additions
@@ -592,11 +608,11 @@ def _is_addition_superseded(
         return False
 
     # Normalize all texts for comparison
-    normalized_stable = _normalize_wikitext(current_stable_wikitext)
-    if not normalized_stable:
+    normalized_latest = _normalize_wikitext(latest_wikitext)
+    if not normalized_latest:
         return False
 
-    # Check each addition against the current stable text
+    # Check each addition against the latest text
     for addition in additions:
         normalized_addition = _normalize_wikitext(addition)
 
@@ -604,11 +620,11 @@ def _is_addition_superseded(
         if len(normalized_addition) < 20:
             continue
 
-        # Find the best matching subsequence in the stable text
-        matcher = SequenceMatcher(None, normalized_addition, normalized_stable)
+        # Find the best matching subsequence in the latest text
+        matcher = SequenceMatcher(None, normalized_addition, normalized_latest)
 
         # Use find_longest_match to get the best match
-        match = matcher.find_longest_match(0, len(normalized_addition), 0, len(normalized_stable))
+        match = matcher.find_longest_match(0, len(normalized_addition), 0, len(normalized_latest))
 
         # Calculate similarity based on the longest match
         if len(normalized_addition) > 0:
