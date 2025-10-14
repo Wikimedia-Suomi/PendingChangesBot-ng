@@ -15,7 +15,7 @@ Of course\! Here is a table of contents for the provided guide.
     3.  [Running the database migrations](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-the-database-migrations)
     4.  [Running the application](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-the-application)
     5.  [Running unit tests](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-unit-tests)
-    6.  [Running Flake8](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-flake8)
+    6.  [Code Formatting and Linting](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#code-formatting-and-linting)
 5.  [Label Meanings](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#label-meanings)
     1.  [Status Labels](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#status-labels)
     2.  [Type Labels](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#type-labels)
@@ -79,11 +79,11 @@ Before installing or running the application, ensure you have:
    ```bash
    python --version
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 --version
    ```
-   Install if not found *for python3 you need to install pip3 
+   Install if not found *for python3 you need to install pip3
 4. **Create and activate a virtual environment** (recommended)
    ```bash
    python3 -m venv venv
@@ -95,7 +95,7 @@ Before installing or running the application, ensure you have:
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    pip3 install --upgrade pip
    pip3 install -r requirements.txt
@@ -114,23 +114,23 @@ the steps below once per user account that will run PendingChangesBot:
 
 1. **Create a Pywikibot configuration**
    ```bash
-   ce app
+   cd app
    echo "usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'" > user-config.py
    ```
 
-3. **Log in with Pywikibot**
+2. **Log in with Pywikibot**
    * On **Windows**:
    ```bash
    python -m pywikibot.scripts.login -site:meta
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 -m pywikibot.scripts.login -site:meta
    ```
    The command should report `Logged in on metawiki` and create a persistent login
    cookie at `~/.pywikibot/pywikibot.lwp`.
 
-4. **Approve Superset's OAuth client**
+3. **Approve Superset's OAuth client**
    - While still logged in to Meta-Wiki in your browser, open
      <https://superset.wmcloud.org/login/>.
    - Authorize the OAuth request for Superset. After approval you should be redirected
@@ -145,7 +145,7 @@ the steps below once per user account that will run PendingChangesBot:
    python manage.py makemigrations
    python manage.py migrate
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 manage.py makemigrations
    python3 manage.py migrate
@@ -162,7 +162,7 @@ The Django project serves both the API and the Vue.js frontend from the same cod
    ```bash
    python manage.py runserver
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 manage.py runserver
    ```
@@ -181,7 +181,7 @@ Unit tests live in the Django backend project. Run them from the `app/` director
    ```bash
    python manage.py test
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 manage.py test
    ```
@@ -190,7 +190,7 @@ Unit tests live in the Django backend project. Run them from the `app/` director
 
 This project uses [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting.
 
-**Note:** If you installed pre-commit hooks (step 5 above), formatting and linting happen automatically before each commit. You don't need to run these commands manually.
+**Note:** If you installed pre-commit hooks (step 6 above), formatting and linting happen automatically before each commit. You don't need to run these commands manually.
 
 ### Manual Commands
 

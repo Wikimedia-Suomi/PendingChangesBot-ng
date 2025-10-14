@@ -7,6 +7,7 @@ import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 import pywikibot
 from pywikibot.comms import http
@@ -293,7 +294,61 @@ def _evaluate_revision(
             ),
         }
 
-    # Test 6: Blocking categories on the old version prevent automatic approval.
+    # Test 6: Check if additions have been superseded in current stable version
+    try:
+        # Get the current stable wikitext
+        stable_revision = PendingRevision.objects.filter(
+            page=revision.page, revid=revision.page.stable_revid
+        ).first()
+
+        if stable_revision:
+            current_stable_wikitext = stable_revision.get_wikitext()
+            threshold = revision.page.wiki.configuration.superseded_similarity_threshold
+
+            if _is_addition_superseded(revision, current_stable_wikitext, threshold):
+                tests.append(
+                    {
+                        "id": "superseded-additions",
+                        "title": "Superseded additions",
+                        "status": "ok",
+                        "message": (
+                            "The additions from this revision have been superseded "
+                            "or removed in the latest version."
+                        ),
+                    }
+                )
+                return {
+                    "tests": tests,
+                    "decision": AutoreviewDecision(
+                        status="approve",
+                        label="Would be auto-approved",
+                        reason=(
+                            "The additions from this revision have been superseded "
+                            "or removed in the latest version."
+                        ),
+                    ),
+                }
+            else:
+                tests.append(
+                    {
+                        "id": "superseded-additions",
+                        "title": "Superseded additions",
+                        "status": "not_ok",
+                        "message": "The additions from this revision are still relevant.",
+                    }
+                )
+    except Exception as e:
+        logger.error(f"Error checking superseded additions for revision {revision.revid}: {e}")
+        tests.append(
+            {
+                "id": "superseded-additions",
+                "title": "Superseded additions check",
+                "status": "not_ok",
+                "message": "Could not verify if additions were superseded.",
+            }
+        )
+
+    # Test 7: Blocking categories on the old version prevent automatic approval.
     blocking_hits = _blocking_category_hits(revision, blocking_categories)
     if blocking_hits:
         tests.append(
@@ -324,7 +379,7 @@ def _evaluate_revision(
         }
     )
 
-    # Test 7: Check for new rendering errors in the HTML.
+    # Test 8: Check for new rendering errors in the HTML.
     new_render_errors = _check_for_new_render_errors(revision, client)
     if new_render_errors:
         tests.append(
@@ -495,6 +550,172 @@ def _check_for_new_render_errors(revision: PendingRevision, client: WikiClient) 
     )
 
     return current_error_count > previous_error_count
+
+
+def _normalize_wikitext(text: str) -> str:
+    """Normalize wikitext by removing templates, refs, and extra whitespace.
+
+    Args:
+        text: The wikitext to normalize
+
+    Returns:
+        Normalized text suitable for similarity comparison
+    """
+    if not text:
+        return ""
+
+    # Remove ref tags and their content
+    text = re.sub(r"<ref[^>]*>.*?</ref>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<ref[^>]*/>", "", text, flags=re.IGNORECASE)
+
+    # Remove templates (simplified - handles nested braces at basic level)
+    # Remove simple templates first
+    text = re.sub(r"\{\{[^{}]*\}\}", "", text)
+    # Try again for nested templates (limited depth)
+    text = re.sub(r"\{\{[^{}]*\}\}", "", text)
+
+    # Remove HTML comments
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+
+    # Remove category links
+    text = re.sub(r"\[\[Category:[^\]]+\]\]", "", text, flags=re.IGNORECASE)
+
+    # Remove file/image links
+    text = re.sub(r"\[\[(File|Image):[^\]]+\]\]", "", text, flags=re.IGNORECASE | re.DOTALL)
+
+    # Strip wiki formatting but keep link text
+    text = re.sub(r"\[\[[^\]|]+\|([^\]]+)\]\]", r"\1", text)  # [[link|text]] -> text
+    text = re.sub(r"\[\[([^\]]+)\]\]", r"\1", text)  # [[link]] -> link
+
+    # Remove bold/italic markup
+    text = re.sub(r"'{2,}", "", text)
+
+    # Normalize whitespace
+    text = re.sub(r"\s+", " ", text)
+    text = text.strip()
+
+    return text
+
+
+def _extract_additions(parent_wikitext: str, pending_wikitext: str) -> list[str]:
+    """Extract text additions from parent to pending revision.
+
+    Args:
+        parent_wikitext: The parent revision wikitext
+        pending_wikitext: The pending revision wikitext
+
+    Returns:
+        List of added text blocks
+    """
+    if not pending_wikitext:
+        return []
+
+    if not parent_wikitext:
+        # If no parent, the entire text is an addition
+        return [pending_wikitext]
+
+    matcher = SequenceMatcher(None, parent_wikitext, pending_wikitext)
+    additions: list[str] = []
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "insert" or tag == "replace":
+            # Extract the added text from pending revision
+            added_text = pending_wikitext[j1:j2]
+            if added_text.strip():
+                additions.append(added_text)
+
+    return additions
+
+
+def _is_addition_superseded(
+    revision: PendingRevision,
+    current_stable_wikitext: str,
+    threshold: float,
+) -> bool:
+    """Check if text additions from a pending revision have been superseded.
+
+    A revision is considered superseded if its text additions are not present
+    (or have very low similarity) in the latest version of the article, suggesting
+    the content was removed or replaced by subsequent edits.
+
+    Args:
+        revision: The pending revision to check
+        current_stable_wikitext: The current stable version wikitext (not used anymore,
+                                 kept for backward compatibility)
+        threshold: Similarity threshold (0.0-1.0). If max similarity < threshold,
+                   the addition is considered superseded
+
+    Returns:
+        True if the additions appear to be superseded, False otherwise
+    """
+    # Get the latest revision for the page
+    latest_revision = PendingRevision.objects.filter(page=revision.page).order_by("-revid").first()
+
+    if not latest_revision:
+        return False
+
+    # If the revision we're checking IS the latest revision, it cannot be superseded
+    if latest_revision.revid == revision.revid:
+        return False
+
+    # Get the latest version wikitext
+    latest_wikitext = latest_revision.get_wikitext()
+    if not latest_wikitext:
+        return False
+
+    # Get parent and pending wikitext
+    parent_wikitext = _get_parent_wikitext(revision)
+    pending_wikitext = revision.get_wikitext()
+
+    if not pending_wikitext:
+        return False
+
+    # Extract additions
+    additions = _extract_additions(parent_wikitext, pending_wikitext)
+    if not additions:
+        return False
+
+    # Normalize all texts for comparison
+    normalized_latest = _normalize_wikitext(latest_wikitext)
+    if not normalized_latest:
+        return False
+
+    # Check each addition against the latest text
+    for addition in additions:
+        normalized_addition = _normalize_wikitext(addition)
+
+        # Skip very short additions (likely formatting/punctuation)
+        if len(normalized_addition) < 20:
+            continue
+
+        # Use SequenceMatcher to get matching blocks
+        matcher = SequenceMatcher(None, normalized_addition, normalized_latest)
+
+        # Get all matching blocks and filter out very short matches (< 4 chars)
+        # to avoid counting incidental character matches
+        matching_blocks = matcher.get_matching_blocks()
+        significant_match_length = sum(
+            block.size for block in matching_blocks[:-1] if block.size >= 4
+        )
+
+        # Calculate what percentage of the addition is present in the latest version
+        if len(normalized_addition) > 0:
+            match_ratio = significant_match_length / len(normalized_addition)
+        else:
+            match_ratio = 0.0
+
+        # If the match ratio is low (most of the addition is NOT in the latest version),
+        # then the addition has been superseded
+        if match_ratio < threshold:
+            logger.info(
+                "Revision %s appears superseded: addition has %.2f%% match (< %.2f%% threshold)",
+                revision.revid,
+                match_ratio * 100,
+                threshold * 100,
+            )
+            return True
+
+    return False
 
 
 def _normalize_to_lookup(values: Iterable[str] | None) -> dict[str, str]:
