@@ -55,6 +55,23 @@
               </div>
             </div>
 
+            <!-- View Mode Selection -->
+            <div class="column">
+              <div class="field">
+                <label class="label">View Mode</label>
+                <div class="control">
+                  <div class="select">
+                    <select v-model="state.viewMode">
+                      <option value="both">Chart & Table</option>
+                      <option value="chart">Chart Only</option>
+                      <option value="separate">Separate Charts</option>
+                      <option value="table">Table Only</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Data Series Selection -->
             <div class="column">
               <div class="field">
@@ -132,15 +149,23 @@
         </div>
       </section>
 
-      <!-- Chart Display -->
-      <section class="section">
+      <!-- Combined Chart Display -->
+      <section class="section" v-show="state.viewMode === 'both' || state.viewMode === 'chart'">
         <div class="box">
           <canvas id="statisticsChart" style="max-height: 500px;"></canvas>
         </div>
       </section>
 
+      <!-- Separate Charts Display -->
+      <section class="section" v-show="state.viewMode === 'separate'">
+        <div v-for="(series, key) in enabledSeries" :key="key" class="box mb-4">
+          <h3 class="title is-5">{{ series.label }}</h3>
+          <canvas :id="`chart-${series.key}`" style="max-height: 300px;"></canvas>
+        </div>
+      </section>
+
       <!-- Data Table -->
-      <section class="section" v-if="state.tableData && state.tableData.length > 0">
+      <section class="section" v-if="state.tableData && state.tableData.length > 0" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
         <div class="box">
           <h2 class="title is-5">Data Table</h2>
           <div class="table-container">
