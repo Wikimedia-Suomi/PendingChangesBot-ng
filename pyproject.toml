@@ -24,7 +24,8 @@ select = [
     "F",   # pyflakes
     "W",   # pycodestyle warnings
     "I",   # isort (import sorting)
-    "UP", # pyupgrade (enforce modern Python syntax)
+    "UP",  # pyupgrade (enforce modern Python syntax)
+    "S",   # bandit security rules
 ]
 
 ignore = [
@@ -32,6 +33,11 @@ ignore = [
     "UP007",  # Use X | Y for type annotations (requires Python 3.10+)
 ]
 
+# Allow test files to use asserts and test patterns
+[tool.ruff.lint.per-file-ignores]
+"*/tests/*" = ["S101", "S105", "S106"]
+
+[tool.ruff.lint.pycodestyle]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.format]
@@ -40,3 +46,51 @@ quote-style = "double"
 indent-style = "space"
 
 skip-magic-trailing-comma = false
+
+# =============================================================================
+# MYPY TYPE CHECKING
+# =============================================================================
+[tool.mypy]
+python_version = "3.9"
+plugins = ["mypy_django_plugin.main"]
+
+# What to complain about
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+show_error_codes = true
+pretty = true
+
+# Starting lenient - can tighten later
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = true
+no_implicit_optional = true
+strict_optional = true
+
+# Other useful checks
+warn_redundant_casts = true
+warn_unreachable = true
+
+# Skip these
+exclude = [
+    "migrations/",
+    "user-config\\.py",
+    "__pycache__",
+    "build/",
+    "dist/",
+]
+
+# Third-party libraries without type stubs
+[[tool.mypy.overrides]]
+module = [
+    "pywikibot.*",
+    "mwparserfromhell.*",
+]
+ignore_missing_imports = true
+
+# Django configuration
+[tool.django-stubs]
+django_settings_module = "reviewer.settings"
+strict_settings = false
