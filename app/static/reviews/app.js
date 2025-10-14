@@ -229,7 +229,7 @@ createApp({
 
     const hasMorePages = computed(() => filteredPages.value.length > pageDisplayLimit);
 
-    function saveDiffsToLocalStorage() {      
+    function saveDiffsToLocalStorage() {
       localStorage.setItem('showDiffsSetting', !state.diffs.showDiffs);
     }
 
@@ -577,7 +577,7 @@ createApp({
      */
 
     async function showDiff(page) {
-      
+
       page.revisions.forEach(async (revision)=> {
         state.diffs.loadingDiff[revision.revid] = true;
         // when running autoreview all
@@ -609,13 +609,13 @@ createApp({
           if (link) {
               const relativeHref = link.getAttribute('href');
               const domainUrl = "//fi.wikipedia.org";
-              
+
               if (relativeHref && relativeHref.startsWith('/w/')) {
                   link.setAttribute('href', `${domainUrl}${relativeHref}`);
               }
           }
-          
-          const updatedHtml = doc.body.innerHTML; 
+
+          const updatedHtml = doc.body.innerHTML;
           state.diffs.diffHtml[revision.revid] = updatedHtml;
 
         } catch (error) {
@@ -624,7 +624,7 @@ createApp({
           state.diffs.loadingDiff[revision.revid] = false;
         }
 
-      })        
+      })
     }
 
     watch(
