@@ -185,3 +185,4 @@ class EditorProfile(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - debug helper
         return f"{self.username} on {self.wiki.code}"
+
