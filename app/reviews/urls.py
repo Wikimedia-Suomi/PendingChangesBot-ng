@@ -20,4 +20,7 @@ urlpatterns = [
     path("api/wikis/<int:pk>/clear/", views.api_clear_cache, name="api_clear_cache"),
     path("api/wikis/<int:pk>/configuration/", views.api_configuration, name="api_configuration"),
     path("api/wikis/fetch-diff/", views.fetch_diff, name="fetch_diff"),
+    path("api/statistics/", views.api_statistics, name="api_statistics"),
+    path("api/review-activity/", views.api_review_activity, name="api_review_activity"),
+    path("statistics/", views.statistics_page, name="statistics_page"),
 ]

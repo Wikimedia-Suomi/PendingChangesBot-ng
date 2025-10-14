@@ -1,0 +1,197 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlaggedRevs Statistics</title>
+    <link rel="stylesheet" href="{% static 'css/bulma.0.9.4.min.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/main.css' %}" />
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  </head>
+  <body>
+    {% verbatim %}
+    <div id="app" class="container is-fluid py-4">
+      <section class="hero is-light">
+        <div class="hero-body">
+          <div class="columns is-vcentered">
+            <div class="column is-6">
+              <h1 class="title is-4">FlaggedRevs Statistics</h1>
+            </div>
+            <div class="column">
+              <div class="buttons is-right">
+                <a href="/" class="button is-link is-light">
+                  ← Back to Reviews
+                </a>
+                <button class="button is-info" @click="refreshData" :class="{'is-loading': state.loading}">
+                  Refresh Data
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Filter Controls -->
+      <section class="section">
+        <div class="box">
+          <h2 class="title is-5">Filters</h2>
+          <div class="columns">
+            <!-- Wiki Selection -->
+            <div class="column">
+              <div class="field">
+                <label class="label">Select Wikis</label>
+                <div class="control">
+                  <div class="select is-multiple is-fullwidth">
+                    <select multiple v-model="state.selectedWikis" @change="updateUrl" size="8">
+                      <option v-for="wiki in availableWikis" :key="wiki.code" :value="wiki.code">
+                        {{ wiki.name }} ({{ wiki.code }})
+                      </option>
+                    </select>
+                  </div>
+                </div>
+                <p class="help">Hold Ctrl/Cmd to select multiple wikis</p>
+              </div>
+            </div>
+
+            <!-- Data Series Selection -->
+            <div class="column">
+              <div class="field">
+                <label class="label">Data Series</label>
+                <div class="control">
+                  <label class="checkbox">
+                    <input type="checkbox" v-model="state.series.pendingLag_average" @change="updateChart">
+                    Pending Lag (Average)
+                  </label>
+                </div>
+                <div class="control">
+                  <label class="checkbox">
+                    <input type="checkbox" v-model="state.series.totalPages_ns0" @change="updateChart">
+                    Total Pages (NS:0)
+                  </label>
+                </div>
+                <div class="control">
+                  <label class="checkbox">
+                    <input type="checkbox" v-model="state.series.reviewedPages_ns0" @change="updateChart">
+                    Reviewed Pages (NS:0)
+                  </label>
+                </div>
+                <div class="control">
+                  <label class="checkbox">
+                    <input type="checkbox" v-model="state.series.syncedPages_ns0" @change="updateChart">
+                    Synced Pages (NS:0)
+                  </label>
+                </div>
+                <div class="control">
+                  <label class="checkbox">
+                    <input type="checkbox" v-model="state.series.pendingChanges" @change="updateChart">
+                    Pending Changes
+                  </label>
+                </div>
+              </div>
+
+              <!-- Stretch Goal: Review Activity -->
+              <div class="field mt-4">
+                <label class="label">Review Activity (Stretch Goal)</label>
+                <div class="control">
+                  <label class="checkbox">
+                    <input type="checkbox" v-model="state.series.number_of_reviewers" @change="updateChart">
+                    Number of Reviewers
+                  </label>
+                </div>
+                <div class="control">
+                  <label class="checkbox">
+                    <input type="checkbox" v-model="state.series.number_of_reviews" @change="updateChart">
+                    Number of Reviews
+                  </label>
+                </div>
+                <div class="control">
+                  <label class="checkbox">
+                    <input type="checkbox" v-model="state.series.reviews_per_reviewer" @change="updateChart">
+                    Reviews Per Reviewer
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- URL Permalink -->
+          <div class="field mt-4" v-if="state.permalink">
+            <label class="label">Shareable Link</label>
+            <div class="control">
+              <input class="input is-small" type="text" :value="state.permalink" readonly @click="$event.target.select()">
+            </div>
+            <p class="help">Copy this URL to share your current view</p>
+          </div>
+
+          <!-- Last Update Info -->
+          <div class="notification is-info is-light mt-4" v-if="state.lastUpdate">
+            <p><strong>Last updated:</strong> {{ state.lastUpdate }}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Chart Display -->
+      <section class="section">
+        <div class="box">
+          <canvas id="statisticsChart" style="max-height: 500px;"></canvas>
+        </div>
+      </section>
+
+      <!-- Data Table -->
+      <section class="section" v-if="state.tableData && state.tableData.length > 0">
+        <div class="box">
+          <h2 class="title is-5">Data Table</h2>
+          <div class="table-container">
+            <table class="table is-striped is-hoverable is-fullwidth">
+              <thead>
+                <tr>
+                  <th>Wiki</th>
+                  <th>Date</th>
+                  <th v-if="state.series.pendingLag_average">Pending Lag</th>
+                  <th v-if="state.series.totalPages_ns0">Total Pages</th>
+                  <th v-if="state.series.reviewedPages_ns0">Reviewed Pages</th>
+                  <th v-if="state.series.syncedPages_ns0">Synced Pages</th>
+                  <th v-if="state.series.pendingChanges">Pending Changes</th>
+                  <th v-if="state.series.number_of_reviewers">Reviewers</th>
+                  <th v-if="state.series.number_of_reviews">Reviews</th>
+                  <th v-if="state.series.reviews_per_reviewer">Reviews/Reviewer</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in state.tableData" :key="row.wiki + row.date">
+                  <td>{{ row.wiki }}</td>
+                  <td>{{ row.date }}</td>
+                  <td v-if="state.series.pendingLag_average">{{ row.pendingLag_average || 'N/A' }}</td>
+                  <td v-if="state.series.totalPages_ns0">{{ row.totalPages_ns0 || 'N/A' }}</td>
+                  <td v-if="state.series.reviewedPages_ns0">{{ row.reviewedPages_ns0 || 'N/A' }}</td>
+                  <td v-if="state.series.syncedPages_ns0">{{ row.syncedPages_ns0 || 'N/A' }}</td>
+                  <td v-if="state.series.pendingChanges">{{ row.pendingChanges || 'N/A' }}</td>
+                  <td v-if="state.series.number_of_reviewers">{{ row.number_of_reviewers || 'N/A' }}</td>
+                  <td v-if="state.series.number_of_reviews">{{ row.number_of_reviews || 'N/A' }}</td>
+                  <td v-if="state.series.reviews_per_reviewer">{{ row.reviews_per_reviewer ? row.reviews_per_reviewer.toFixed(2) : 'N/A' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- No Data Message -->
+      <section class="section" v-if="!state.loading && (!state.tableData || state.tableData.length === 0)">
+        <div class="notification is-warning">
+          <p><strong>No data available.</strong></p>
+          <p>Please select at least one wiki and ensure statistics data has been loaded.</p>
+          <p>Run: <code>python manage.py load_statistics</code> to load data from Superset.</p>
+        </div>
+      </section>
+    </div>
+    {% endverbatim %}
+
+    <script id="wikis-data" type="application/json">
+      {{ wikis|safe }}
+    </script>
+    <script src="{% static 'reviews/statistics.js' %}"></script>
+  </body>
+</html>

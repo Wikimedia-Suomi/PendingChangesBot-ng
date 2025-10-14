@@ -12,7 +12,14 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from .autoreview import run_autoreview_for_page
-from .models import EditorProfile, PendingPage, Wiki, WikiConfiguration
+from .models import (
+    EditorProfile,
+    FlaggedRevsStatistics,
+    PendingPage,
+    ReviewActivity,
+    Wiki,
+    WikiConfiguration,
+)
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
@@ -498,3 +505,88 @@ def fetch_diff(request):
         return HttpResponse(html_content, content_type="text/html")
     except requests.RequestException as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+@require_GET
+def api_statistics(request: HttpRequest) -> JsonResponse:
+    wiki_code = request.GET.get("wiki")
+    data_series = request.GET.get("series")
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+
+    queryset = FlaggedRevsStatistics.objects.select_related("wiki")
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    if start_date:
+        queryset = queryset.filter(date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(date__lte=end_date)
+
+    statistics = queryset.order_by("date")
+
+    data = []
+    for stat in statistics:
+        entry = {
+            "wiki": stat.wiki.code,
+            "date": stat.date.isoformat(),
+            "totalPages_ns0": stat.total_pages_ns0,
+            "syncedPages_ns0": stat.synced_pages_ns0,
+            "reviewedPages_ns0": stat.reviewed_pages_ns0,
+            "pendingLag_average": stat.pending_lag_average,
+            "pendingChanges": stat.pending_changes,
+        }
+
+        if data_series:
+            entry = {
+                "wiki": entry["wiki"],
+                "date": entry["date"],
+                data_series: entry.get(data_series),
+            }
+
+        data.append(entry)
+
+    return JsonResponse({"data": data})
+
+
+@require_GET
+def api_review_activity(request: HttpRequest) -> JsonResponse:
+    wiki_code = request.GET.get("wiki")
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+
+    queryset = ReviewActivity.objects.select_related("wiki")
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    if start_date:
+        queryset = queryset.filter(date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(date__lte=end_date)
+
+    activities = queryset.order_by("date")
+
+    data = []
+    for activity in activities:
+        entry = {
+            "wiki": activity.wiki.code,
+            "date": activity.date.isoformat(),
+            "number_of_reviewers": activity.number_of_reviewers,
+            "number_of_reviews": activity.number_of_reviews,
+            "number_of_pages": activity.number_of_pages,
+            "reviews_per_reviewer": activity.reviews_per_reviewer,
+        }
+        data.append(entry)
+
+    return JsonResponse({"data": data})
+
+
+def statistics_page(request: HttpRequest) -> HttpResponse:
+    """Render the statistics visualization page."""
+    wikis = Wiki.objects.all().order_by("code")
+    wikis_json = json.dumps([{"code": w.code, "name": w.name} for w in wikis])
+    return render(request, "reviews/statistics.html", {"wikis": wikis_json})
