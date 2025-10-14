@@ -11,7 +11,122 @@ from reviews.autoreview import (
     _validate_isbn_10,
     _validate_isbn_13,
 )
+from reviews.models import EditorProfile, Wiki
 from reviews.services import was_user_blocked_after
+
+
+class GlobalBotAutoreviewTests(TestCase):
+    """Test autoreview decisions for global and former global bots."""
+
+    def setUp(self):
+        """Set up common mock objects for the tests."""
+        self.wiki = Wiki.objects.create(code="testwiki", name="Test Wiki")
+        self.mock_client = MagicMock()
+        self.mock_client.has_manual_unapproval.return_value = False
+        self.mock_client.is_user_blocked_after_edit.return_value = False
+
+        self.revision = MagicMock()
+        self.revision.user_name = "TestUser"
+        self.revision.page.title = "Test Page"
+        self.revision.revid = 12345
+        self.revision.page.wiki = self.wiki  # Use the real Wiki object
+        self.revision.get_wikitext.return_value = ""  # No invalid ISBNs
+        self.revision.superset_data = {}  # Ensure superset_data exists
+
+        # Mock checks that run after the bot check to isolate the logic
+        self.render_patcher = patch(
+            "reviews.autoreview._check_for_new_render_errors", return_value=False
+        )
+        self.mock_render_check = self.render_patcher.start()
+        self.addCleanup(self.render_patcher.stop)
+
+    def test_global_bot_is_auto_approved(self):
+        """Verify that a user marked as a global bot is auto-approved."""
+        # Arrange: Create a profile for a global bot
+        profile = EditorProfile(
+            username="GlobalBotUser",
+            is_bot=False,
+            is_former_bot=False,
+            is_global_bot=True,
+            is_former_global_bot=False,
+            is_autoreviewed=False,
+            is_autopatrolled=False,
+        )
+        self.revision.user_name = "GlobalBotUser"
+
+        # Act: Evaluate the revision
+        result = autoreview._evaluate_revision(
+            self.revision,
+            self.mock_client,
+            profile,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+        )
+
+        # Assert: The decision should be 'approve' because the user is a bot
+        self.assertEqual(result["decision"].status, "approve")
+        self.assertIn("user is recognized as a bot", result["decision"].reason)
+        bot_test = next(t for t in result["tests"] if t["id"] == "bot-user")
+        self.assertEqual(bot_test["status"], "ok")
+
+    def test_former_global_bot_is_auto_approved(self):
+        """Verify that a user marked as a former global bot is auto-approved."""
+        # Arrange: Create a profile for a former global bot
+        profile = EditorProfile(
+            username="FormerGlobalBotUser",
+            is_bot=False,
+            is_former_bot=False,
+            is_global_bot=False,
+            is_former_global_bot=True,
+            is_autoreviewed=False,
+            is_autopatrolled=False,
+        )
+        self.revision.user_name = "FormerGlobalBotUser"
+
+        # Act: Evaluate the revision
+        result = autoreview._evaluate_revision(
+            self.revision,
+            self.mock_client,
+            profile,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+        )
+
+        # Assert: The decision should be 'approve'
+        self.assertEqual(result["decision"].status, "approve")
+        self.assertIn("user is recognized as a bot", result["decision"].reason)
+
+    def test_regular_user_with_no_bot_flags_is_not_approved_as_bot(self):
+        """Verify a regular user is not approved based on bot status."""
+        # Arrange: Create a profile for a regular user
+        profile = EditorProfile.objects.create(
+            wiki=self.wiki,
+            username="RegularUser",
+            is_bot=False,
+            is_former_bot=False,
+            is_global_bot=False,
+            is_former_global_bot=False,
+            is_autoreviewed=False,
+            is_autopatrolled=False,
+        )
+        self.revision.user_name = "RegularUser"
+
+        # Act: Evaluate the revision
+        result = autoreview._evaluate_revision(
+            self.revision,
+            self.mock_client,
+            profile,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+        )
+
+        # Assert: The 'bot-user' test should fail, and the final status is 'manual'
+        bot_test = next(t for t in result["tests"] if t["id"] == "bot-user")
+        self.assertEqual(bot_test["status"], "not_ok")
+        self.assertEqual(result["decision"].status, "manual")
 
 
 class ISBNValidationTests(TestCase):
@@ -232,60 +347,73 @@ class ISBNDetectionTests(TestCase):
 class AutoreviewBlockedUserTests(TestCase):
     def setUp(self):
         """Clear the LRU cache before each test."""
+        self.wiki = Wiki.objects.create(code="fi", family="wikipedia")
         was_user_blocked_after.cache_clear()
+        # Patch checks that run before the one we are testing
+        self.unapproval_patcher = patch(
+            "reviews.autoreview.WikiClient.has_manual_unapproval", return_value=False
+        )
+        self.mock_unapproval = self.unapproval_patcher.start()
+        self.addCleanup(self.unapproval_patcher.stop)
 
     @patch("reviews.services.pywikibot.Site")
-    @patch("reviews.autoreview._is_bot_user")
-    def test_blocked_user_not_auto_approved(self, mock_is_bot, mock_site):
+    def test_blocked_user_not_auto_approved(self, mock_site):
         """Test that a user blocked after making an edit is NOT auto-approved."""
-        mock_is_bot.return_value = False  # User is NOT a bot
-
         # Mock the pywikibot.Site and logevents to return a block event
         mock_site_instance = MagicMock()
         mock_site.return_value = mock_site_instance
-
-        # Create a mock block event
         mock_block_event = MagicMock()
         mock_block_event.action.return_value = "block"
         mock_site_instance.logevents.return_value = [mock_block_event]
 
-        profile = MagicMock()
-        profile.usergroups = []
-        profile.is_bot = False
-
-        mock_wiki = MagicMock()
-        mock_wiki.code = "fi"
-        mock_wiki.family = "wikipedia"
+        # A non-bot, non-autoreviewed user profile
+        profile = EditorProfile.objects.create(
+            wiki=self.wiki,
+            username="BlockedUser",
+            is_bot=False,
+            is_former_bot=False,
+            is_global_bot=False,
+            is_former_global_bot=False,
+            is_autoreviewed=False,
+            is_autopatrolled=False,
+        )
 
         revision = MagicMock()
         revision.user_name = "BlockedUser"
         revision.timestamp = datetime.fromisoformat("2024-01-15T10:00:00")
-        revision.page.categories = []
-        revision.page.wiki = mock_wiki
+        revision.page.title = "Test Page"
+        revision.revid = 123
+        revision.page.wiki = self.wiki
+        revision.superset_data = {}
 
-        # Create a mock WikiClient - but we need the real is_user_blocked_after_edit method
         from reviews.services import WikiClient
 
-        mock_client = WikiClient(mock_wiki)
+        client = WikiClient(self.wiki)
 
-        # Call with correct signature: revision, client, profile, **kwargs
+        # Call the function under test
         result = autoreview._evaluate_revision(
             revision,
-            mock_client,
+            client,
             profile,
             auto_groups={},
             blocking_categories={},
-            redirect_aliases={},
+            redirect_aliases=[],
         )
 
         # Assert
         self.assertEqual(result["decision"].status, "blocked")
-        self.assertTrue(any(t["id"] == "blocked-user" for t in result["tests"]))
+        self.assertEqual(result["decision"].reason, "User was blocked after making this edit.")
 
-        # Verify pywikibot.Site was called (will be called twice:
-        # once in WikiClient.__init__, once in was_user_blocked_after)
+        # Check the sequence of tests
+        self.assertEqual(result["tests"][0]["id"], "manual-unapproval")
+        self.assertEqual(result["tests"][0]["status"], "ok")
+        self.assertEqual(result["tests"][1]["id"], "bot-user")
+        self.assertEqual(result["tests"][1]["status"], "not_ok")
+        self.assertEqual(result["tests"][2]["id"], "blocked-user")
+        self.assertEqual(result["tests"][2]["status"], "fail")
+
+        # Verify pywikibot.Site was called
         self.assertGreaterEqual(mock_site.call_count, 1)
-
         # Verify logevents was called with correct parameters
         mock_site_instance.logevents.assert_called_once()
 

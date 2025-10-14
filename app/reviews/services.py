@@ -42,6 +42,33 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
+    def check_global_bot_user(self, username: str) -> tuple[bool, bool]:
+        """Check if a user is a global bot using the efficient globaluserinfo API."""
+        try:
+            site = pywikibot.Site("meta", "meta")
+            request = pywikibot.data.api.Request(
+                site=site,
+                parameters={
+                    "action": "query",
+                    "meta": "globaluserinfo",
+                    "guiuser": username,
+                    "guiprop": "groups",
+                },
+            )
+            result = request.submit()
+            user_info = result.get("query", {}).get("globaluserinfo", {})
+
+            if "missing" in user_info:
+                return (False, False)
+
+            current_groups = user_info.get("groups", [])
+            is_global_bot = "global-bot" in current_groups
+            is_former_global_bot = False
+
+            return (is_global_bot, is_former_global_bot)
+        except Exception:
+            return (False, False)
+
     def has_manual_unapproval(self, page_title: str, revid: int) -> bool:
         """Check if the most recent review action for a revision is an un-approval."""
         try:
@@ -289,6 +316,8 @@ ORDER BY fp_pending_since, rev_id DESC
                 "is_blocked": False,
                 "is_bot": False,
                 "is_former_bot": False,
+                "is_global_bot": False,
+                "is_former_global_bot": False,
                 "is_autopatrolled": False,
                 "is_autoreviewed": False,
             },
@@ -306,12 +335,19 @@ ORDER BY fp_pending_since, rev_id DESC
         profile.is_autopatrolled = "autopatrolled" in groups
         profile.is_autoreviewed = bool(autoreviewed_groups & set(groups))
         profile.is_blocked = bool(superset_data.get("user_blocked", False))
+
+        is_global_bot, is_former_global_bot = self.check_global_bot_user(username)
+        profile.is_global_bot = is_global_bot
+        profile.is_former_global_bot = is_former_global_bot
+
         profile.save(
             update_fields=[
                 "usergroups",
                 "is_blocked",
                 "is_bot",
                 "is_former_bot",
+                "is_global_bot",
+                "is_former_global_bot",
                 "is_autopatrolled",
                 "is_autoreviewed",
                 "fetched_at",

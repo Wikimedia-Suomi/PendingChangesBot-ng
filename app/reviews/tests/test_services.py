@@ -62,6 +62,14 @@ class WikiClientTests(TestCase):
         self.mock_superset = self.mock_superset_cls.return_value
         self.mock_superset.query.return_value = []
 
+        # Mock the global bot check to prevent network calls
+        self.global_bot_patcher = mock.patch(
+            "reviews.services.WikiClient.check_global_bot_user",
+            return_value=(False, False),  # Default to not a global bot
+        )
+        self.mock_global_bot_check = self.global_bot_patcher.start()
+        self.addCleanup(self.global_bot_patcher.stop)
+
     def test_parse_categories_extracts_unique_names(self):
         wikitext = (
             "Some text [[Category:Example]] and [[category:Second|label]] and [[Category:Example]]"
@@ -180,9 +188,10 @@ class WikiClientTests(TestCase):
 
 
 class RefreshWorkflowTests(TestCase):
+    @mock.patch("reviews.services.WikiClient.check_global_bot_user", return_value=(False, False))
     @mock.patch("reviews.services.SupersetQuery")
     @mock.patch("reviews.services.pywikibot.Site")
-    def test_refresh_handles_errors(self, mock_site, mock_superset):
+    def test_refresh_handles_errors(self, mock_site, mock_superset, mock_global_bot):
         wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",
@@ -196,9 +205,12 @@ class RefreshWorkflowTests(TestCase):
         with self.assertRaises(RuntimeError):
             client.refresh()
 
+    @mock.patch("reviews.services.WikiClient.check_global_bot_user", return_value=(False, False))
     @mock.patch("reviews.services.SupersetQuery")
     @mock.patch("reviews.services.pywikibot.Site")
-    def test_refresh_does_not_call_pywikibot_requests(self, mock_site, mock_superset):
+    def test_refresh_does_not_call_pywikibot_requests(
+        self, mock_site, mock_superset, mock_global_bot
+    ):
         wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",
@@ -230,10 +242,11 @@ class RefreshWorkflowTests(TestCase):
         self.assertEqual(PendingRevision.objects.count(), 1)
 
 
+@mock.patch("reviews.services.WikiClient.check_global_bot_user", return_value=(False, False))
 class FormerBotTests(TestCase):
     """Test cases for former bot detection and handling."""
 
-    def test_ensure_editor_profile_with_former_bot_group(self):
+    def test_ensure_editor_profile_with_former_bot_group(self, mock_global_bot_check):
         """Test that former bot group is properly detected."""
         wiki = Wiki.objects.create(code="fi", family="wikipedia")
         client = WikiClient(wiki)
@@ -250,7 +263,7 @@ class FormerBotTests(TestCase):
         self.assertTrue(profile.is_former_bot)
         self.assertEqual(profile.username, "FormerBotUser")
 
-    def test_ensure_editor_profile_with_current_and_former_bot(self):
+    def test_ensure_editor_profile_with_current_and_former_bot(self, mock_global_bot_check):
         """Test user who is both current and former bot (edge case)."""
         wiki = Wiki.objects.create(code="fi", family="wikipedia")
         client = WikiClient(wiki)
@@ -266,7 +279,7 @@ class FormerBotTests(TestCase):
         self.assertTrue(profile.is_bot)
         self.assertTrue(profile.is_former_bot)
 
-    def test_ensure_editor_profile_without_former_groups(self):
+    def test_ensure_editor_profile_without_former_groups(self, mock_global_bot_check):
         """Test that missing former groups doesn't cause issues."""
         wiki = Wiki.objects.create(code="fi", family="wikipedia")
         client = WikiClient(wiki)
@@ -282,12 +295,60 @@ class FormerBotTests(TestCase):
         self.assertFalse(profile.is_bot)
         self.assertFalse(profile.is_former_bot)
 
-    def test_ensure_editor_profile_former_bot_no_superset_data(self):
+    def test_ensure_editor_profile_former_bot_no_superset_data(self, mock_global_bot_check):
         """Test that profile defaults work when no superset data provided."""
         wiki = Wiki.objects.create(code="fi", family="wikipedia")
         client = WikiClient(wiki)
 
+        # Note: ensure_editor_profile returns early if superset_data is None,
+        # so we are only testing the get_or_create logic here.
         profile = client.ensure_editor_profile("SomeUser", None)
 
         self.assertFalse(profile.is_bot)
         self.assertFalse(profile.is_former_bot)
+        self.assertFalse(profile.is_global_bot)
+        self.assertFalse(profile.is_former_global_bot)
+
+
+class GlobalBotTests(TestCase):
+    """Test cases for global bot detection in the service layer."""
+
+    def setUp(self):
+        self.wiki = Wiki.objects.create(code="fi", family="wikipedia")
+        self.client = WikiClient(self.wiki)
+
+    @mock.patch("reviews.services.pywikibot.data.api.Request")
+    def test_check_global_bot_user_handles_non_bot(self, mock_request_cls):
+        """Verify the API call for a user that is not a global bot."""
+        mock_request = mock_request_cls.return_value
+        mock_request.submit.return_value = {
+            "query": {"globaluserinfo": {"name": "RegularUser", "groups": []}}
+        }
+
+        is_global, is_former = self.client.check_global_bot_user("RegularUser")
+
+        self.assertFalse(is_global)
+        self.assertFalse(is_former)
+
+    @mock.patch("reviews.services.WikiClient.check_global_bot_user")
+    def test_ensure_editor_profile_stores_global_bot_status(self, mock_check_global_bot):
+        """Test that ensure_editor_profile correctly stores the global bot flags."""
+        # Arrange: Mock the return value of the check method
+        mock_check_global_bot.return_value = (True, False)  # Is a global bot
+
+        superset_data = {
+            "user_groups": ["autoconfirmed"],
+            "user_former_groups": [],
+            "rc_bot": False,
+        }
+
+        # Act: Call the method that updates the profile
+        profile = self.client.ensure_editor_profile("TestGlobalBot", superset_data)
+
+        # Assert: The profile fields should be updated correctly
+        self.assertTrue(profile.is_global_bot)
+        self.assertFalse(profile.is_former_global_bot)
+        self.assertEqual(profile.username, "TestGlobalBot")
+
+        # Verify that the check method was called
+        mock_check_global_bot.assert_called_once_with("TestGlobalBot")

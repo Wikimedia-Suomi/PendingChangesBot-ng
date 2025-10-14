@@ -674,6 +674,17 @@ def _is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> bo
     Returns:
         True if the user is a current bot or former bot, False otherwise
     """
+    if not profile:
+        return False
+
+    if (
+            profile.is_bot
+            or profile.is_former_bot
+            or profile.is_global_bot
+            or profile.is_former_global_bot
+    ):
+        return True
+
     superset = revision.superset_data or {}
     if superset.get("rc_bot"):
         return True
