@@ -438,6 +438,101 @@ def _evaluate_revision(
         }
     )
 
+    # Test 7: Reference-only edits can be auto-approved if domains are verified
+    parent_wikitext = _get_parent_wikitext(revision)
+    current_wikitext = revision.get_wikitext()
+    ref_check = _is_reference_only_edit(parent_wikitext, current_wikitext)
+
+    if ref_check["is_reference_only"]:
+        # Get domains from added and modified references
+        all_changed_refs = ref_check["added_refs"] + ref_check["modified_refs"]
+        domains = _get_domains_from_references(all_changed_refs)
+
+        if domains:
+            # Check if all domains exist on the wiki
+            unverified_domains = []
+            for domain in domains:
+                if not _check_domain_exists_on_wiki(domain, revision.page.wiki):
+                    unverified_domains.append(domain)
+
+            if unverified_domains:
+                tests.append(
+                    {
+                        "id": "reference-only-edit",
+                        "title": "Reference-only edit",
+                        "status": "fail",
+                        "message": (
+                            "Edit only modifies references, but contains "
+                            "unverified domains: {}.".format(", ".join(sorted(unverified_domains)))
+                        ),
+                    }
+                )
+                return {
+                    "tests": tests,
+                    "decision": AutoreviewDecision(
+                        status="manual",
+                        label="Requires human review",
+                        reason="Reference-only edit contains unverified external domains.",
+                    ),
+                }
+            else:
+                tests.append(
+                    {
+                        "id": "reference-only-edit",
+                        "title": "Reference-only edit",
+                        "status": "ok",
+                        "message": ("Edit only adds/modifies references with verified domains."),
+                    }
+                )
+                return {
+                    "tests": tests,
+                    "decision": AutoreviewDecision(
+                        status="approve",
+                        label="Would be auto-approved",
+                        reason="Edit only adds or modifies references with verified domains.",
+                    ),
+                }
+        else:
+            # No domains in references, can approve
+            tests.append(
+                {
+                    "id": "reference-only-edit",
+                    "title": "Reference-only edit",
+                    "status": "ok",
+                    "message": "Edit only adds/modifies references without external links.",
+                }
+            )
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="approve",
+                    label="Would be auto-approved",
+                    reason="Edit only adds or modifies references without external links.",
+                ),
+            }
+    elif (
+        ref_check["removed_refs"] and not ref_check["added_refs"] and not ref_check["modified_refs"]
+    ):
+        # Only removed references, require manual review
+        tests.append(
+            {
+                "id": "reference-only-edit",
+                "title": "Reference-only edit",
+                "status": "fail",
+                "message": "Edit only removes references, requires manual review.",
+            }
+        )
+    else:
+        # Not a reference-only edit
+        tests.append(
+            {
+                "id": "reference-only-edit",
+                "title": "Reference-only edit",
+                "status": "not_ok",
+                "message": "Edit is not reference-only.",
+            }
+        )
+
     return {
         "tests": tests,
         "decision": AutoreviewDecision(
@@ -917,3 +1012,264 @@ def _find_invalid_isbns(text: str) -> list[str]:
             invalid_isbns.append(isbn_raw.strip())
 
     return invalid_isbns
+
+
+def _extract_references(wikitext: str) -> list[dict[str, str]]:
+    """Extract all reference tags from wikitext.
+
+    Args:
+        wikitext: The wikitext to parse
+
+    Returns:
+        List of dicts with keys: 'full_match', 'content', 'name', 'group'
+        For self-closing refs, 'content' will be empty string
+    """
+    if not wikitext:
+        return []
+
+    references = []
+
+    # Pattern for standard <ref>content</ref> tags (with optional attributes)
+    # Captures: name attribute, group attribute, content
+    standard_pattern = (
+        r"<ref"
+        r'(?:\s+name\s*=\s*"([^"]*)")?'  # Optional name attribute
+        r'(?:\s+group\s*=\s*"([^"]*)")?'  # Optional group attribute
+        r"(?:\s+[^>]*)?"  # Any other attributes
+        r">"
+        r"(.*?)"  # Content (non-greedy)
+        r"</ref>"
+    )
+
+    # Pattern for self-closing <ref /> tags
+    # Captures: name attribute, group attribute
+    self_closing_pattern = (
+        r"<ref"
+        r'(?:\s+name\s*=\s*"([^"]*)")?'  # Optional name attribute
+        r'(?:\s+group\s*=\s*"([^"]*)")?'  # Optional group attribute
+        r"(?:\s+[^>]*)?"  # Any other attributes
+        r"\s*/>"
+    )
+
+    # Find all standard refs
+    for match in re.finditer(standard_pattern, wikitext, re.DOTALL | re.IGNORECASE):
+        references.append(
+            {
+                "full_match": match.group(0),
+                "name": match.group(1) or "",
+                "group": match.group(2) or "",
+                "content": match.group(3) or "",
+            }
+        )
+
+    # Find all self-closing refs
+    for match in re.finditer(self_closing_pattern, wikitext, re.IGNORECASE):
+        references.append(
+            {
+                "full_match": match.group(0),
+                "name": match.group(1) or "",
+                "group": match.group(2) or "",
+                "content": "",
+            }
+        )
+
+    return references
+
+
+def _remove_references(wikitext: str) -> str:
+    """Remove all reference tags from wikitext, leaving other content intact.
+
+    Args:
+        wikitext: The wikitext to process
+
+    Returns:
+        Wikitext with all <ref>...</ref> and <ref /> tags removed
+    """
+    if not wikitext:
+        return ""
+
+    # Remove standard refs
+    result = re.sub(r"<ref(?:\s+[^>]*)?>.*?</ref>", "", wikitext, flags=re.DOTALL | re.IGNORECASE)
+
+    # Remove self-closing refs
+    result = re.sub(r"<ref(?:\s+[^>]*)?/>", "", result, flags=re.IGNORECASE)
+
+    return result
+
+
+def _extract_urls_from_text(text: str) -> list[str]:
+    """Extract URLs from text.
+
+    Args:
+        text: Text that may contain URLs
+
+    Returns:
+        List of URLs found in the text
+    """
+    if not text:
+        return []
+
+    # Pattern for URLs (http, https, ftp)
+    url_pattern = r'https?://[^\s\]<>"\'}]+'
+
+    urls = re.findall(url_pattern, text, re.IGNORECASE)
+    return urls
+
+
+def _extract_domain_from_url(url: str) -> str:
+    """Extract domain from URL.
+
+    Args:
+        url: Full URL
+
+    Returns:
+        Domain extracted from URL, empty string if invalid
+    """
+    if not url:
+        return ""
+
+    # Simple domain extraction from URL
+    # Match pattern: protocol://domain/path
+    match = re.match(r"https?://([^/\s:]+)", url, re.IGNORECASE)
+    if match:
+        return match.group(1).lower()
+    return ""
+
+
+def _get_domains_from_references(refs: list[dict]) -> set[str]:
+    """Extract all unique domains from a list of references.
+
+    Args:
+        refs: List of reference dicts with 'content' key
+
+    Returns:
+        Set of unique domains found in reference content
+    """
+    domains = set()
+    for ref in refs:
+        content = ref.get("content", "")
+        urls = _extract_urls_from_text(content)
+        for url in urls:
+            domain = _extract_domain_from_url(url)
+            if domain:
+                domains.add(domain)
+    return domains
+
+
+def _check_domain_exists_on_wiki(domain: str, wiki: Wiki) -> bool:
+    """Check if a domain has been used in articles on the wiki.
+
+    Args:
+        domain: Domain to check (e.g., "example.com")
+        wiki: Wiki instance to check against
+
+    Returns:
+        True if domain has been used in namespace 0 (articles), False otherwise
+    """
+    if not domain:
+        return False
+
+    try:
+        site = pywikibot.Site(code=wiki.code, fam=wiki.family)
+
+        # Use exturlusage to check if domain exists in article namespace (0)
+        # We need to check for at least 2 results since the new link will match itself
+        results = list(site.exturlusage(domain, namespaces=[0], total=2))
+
+        return len(results) > 1
+
+    except Exception:  # pragma: no cover - network failure fallback
+        logger.exception("Failed to check domain %s on wiki %s", domain, wiki.code)
+        # On failure, be conservative and return False (require manual review)
+        return False
+
+
+def _is_reference_only_edit(old_wikitext: str, new_wikitext: str) -> dict:
+    """Detect if an edit only adds or modifies references.
+
+    Args:
+        old_wikitext: Previous version wikitext
+        new_wikitext: Current version wikitext
+
+    Returns:
+        Dict with keys:
+            - is_reference_only: bool indicating if only refs changed
+            - added_refs: list of added reference dicts
+            - modified_refs: list of modified reference dicts
+            - removed_refs: list of removed reference dicts
+            - non_ref_changed: bool indicating if non-ref content changed
+    """
+    old_refs = _extract_references(old_wikitext)
+    new_refs = _extract_references(new_wikitext)
+
+    # Remove refs to compare non-ref content
+    old_without_refs = _remove_references(old_wikitext)
+    new_without_refs = _remove_references(new_wikitext)
+
+    # Normalize whitespace for comparison
+    old_normalized = " ".join(old_without_refs.split())
+    new_normalized = " ".join(new_without_refs.split())
+
+    non_ref_changed = old_normalized != new_normalized
+
+    # Separate named and unnamed references
+    old_named = [ref for ref in old_refs if ref["name"]]
+    new_named = [ref for ref in new_refs if ref["name"]]
+    old_unnamed = [ref for ref in old_refs if not ref["name"]]
+    new_unnamed = [ref for ref in new_refs if not ref["name"]]
+
+    # Match named references by name
+    old_named_map = {ref["name"]: ref for ref in old_named}
+    new_named_map = {ref["name"]: ref for ref in new_named}
+
+    old_named_keys = set(old_named_map.keys())
+    new_named_keys = set(new_named_map.keys())
+
+    added_refs = [new_named_map[key] for key in (new_named_keys - old_named_keys)]
+    removed_refs = [old_named_map[key] for key in (old_named_keys - new_named_keys)]
+
+    # Check for modifications in named refs (same name but different content)
+    modified_refs = []
+    for key in old_named_keys & new_named_keys:
+        if old_named_map[key]["content"] != new_named_map[key]["content"]:
+            modified_refs.append(new_named_map[key])
+
+    # Match unnamed references by position
+    # If counts match and non-ref content hasn't changed, pair them by position
+    if len(old_unnamed) == len(new_unnamed) and not non_ref_changed:
+        for old_ref, new_ref in zip(old_unnamed, new_unnamed):
+            if old_ref["content"] != new_ref["content"]:
+                modified_refs.append(new_ref)
+    else:
+        # Different counts or content changed - treat as additions/removals
+        # Match by exact content
+        old_unnamed_content = {ref["content"]: ref for ref in old_unnamed}
+        new_unnamed_content = {ref["content"]: ref for ref in new_unnamed}
+
+        old_unnamed_keys = set(old_unnamed_content.keys())
+        new_unnamed_keys = set(new_unnamed_content.keys())
+
+        added_refs.extend(
+            [new_unnamed_content[key] for key in (new_unnamed_keys - old_unnamed_keys)]
+        )
+        removed_refs.extend(
+            [old_unnamed_content[key] for key in (old_unnamed_keys - new_unnamed_keys)]
+        )
+
+    # It's reference-only if:
+    # 1. Non-ref content hasn't changed
+    # 2. At least some refs were added or modified
+    # 3. No refs were removed (or only replaced)
+    is_reference_only = (
+        not non_ref_changed
+        and (len(added_refs) > 0 or len(modified_refs) > 0)
+        and len(removed_refs) == 0
+    )
+
+    return {
+        "is_reference_only": is_reference_only,
+        "added_refs": added_refs,
+        "modified_refs": modified_refs,
+        "removed_refs": removed_refs,
+        "non_ref_changed": non_ref_changed,
+    }

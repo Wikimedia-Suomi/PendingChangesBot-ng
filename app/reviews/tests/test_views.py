@@ -329,6 +329,8 @@ class ViewTests(TestCase):
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
         self.assertEqual(len(result["tests"]), 5)
+        self.assertEqual(result["tests"][3]["status"], "not_ok")
+        self.assertEqual(result["tests"][4]["status"], "ok")
 
     @mock.patch("reviews.models.pywikibot.Site")
     def test_api_autoreview_blocks_on_blocking_categories(self, mock_site):
@@ -474,8 +476,9 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 8)
-        self.assertEqual(result["tests"][-1]["status"], "ok")
+        self.assertEqual(len(result["tests"]), 9)
+        self.assertEqual(result["tests"][5]["status"], "ok")
+        self.assertEqual(result["tests"][-1]["status"], "not_ok")
 
     @mock.patch("reviews.services.pywikibot.Site")
     def test_api_autoreview_orders_revisions_from_oldest_to_newest(self, mock_site):
