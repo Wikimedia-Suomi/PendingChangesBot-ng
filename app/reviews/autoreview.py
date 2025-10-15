@@ -7,6 +7,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from datetime import datetime
 
 import pywikibot
 from bs4 import BeautifulSoup
@@ -429,6 +430,34 @@ def _evaluate_revision(
             ),
         }
 
+    # test 9: is about living person
+    if _is_about_living_person(revision.page, client):
+        tests.append(
+            {
+                "id": "living-person",
+                "title": "Living person",
+                "status": "fail",
+                "message": "The edit is about a living person and requires manual review.",
+            }
+        )
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="blocked",
+                label="Cannot be auto-approved",
+                reason="Article is about a living person and requires manual review.",
+            ),
+        }
+    else:
+        tests.append(
+            {
+                "id": "living-person",
+                "title": "Living person",
+                "status": "ok",
+                "message": "The edit is not about a living person.",
+            }
+        )
+
     tests.append(
         {
             "id": "invalid-isbn",
@@ -437,7 +466,6 @@ def _evaluate_revision(
             "message": "No invalid ISBNs detected.",
         }
     )
-
     return {
         "tests": tests,
         "decision": AutoreviewDecision(
@@ -917,3 +945,103 @@ def _find_invalid_isbns(text: str) -> list[str]:
             invalid_isbns.append(isbn_raw.strip())
 
     return invalid_isbns
+
+
+def _is_about_living_person(page: PendingPage, client: WikiClient) -> bool:
+    """Check if page is about a living person."""
+    try:
+        if has_living_category_local(page):
+            return True
+        site = pywikibot.Site(code=page.wiki.code, fam=page.wiki.family)
+        repo = site.data_repository()
+        wikidata_page = pywikibot.Page(site, page.title)
+
+        if not wikidata_page.exists():
+            return False
+
+        try:
+            item = pywikibot.ItemPage.fromPage(wikidata_page)
+            item.get()
+        except Exception as e:
+            return False
+
+        if not is_human(item):
+            return False
+
+        if is_probably_living(item):
+            living_categories = client.get_living_categories()
+            return check_living_categories_cross_wiki(item, living_categories, client)
+
+    except Exception as e:
+        return str(e)
+    return False
+
+def has_living_category_local(page: PendingPage) -> bool:
+    """Check if page has living person category in local wiki."""
+    living_cat = "Living people"  # This should be localized based on wiki
+
+    # Check current version categories (stored in local DB)
+    if page.categories and any(cat.lower() == living_cat.lower() for cat in page.categories):
+        return True
+
+    return False
+
+def is_human(item: pywikibot.ItemPage) -> bool:
+    """Check if Wikidata item is instance of human (P31=Q5)."""
+    P31 = 'P31'  # instance of
+    Q5 = 'Q5'    # human
+
+    if P31 not in item.claims:
+        return False
+
+    for claim in item.claims[P31]:
+        target = claim.getTarget()
+        if target and target.id == Q5:
+            return True
+    return False
+
+def is_probably_living(item: pywikibot.ItemPage) -> bool:
+    """Check if person is probably living based on birth/death dates."""
+    now_year = datetime.now().year
+
+    # If has death date, not living
+    if 'P570' in item.claims:
+        return False
+
+    # Check birth date
+    if 'P569' in item.claims:
+        birth_claim = item.claims['P569'][0]
+        birth_target = birth_claim.getTarget()
+        if birth_target and birth_target.year:
+            age = now_year - birth_target.year
+            return age < 130
+
+    return False
+
+def check_living_categories_cross_wiki(
+    item: pywikibot.ItemPage,
+    living_categories: dict,
+    client: WikiClient
+) -> bool:
+    """Check if article has living category in any language version."""
+    checked = 0
+    for langwiki, cat_title in living_categories.items():
+        if checked > 3:  # Limit checks to 3 languages for performance
+            break
+
+        try:
+            if langwiki in item.sitelinks:
+                sitelink = item.sitelinks[langwiki]
+                langcode = langwiki.replace('wiki', '')
+                target_site = pywikibot.Site(langcode, 'wikipedia')
+                target_page = pywikibot.Page(target_site, sitelink.title)
+
+                if client.page_has_living_category(target_site, target_page, cat_title['title']):
+                    return True
+
+                checked += 1
+        except Exception as e:
+            logger.error(f"Error checking {langwiki}: {e}")
+            continue
+
+    return False
