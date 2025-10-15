@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -127,13 +128,93 @@ class WikiClient:
             return ""
 
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
-        """Fetch the pending pages using Superset and cache them in the database."""
 
         limit = int(limit)
         if limit <= 0:
             return []
 
-        sql_query = f"""
+        if getattr(self.wiki, "test_mode", False):
+            rev_ids_raw = (getattr(self.wiki, "test_revision_ids", "") or "").strip()
+            if not rev_ids_raw:
+                logger.warning("Test mode enabled for wiki %s but no revision IDs provided.", getattr(self.wiki, "code", "<unknown>"))
+                return []
+
+            if not re.fullmatch(r"[0-9,\s]+", rev_ids_raw):
+                logger.warning("Invalid revision IDs for wiki %s: %r", getattr(self.wiki, "code", "<unknown>"), rev_ids_raw)
+                return []
+
+            rev_ids_list = []
+            seen = set()
+            for part in rev_ids_raw.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                try:
+                    num = int(part)
+                except ValueError:
+                    continue
+                if num not in seen:
+                    seen.add(num)
+                    rev_ids_list.append(str(num))
+
+            if not rev_ids_list:
+                logger.warning("No valid revision IDs after parsing for wiki %s: %r", getattr(self.wiki, "code", "<unknown>"), rev_ids_raw)
+                return []
+
+            rev_ids_joined = ",".join(rev_ids_list)
+            sql_query = f"""
+SELECT
+   page_title,
+   page_namespace,
+   page_is_redirect,
+   fp_page_id,
+   fp_pending_since,
+   fp_stable,
+   rev_id,
+   rev_timestamp,
+   rev_len,
+   rev_parent_id,
+   rev_deleted,
+   rev_sha1,
+   comment_text,
+   a.actor_name,
+   a.actor_user,
+   group_concat(DISTINCT(ctd_name)) AS change_tags,
+   group_concat(DISTINCT(ug_group)) AS user_groups,
+   group_concat(DISTINCT(ufg_group)) AS user_former_groups,
+   group_concat(DISTINCT(cl_to)) AS page_categories,
+   rc_bot,
+   rc_patrolled
+FROM
+   (SELECT rev_page AS fp_page_id,
+           rev_id AS fp_stable,
+           20250901000000 AS fp_pending_since
+    FROM revision
+    WHERE rev_id IN ({rev_ids_joined})
+   ) AS fp,
+   revision AS r
+       LEFT JOIN change_tag ON r.rev_id=ct_rev_id
+       LEFT JOIN change_tag_def ON ct_tag_id = ctd_id
+       LEFT JOIN recentchanges ON rc_this_oldid = r.rev_id AND rc_source="mw.edit"
+   ,
+   page AS p
+       LEFT JOIN categorylinks ON cl_from = page_id,
+   comment_revision,
+   actor_revision AS a
+   LEFT JOIN user_groups ON a.actor_user=ug_user
+   LEFT JOIN user_former_groups ON a.actor_user=ufg_user
+WHERE
+   r.rev_page = fp_page_id
+   AND page_id = fp_page_id
+   AND page_namespace = 0
+   AND r.rev_id >= fp_stable
+   AND r.rev_actor = a.actor_id
+   AND r.rev_comment_id = comment_id
+GROUP BY r.rev_id
+ORDER BY fp_pending_since, rev_id DESC
+"""
+        else:
+            sql_query = f"""
 SELECT
    page_title,
    page_namespace,
@@ -185,6 +266,7 @@ GROUP BY r.rev_id
 ORDER BY fp_pending_since, rev_id DESC
 """
 
+        # Execute the query and process payload *exactly* like before
         superset = SupersetQuery(site=self.site)
         payload = superset.query(sql_query)
         pages: list[PendingPage] = []
@@ -243,6 +325,8 @@ ORDER BY fp_pending_since, rev_id DESC
                 self._save_revision(page, payload_entry)
 
         return pages
+
+
 
     def _save_revision(self, page: PendingPage, payload: RevisionPayload) -> PendingRevision | None:
         existing_page = (

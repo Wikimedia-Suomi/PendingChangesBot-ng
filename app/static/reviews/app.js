@@ -160,6 +160,8 @@ createApp({
     const forms = reactive({
       blockingCategories: "",
       autoApprovedGroups: "",
+      testMode: false,
+      testRevisionIds: '',
     });
 
     const currentWiki = computed(() =>
@@ -238,9 +240,12 @@ createApp({
         forms.blockingCategories = "";
         forms.autoApprovedGroups = "";
         return;
+        
       }
       forms.blockingCategories = (currentWiki.value.configuration.blocking_categories || []).join("\n");
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
+      forms.testMode = !!currentWiki.value.configuration.test_mode;
+      forms.testRevisionIds = currentWiki.value.configuration.test_revision_ids || '';
     }
 
     async function apiRequest(url, options = {}) {
@@ -358,6 +363,8 @@ createApp({
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
+        test_mode: !!forms.testMode,
+        test_revision_ids: (forms.testRevisionIds || '').trim(),
       };
       try {
         const data = await apiRequest(`/api/wikis/${state.selectedWikiId}/configuration/`, {
