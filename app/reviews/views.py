@@ -585,6 +585,22 @@ def api_review_activity(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"data": data})
 
 
+@require_GET
+def api_available_months(request: HttpRequest) -> JsonResponse:
+    months_data = (
+        FlaggedRevsStatistics.objects.values_list("date", flat=True).distinct().order_by("-date")
+    )
+
+    months = []
+    for date in months_data:
+        month_value = date.strftime("%Y%m")
+
+        if not any(m["value"] == month_value for m in months):
+            months.append({"value": month_value, "label": month_value})
+
+    return JsonResponse({"months": months})
+
+
 def statistics_page(request: HttpRequest) -> HttpResponse:
     """Render the statistics visualization page."""
     wikis = Wiki.objects.all().order_by("code")

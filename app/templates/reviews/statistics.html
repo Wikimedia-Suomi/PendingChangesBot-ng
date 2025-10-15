@@ -55,13 +55,31 @@
               </div>
             </div>
 
+            <!-- Month Selection -->
+            <div class="column">
+              <div class="field">
+                <label class="label">Select Month</label>
+                <div class="control">
+                  <div class="select is-fullwidth">
+                    <select v-model="state.selectedMonth" @change="updateUrl">
+                      <option value="">All months</option>
+                      <option v-for="month in availableMonths" :key="month.value" :value="month.value">
+                        {{ month.label }}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+                <p class="help">Choose a specific month or view all</p>
+              </div>
+            </div>
+
             <!-- View Mode Selection -->
             <div class="column">
               <div class="field">
                 <label class="label">View Mode</label>
                 <div class="control">
                   <div class="select">
-                    <select v-model="state.viewMode">
+                    <select v-model="state.viewMode" @change="updateUrl">
                       <option value="both">Chart & Table</option>
                       <option value="chart">Chart Only</option>
                       <option value="separate">Separate Charts</option>
@@ -164,8 +182,45 @@
         </div>
       </section>
 
-      <!-- Data Table -->
-      <section class="section" v-if="state.tableData && state.tableData.length > 0" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
+      <!-- Single Month All Wikis Table View -->
+      <section class="section" v-if="isSingleMonthView && state.tableData && state.tableData.length > 0" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
+        <div class="box">
+          <h2 class="title is-5">All Wikis - {{ singleMonthData[0]?.date || '' }}</h2>
+          <div class="table-container">
+            <table class="table is-striped is-hoverable is-fullwidth">
+              <thead>
+                <tr>
+                  <th>Wiki</th>
+                  <th v-if="state.series.pendingLag_average">Pending Lag</th>
+                  <th v-if="state.series.totalPages_ns0">Total Pages</th>
+                  <th v-if="state.series.reviewedPages_ns0">Reviewed Pages</th>
+                  <th v-if="state.series.syncedPages_ns0">Synced Pages</th>
+                  <th v-if="state.series.pendingChanges">Pending Changes</th>
+                  <th v-if="state.series.number_of_reviewers">Reviewers</th>
+                  <th v-if="state.series.number_of_reviews">Reviews</th>
+                  <th v-if="state.series.reviews_per_reviewer">Reviews/Reviewer</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in singleMonthData" :key="row.wiki">
+                  <td><strong>{{ row.wiki }}</strong></td>
+                  <td v-if="state.series.pendingLag_average">{{ row.pendingLag_average?.toFixed(1) || 'N/A' }}</td>
+                  <td v-if="state.series.totalPages_ns0">{{ row.totalPages_ns0?.toLocaleString() || 'N/A' }}</td>
+                  <td v-if="state.series.reviewedPages_ns0">{{ row.reviewedPages_ns0?.toLocaleString() || 'N/A' }}</td>
+                  <td v-if="state.series.syncedPages_ns0">{{ row.syncedPages_ns0?.toLocaleString() || 'N/A' }}</td>
+                  <td v-if="state.series.pendingChanges">{{ row.pendingChanges?.toLocaleString() || 'N/A' }}</td>
+                  <td v-if="state.series.number_of_reviewers">{{ row.number_of_reviewers || 'N/A' }}</td>
+                  <td v-if="state.series.number_of_reviews">{{ row.number_of_reviews || 'N/A' }}</td>
+                  <td v-if="state.series.reviews_per_reviewer">{{ row.reviews_per_reviewer?.toFixed(1) || 'N/A' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Regular Data Table -->
+      <section class="section" v-if="!isSingleMonthView && state.tableData && state.tableData.length > 0" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
         <div class="box">
           <h2 class="title is-5">Data Table</h2>
           <div class="table-container">

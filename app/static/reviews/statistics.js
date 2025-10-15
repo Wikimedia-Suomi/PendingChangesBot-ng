@@ -29,9 +29,9 @@ createApp({
         reviews_per_reviewer: true,
       },
 
-      // Date filters (future feature)
-      startDate: null,
-      endDate: null,
+      // Month selection
+      selectedMonth: '',
+      availableMonths: [],
 
       // View modes
       viewMode: 'both', // 'chart', 'table', 'both', 'separate'
@@ -73,10 +73,45 @@ createApp({
       return seriesConfig.filter(series => state.series[series.key]);
     });
 
+    const isSingleMonthView = computed(() => {
+      // Single month view when a specific month is selected and multiple wikis are available
+      return state.selectedMonth !== '' && state.selectedWikis.length > 1;
+    });
+
+    const singleMonthData = computed(() => {
+      if (!isSingleMonthView.value) return [];
+
+      // Group data by wiki and create a single row per wiki
+      const wikiData = {};
+      state.tableData.forEach(entry => {
+        if (!wikiData[entry.wiki]) {
+          wikiData[entry.wiki] = {
+            wiki: entry.wiki,
+            date: entry.date,
+            ...entry
+          };
+        }
+      });
+
+      return Object.values(wikiData).sort((a, b) => a.wiki.localeCompare(b.wiki));
+    });
+
     // Chart management
     function initializeChart() {
       const ctx = document.getElementById("statisticsChart");
-      if (!ctx) return;
+      if (!ctx) {
+        return;
+      }
+
+      // Check if canvas has valid context
+      try {
+        const context = ctx.getContext('2d');
+        if (!context) {
+          return;
+        }
+      } catch (error) {
+        return;
+      }
 
       if (state.chart) {
         state.chart.destroy();
@@ -111,10 +146,7 @@ createApp({
     }
 
     function updateChart() {
-      console.log("updateChart called - tableData length:", state.tableData.length);
-
       if (state.tableData.length === 0) {
-        console.log("No data to display");
         return;
       }
 
@@ -124,16 +156,14 @@ createApp({
         state.chart = null;
       }
 
+      // Don't initialize chart here - it will be created below
+
       // Make a simple copy of data to avoid reactivity issues
       const data = JSON.parse(JSON.stringify(state.tableData));
       const selectedWikis = [...state.selectedWikis];
 
-      console.log("Raw data:", data);
-      console.log("Selected wikis:", selectedWikis);
-
       // Get unique dates
       const labels = [...new Set(data.map(d => d.date))].sort();
-      console.log("Labels:", labels);
 
       // Build datasets
       const datasets = [];
@@ -152,17 +182,13 @@ createApp({
       ];
 
       selectedWikis.forEach(wiki => {
-        console.log("Processing wiki:", wiki);
         seriesConfig.forEach(series => {
-          console.log("Processing series:", series.key, "enabled:", state.series[series.key]);
           if (!state.series[series.key]) return;
 
           const seriesData = labels.map(date => {
             const entry = data.find(d => d.wiki === wiki && d.date === date);
             return entry ? (entry[series.key] || 0) : null;
           });
-
-          console.log(`Data for ${wiki} - ${series.key}:`, seriesData);
 
           if (seriesData.some(val => val !== null && val !== undefined)) {
             datasets.push({
@@ -174,75 +200,71 @@ createApp({
               fill: false,
             });
             colorIndex++;
-            console.log(`Added dataset for ${wiki} - ${series.key}`);
           }
         });
       });
 
-      console.log("Final datasets:", datasets);
-      console.log("Creating new chart with", datasets.length, "datasets");
-
       // Only update main chart if we're in chart or both mode
       if (state.viewMode !== 'chart' && state.viewMode !== 'both') {
-        console.log("Skipping main chart update - view mode is", state.viewMode);
         return;
       }
 
       // Create a completely new chart instead of updating
       const ctx = document.getElementById("statisticsChart");
       if (!ctx) {
-        console.error("Chart canvas not found");
         return;
       }
 
-      state.chart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: labels,
-          datasets: datasets,
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: true,
-          plugins: {
-            title: {
-              display: true,
-              text: "FlaggedRevs Statistics Over Time",
-            },
-            legend: {
-              display: true,
-              position: "top",
-            },
+      // Check if canvas has valid context
+      try {
+        const context = ctx.getContext('2d');
+        if (!context) {
+          return;
+        }
+      } catch (error) {
+        return;
+      }
+
+      try {
+        state.chart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: datasets,
           },
-          scales: {
-            y: {
-              type: 'logarithmic',
-              beginAtZero: false,
-              min: 1,
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
               title: {
                 display: true,
-                text: 'Values (Logarithmic Scale)'
-              }
+                text: "FlaggedRevs Statistics Over Time",
+              },
+              legend: {
+                display: true,
+                position: "top",
+              },
+            },
+            scales: {
+              y: {
+                type: 'logarithmic',
+                beginAtZero: false,
+                min: 1,
+                title: {
+                  display: true,
+                  text: 'Values (Logarithmic Scale)'
+                }
+              },
             },
           },
-        },
-      });
-
-      console.log("New chart created successfully");
+        });
+      } catch (error) {
+        // Chart creation failed, skip silently
+        return;
+      }
     }
 
     function createSeparateCharts() {
-      console.log("createSeparateCharts called. Current viewMode:", state.viewMode);
-      console.log("state.series:", state.series);
-      console.log("enabledSeries:", enabledSeries.value);
-      console.log("tableData length:", state.tableData.length);
-
-      // Debug: Check if any canvas elements exist
-      const allCanvases = document.querySelectorAll('canvas');
-      console.log("Total canvas elements found:", allCanvases.length);
-      allCanvases.forEach((canvas, index) => {
-        console.log(`Canvas ${index}:`, canvas.id, canvas);
-      });
 
       // Destroy existing separate charts
       enabledSeries.value.forEach(series => {
@@ -254,7 +276,6 @@ createApp({
       });
 
       if (state.tableData.length === 0) {
-        console.log("No table data available for separate charts");
         return;
       }
 
@@ -268,11 +289,18 @@ createApp({
 
       enabledSeries.value.forEach((series, index) => {
         const canvasId = `chart-${series.key}`;
-        console.log(`Attempting to find canvas for ID: ${canvasId}`);
         const ctx = document.getElementById(canvasId);
-        console.log(`Creating chart for ${series.key}, canvas found:`, !!ctx);
         if (!ctx) {
-          console.log(`Canvas not found for ${series.key}`);
+          return;
+        }
+
+        // Make sure the canvas has a valid 2D context
+        try {
+          const context = ctx.getContext('2d');
+          if (!context) {
+            return;
+          }
+        } catch (error) {
           return;
         }
 
@@ -298,34 +326,39 @@ createApp({
           }
         });
 
-        new Chart(ctx, {
-          type: "line",
-          data: {
-            labels: labels,
-            datasets: datasets,
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              title: {
-                display: true,
-                text: series.label,
+        try {
+          new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: labels,
+              datasets: datasets,
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                title: {
+                  display: true,
+                  text: series.label,
+                },
+                legend: {
+                  display: true,
+                  position: "top",
+                },
               },
-              legend: {
-                display: true,
-                position: "top",
+              scales: {
+                y: {
+                  type: 'logarithmic',
+                  beginAtZero: false,
+                  min: 1,
+                },
               },
             },
-            scales: {
-              y: {
-                type: 'logarithmic',
-                beginAtZero: false,
-                min: 1,
-              },
-            },
-          },
-        });
+          });
+        } catch (error) {
+          // Chart creation failed, skip silently
+          return;
+        }
       });
     }
 
@@ -341,11 +374,16 @@ createApp({
 
         // Build URL parameters for API calls
         const apiParams = new URLSearchParams();
-        if (state.startDate) {
-          apiParams.set('start_date', state.startDate);
-        }
-        if (state.endDate) {
-          apiParams.set('end_date', state.endDate);
+        if (state.selectedMonth) {
+          // Convert month selection (e.g., "202412") to date range
+          const year = parseInt(state.selectedMonth.substring(0, 4));
+          const month = parseInt(state.selectedMonth.substring(4, 6));
+          const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+          // Get last day of the month
+          const lastDay = new Date(year, month, 0).getDate();
+          const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+          apiParams.set('start_date', startDate);
+          apiParams.set('end_date', endDate);
         }
         const queryString = apiParams.toString();
 
@@ -402,15 +440,17 @@ createApp({
           allData.push(...Object.values(wikiData));
         }
 
-        console.log("All merged data:", allData);
         state.tableData = allData;
         state.lastUpdated = new Date();
 
-        console.log("State tableData set to:", state.tableData);
+
+        // Update available months based on loaded data (only if not already loaded from API)
+        if (state.availableMonths.length === 0) {
+          updateAvailableMonthsFromData(allData);
+        }
 
         // Update chart after a small delay to avoid reactivity issues
         setTimeout(async () => {
-          console.log("Timeout reached, calling chart update");
           if (state.viewMode === 'separate') {
             // Wait for Vue to update the DOM with new canvas elements
             await nextTick();
@@ -424,7 +464,6 @@ createApp({
 
       } catch (error) {
         state.error = error.message;
-        console.error('Error loading data:', error);
       } finally {
         state.loading = false;
       }
@@ -462,17 +501,9 @@ createApp({
         params.set('view', state.viewMode);
       }
 
-      // Handle yearmonth parameter
-      if (state.startDate && state.endDate) {
-        const startDate = new Date(state.startDate);
-        const endDate = new Date(state.endDate);
-        // Check if it's the same month
-        if (startDate.getFullYear() === endDate.getFullYear() &&
-            startDate.getMonth() === endDate.getMonth() &&
-            startDate.getDate() === 1 && endDate.getDate() >= 28) {
-          const yearmonth = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, '0')}`;
-          params.set('yearmonth', yearmonth);
-        }
+      // Handle month selection
+      if (state.selectedMonth) {
+        params.set('yearmonth', state.selectedMonth);
       }
 
       const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
@@ -519,13 +550,7 @@ createApp({
       // Handle 'yearmonth' parameter (single month view)
       const yearmonthParam = params.get('yearmonth');
       if (yearmonthParam) {
-        // Set view mode to table only for single month
-        state.viewMode = 'table';
-        // Parse yearmonth (e.g., "202012" -> "2020-12")
-        const year = yearmonthParam.substring(0, 4);
-        const month = yearmonthParam.substring(4, 6);
-        state.startDate = `${year}-${month}-01`;
-        state.endDate = `${year}-${month}-31`;
+        state.selectedMonth = yearmonthParam;
       }
 
       // Handle 'view' parameter
@@ -540,6 +565,14 @@ createApp({
       updateUrl();
       loadData();
     }, { deep: true });
+
+    watch(() => state.selectedMonth, () => {
+      updateUrl();
+      // Add a small delay to ensure DOM is ready
+      setTimeout(() => {
+        loadData();
+      }, 100);
+    });
 
     watch(() => state.series, () => {
       updateUrl();
@@ -567,9 +600,40 @@ createApp({
       }
     });
 
+    // Extract unique months from loaded data
+    function updateAvailableMonthsFromData(data) {
+      const uniqueDates = [...new Set(data.map(d => d.date))];
+      const months = uniqueDates
+        .map(date => {
+          const dateObj = new Date(date);
+          const monthValue = dateObj.getFullYear().toString() +
+                           String(dateObj.getMonth() + 1).padStart(2, '0');
+          return { value: monthValue, label: monthValue };
+        })
+        .sort((a, b) => b.value.localeCompare(a.value)); // Sort newest first
+
+      // Only update if we have new months
+      if (months.length > 0) {
+        state.availableMonths = months;
+      }
+    }
+
+    // Load available months from database
+    async function loadAvailableMonths() {
+      try {
+        const response = await fetch('/api/statistics/available-months/');
+        const data = await response.json();
+        state.availableMonths = data.months || [];
+      } catch (error) {
+        console.error('Error loading available months:', error);
+        // If API fails, leave empty array - months will be populated when data loads
+        state.availableMonths = [];
+      }
+    }
+
     // Lifecycle
-    onMounted(() => {
-      initializeChart();
+    onMounted(async () => {
+      await loadAvailableMonths();
       loadUrlParams();
       loadData();
 
@@ -584,7 +648,10 @@ createApp({
     return {
       state,
       availableWikis,
+      availableMonths: computed(() => state.availableMonths),
       enabledSeries,
+      isSingleMonthView,
+      singleMonthData,
       filteredTableData,
       loadData,
       refreshData,
