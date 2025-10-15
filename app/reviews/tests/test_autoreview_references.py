@@ -25,11 +25,9 @@ class ReferenceOnlyAutoreviewTests(TestCase):
         )
         WikiConfiguration.objects.create(wiki=self.wiki)
 
-    @mock.patch('reviews.autoreview._check_domain_exists_on_wiki')
-    @mock.patch('reviews.models.pywikibot.Site')
-    def test_adding_reference_without_url_should_approve(
-        self, mock_site, mock_check_domain
-    ):
+    @mock.patch("reviews.autoreview._check_domain_exists_on_wiki")
+    @mock.patch("reviews.models.pywikibot.Site")
+    def test_adding_reference_without_url_should_approve(self, mock_site, mock_check_domain):
         """Adding reference without URL should auto-approve."""
         page = PendingPage.objects.create(
             wiki=self.wiki,
@@ -78,8 +76,8 @@ class ReferenceOnlyAutoreviewTests(TestCase):
         self.assertEqual(result["decision"]["status"], "approve")
         self.assertIn("reference", result["decision"]["reason"].lower())
 
-    @mock.patch('reviews.autoreview._check_domain_exists_on_wiki')
-    @mock.patch('reviews.models.pywikibot.Site')
+    @mock.patch("reviews.autoreview._check_domain_exists_on_wiki")
+    @mock.patch("reviews.models.pywikibot.Site")
     def test_adding_reference_with_verified_domain_should_approve(
         self, mock_site, mock_check_domain
     ):
@@ -130,10 +128,10 @@ class ReferenceOnlyAutoreviewTests(TestCase):
         result = response.json()["results"][0]
 
         self.assertEqual(result["decision"]["status"], "approve")
-        mock_check_domain.assert_called_once_with('example.com', self.wiki)
+        mock_check_domain.assert_called_once_with("example.com", self.wiki)
 
-    @mock.patch('reviews.autoreview._check_domain_exists_on_wiki')
-    @mock.patch('reviews.models.pywikibot.Site')
+    @mock.patch("reviews.autoreview._check_domain_exists_on_wiki")
+    @mock.patch("reviews.models.pywikibot.Site")
     def test_adding_reference_with_unverified_domain_should_require_review(
         self, mock_site, mock_check_domain
     ):
@@ -186,7 +184,7 @@ class ReferenceOnlyAutoreviewTests(TestCase):
         self.assertEqual(result["decision"]["status"], "manual")
         self.assertIn("unverified", result["decision"]["reason"].lower())
 
-    @mock.patch('reviews.models.pywikibot.Site')
+    @mock.patch("reviews.models.pywikibot.Site")
     def test_removing_reference_should_require_review(self, mock_site):
         """Removing reference should require manual review."""
         page = PendingPage.objects.create(
@@ -235,7 +233,7 @@ class ReferenceOnlyAutoreviewTests(TestCase):
         # Should require manual review
         self.assertEqual(result["decision"]["status"], "manual")
 
-    @mock.patch('reviews.models.pywikibot.Site')
+    @mock.patch("reviews.models.pywikibot.Site")
     def test_mixed_content_and_reference_changes_should_not_approve(self, mock_site):
         """Mixed content and reference changes should not be approved."""
         page = PendingPage.objects.create(
@@ -284,8 +282,8 @@ class ReferenceOnlyAutoreviewTests(TestCase):
         # Should require manual review
         self.assertEqual(result["decision"]["status"], "manual")
 
-    @mock.patch('reviews.autoreview._check_domain_exists_on_wiki')
-    @mock.patch('reviews.models.pywikibot.Site')
+    @mock.patch("reviews.autoreview._check_domain_exists_on_wiki")
+    @mock.patch("reviews.models.pywikibot.Site")
     def test_modifying_reference_with_verified_domain_should_approve(
         self, mock_site, mock_check_domain
     ):
