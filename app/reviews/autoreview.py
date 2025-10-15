@@ -980,7 +980,6 @@ def has_living_category_local(page: PendingPage) -> bool:
     """Check if page has living person category in local wiki."""
     living_cat = "Living people"  # This should be localized based on wiki
 
-    # Check current version categories (stored in local DB)
     if page.categories and any(cat.lower() == living_cat.lower() for cat in page.categories):
         return True
 
@@ -1004,11 +1003,9 @@ def is_probably_living(item: pywikibot.ItemPage) -> bool:
     """Check if person is probably living based on birth/death dates."""
     now_year = datetime.now().year
 
-    # If has death date, not living
     if 'P570' in item.claims:
         return False
 
-    # Check birth date
     if 'P569' in item.claims:
         birth_claim = item.claims['P569'][0]
         birth_target = birth_claim.getTarget()
