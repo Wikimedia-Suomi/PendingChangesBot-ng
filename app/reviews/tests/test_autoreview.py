@@ -1,9 +1,24 @@
+from __future__ import annotations
+
 import unittest
 import logging
+from datetime import datetime
 from unittest.mock import patch, MagicMock
-from reviews.autoreview import _evaluate_revision, _get_revertrisk_score
+
+from django.test import TestCase
+
+from reviews import autoreview
+from reviews.autoreview import (
+    _evaluate_revision,
+    _get_revertrisk_score,
+    _find_invalid_isbns,
+    _validate_isbn_10,
+    _validate_isbn_13,
+)
+from reviews.services import was_user_blocked_after
 
 logging.disable(logging.CRITICAL)
+
 
 class DummyRevision:
     def __init__(self, revid=12345, user_name="TestUser", superset_data=None):
@@ -78,24 +93,6 @@ class TestRevertrisk(unittest.TestCase):
         mock_fetch.side_effect = Exception("Network error")
         score = _get_revertrisk_score(DummyRevision())
         self.assertIsNone(score)
-
-
-if __name__ == "__main__":
-    unittest.main()
-from __future__ import annotations
-
-from datetime import datetime
-from unittest.mock import MagicMock, patch
-
-from django.test import TestCase
-
-from reviews import autoreview
-from reviews.autoreview import (
-    _find_invalid_isbns,
-    _validate_isbn_10,
-    _validate_isbn_13,
-)
-from reviews.services import was_user_blocked_after
 
 
 class ISBNValidationTests(TestCase):
