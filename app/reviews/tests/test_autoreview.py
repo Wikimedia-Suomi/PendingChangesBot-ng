@@ -618,3 +618,77 @@ class SupersededAdditionsTests(TestCase):
             result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
             # Should return False because this IS the latest revision
             self.assertFalse(result)
+
+
+class LivingPersonTests(TestCase):
+    """Test detection of articles about living people."""
+
+    def setUp(self):
+        """Set up test data."""
+        from reviews.services import WikiClient
+
+        self.mock_wiki = MagicMock()
+        self.mock_wiki.code = "en"
+        self.mock_wiki.family = "wikipedia"
+        self.client = WikiClient(self.mock_wiki)
+
+        # Create a mock page
+        self.page = MagicMock()
+        self.page.wiki = self.mock_wiki
+        self.page.title = "Test Article"
+
+    @patch('reviews.autoreview.pywikibot.Site')
+    @patch('reviews.autoreview.pywikibot.Page')
+    @patch('reviews.autoreview.pywikibot.ItemPage')
+    def test_living_person_with_category(self, mock_item, mock_page, mock_site):
+        """Test that article with living person category is detected."""
+        self.page.categories = ["Living people"]
+
+        result = autoreview._is_about_living_person(self.page, self.client)
+        self.assertTrue(result)
+
+    @patch('reviews.autoreview.pywikibot.Site')
+    @patch('reviews.autoreview.pywikibot.Page')
+    @patch('reviews.autoreview.pywikibot.ItemPage')
+    def test_not_living_person(self, mock_item, mock_page, mock_site):
+        """Test that article without living indicators is not detected."""
+        self.page.categories = ["1900 deaths"]
+
+        mock_item_instance = MagicMock()
+        mock_item_instance.claims = {
+            'P31': [MagicMock(getTarget=lambda: MagicMock(id='Q5'))],  # is human
+            'P570': [MagicMock()]  # has death date
+        }
+        mock_item.fromPage.return_value = mock_item_instance
+
+        result = autoreview._is_about_living_person(self.page, self.client)
+        self.assertFalse(result)
+
+    @patch('reviews.autoreview.pywikibot.Site')
+    @patch('reviews.autoreview.pywikibot.Page')
+    @patch('reviews.autoreview.pywikibot.ItemPage')
+    def test_living_person_from_wikidata(self, mock_item, mock_page, mock_site):
+        """Test detection of living person from Wikidata properties."""
+        self.page.categories = []
+
+        mock_item_instance = MagicMock()
+        mock_item_instance.claims = {
+            'P31': [MagicMock(getTarget=lambda: MagicMock(id='Q5'))],  # is human
+            'P569': [MagicMock(getTarget=lambda: MagicMock(year=1980))]  # birth date
+        }
+        mock_item.fromPage.return_value = mock_item_instance
+
+        result = autoreview._is_about_living_person(self.page, self.client)
+        self.assertTrue(result)
+
+
+    def test_error_handling(self):
+        """Test graceful handling of API errors."""
+        self.page.categories = []
+
+        # Mock an API error
+        self.client.get_living_categories = MagicMock(side_effect=Exception("API Error"))
+
+        result = autoreview._is_about_living_person(self.page, self.client)
+        # Should default to False on error
+        self.assertFalse(result)

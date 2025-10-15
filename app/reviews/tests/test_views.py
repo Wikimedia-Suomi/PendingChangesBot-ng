@@ -473,9 +473,9 @@ class ViewTests(TestCase):
         response = self.client.post(url)
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
-        self.assertEqual(result["decision"]["status"], "manual")
+        self.assertEqual(result["decision"]["status"], "blocked") # if article is about a living person 
         self.assertEqual(len(result["tests"]), 8)
-        self.assertEqual(result["tests"][-1]["status"], "ok")
+        self.assertEqual(result["tests"][-1]["status"], "fail") # if about living person
 
     @mock.patch("reviews.services.pywikibot.Site")
     def test_api_autoreview_orders_revisions_from_oldest_to_newest(self, mock_site):
