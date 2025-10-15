@@ -19,5 +19,16 @@ urlpatterns = [
     ),
     path("api/wikis/<int:pk>/clear/", views.api_clear_cache, name="api_clear_cache"),
     path("api/wikis/<int:pk>/configuration/", views.api_configuration, name="api_configuration"),
+    path("api/wikis/<int:pk>/statistics/", views.api_statistics, name="api_statistics"),
+    path(
+        "api/wikis/<int:pk>/statistics/charts/",
+        views.api_statistics_charts,
+        name="api_statistics_charts",
+    ),
+    path(
+        "api/wikis/<int:pk>/statistics/refresh/",
+        views.api_statistics_refresh,
+        name="api_statistics_refresh",
+    ),
     path("api/wikis/fetch-diff/", views.fetch_diff, name="fetch_diff"),
 ]

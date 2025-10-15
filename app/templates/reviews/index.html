@@ -11,6 +11,7 @@
       rel="stylesheet"
       href="https://fi.wikipedia.org/w/load.php?modules=mediawiki.diff.styles&only=styles"
     />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   </head>
   <body>
     {% verbatim %}
@@ -92,6 +93,265 @@
           </div>
         </div>
 
+        <div class="box mb-5">
+          <div class="level is-mobile">
+            <div class="level-left">
+              <div class="level-item">
+                <h2 class="title is-4 mb-0">Review Statistics</h2>
+              </div>
+            </div>
+            <div class="level-right">
+              <div class="level-item">
+                <button class="button is-small is-text" @click="toggleStatistics">
+                  {{ state.statisticsOpen ? 'Hide' : 'Show' }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div v-show="state.statisticsOpen">
+            <div class="mb-4" v-if="state.statistics.metadata">
+              <p class="is-size-7 has-text-grey">
+                <span v-if="state.statistics.metadata.last_refreshed_at">
+                  Last refreshed: {{ formatDateTime(state.statistics.metadata.last_refreshed_at) }}
+                </span>
+                <span v-else>No statistics cached</span>
+                <span v-if="state.statistics.metadata.total_records > 0">
+                  | Total records: {{ state.statistics.metadata.total_records }}
+                </span>
+              </p>
+            </div>
+            <div class="buttons">
+              <button
+                class="button is-primary"
+                @click="refreshStatistics"
+                :class="{ 'is-loading': state.statistics.loading }"
+                :disabled="state.statistics.loading"
+              >
+                Refresh statistics
+              </button>
+              <button
+                class="button is-info is-light"
+                @click="loadStatistics"
+                :disabled="state.statistics.loading"
+              >
+                Reload from cache
+              </button>
+            </div>
+
+            <!-- Filter Controls -->
+            <div class="box mb-4">
+              <h4 class="title is-6">Filters</h4>
+              <div class="field">
+                <label class="label is-small">Time Period</label>
+                <div class="control">
+                  <div class="buttons has-addons">
+                    <button
+                      class="button is-small"
+                      :class="{ 'is-primary': state.statistics.timeFilter === 'all' }"
+                      @click="setTimeFilter('all')"
+                    >
+                      All Time
+                    </button>
+                    <button
+                      class="button is-small"
+                      :class="{ 'is-primary': state.statistics.timeFilter === 'week' }"
+                      @click="setTimeFilter('week')"
+                    >
+                      Last Week
+                    </button>
+                    <button
+                      class="button is-small"
+                      :class="{ 'is-primary': state.statistics.timeFilter === 'day' }"
+                      @click="setTimeFilter('day')"
+                    >
+                      Last Day
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="field">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.statistics.excludeAutoReviewers" @change="loadStatistics">
+                  Show only users without automatic review rights
+                  <span class="tag is-info is-light ml-2">Priority use case</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="notification is-danger" v-if="state.statistics.error">
+              {{ state.statistics.error }}
+            </div>
+            <div class="notification is-info" v-if="state.statistics.loading">
+              Loading statistics…
+            </div>
+
+            <!-- Overall Statistics -->
+            <div class="box mb-4" v-if="state.statistics.chartData && state.statistics.chartData.overall_stats">
+              <h4 class="title is-6">Overall Statistics</h4>
+              <div class="columns is-multiline">
+                <div class="column is-3">
+                  <div class="has-text-centered">
+                    <p class="heading">Total Reviews</p>
+                    <p class="title is-4">{{ state.statistics.chartData.overall_stats.total_reviews }}</p>
+                  </div>
+                </div>
+                <div class="column is-3">
+                  <div class="has-text-centered">
+                    <p class="heading">Unique Reviewers</p>
+                    <p class="title is-4">{{ state.statistics.chartData.overall_stats.unique_reviewers }}</p>
+                  </div>
+                </div>
+                <div class="column is-3">
+                  <div class="has-text-centered">
+                    <p class="heading">Avg Delay (days)</p>
+                    <p class="title is-4">{{ state.statistics.chartData.overall_stats.avg_delay.toFixed(1) }}</p>
+                  </div>
+                </div>
+                <div class="column is-3">
+                  <div class="has-text-centered">
+                    <p class="heading">Median Delay (days)</p>
+                    <p class="title is-4">{{ state.statistics.chartData.overall_stats.p50.toFixed(1) }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="box mb-4" v-if="state.statistics.chartData">
+              <h4 class="title is-6">Review Volume and Delay Analytics</h4>
+              <div class="columns is-multiline">
+                <div class="column is-6">
+                  <canvas id="reviewersOverTimeChart"></canvas>
+                </div>
+                <div class="column is-6">
+                  <canvas id="pendingReviewsChart"></canvas>
+                </div>
+                <div class="column is-6">
+                  <canvas id="averageDelayChart"></canvas>
+                </div>
+                <div class="column is-6">
+                  <canvas id="delayPercentilesChart"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="state.statistics.topReviewers.length || state.statistics.topReviewedUsers.length">
+              <div class="columns">
+                <div class="column">
+                  <h3 class="title is-5">Top Reviewers</h3>
+                  <div class="table-container">
+                    <table class="table is-striped is-fullwidth">
+                      <thead>
+                        <tr>
+                          <th>Reviewer</th>
+                          <th>Review Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="reviewer in state.statistics.topReviewers" :key="reviewer.reviewer_name">
+                          <td>
+                            <a
+                              :href="buildUserPageUrl(reviewer.reviewer_name)"
+                              class="has-text-link"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {{ reviewer.reviewer_name }}
+                            </a>
+                          </td>
+                          <td>{{ reviewer.review_count }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="column">
+                  <h3 class="title is-5">Top Reviewed Users</h3>
+                  <div class="table-container">
+                    <table class="table is-striped is-fullwidth">
+                      <thead>
+                        <tr>
+                          <th>User</th>
+                          <th>Times Reviewed</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="user in state.statistics.topReviewedUsers" :key="user.reviewed_user_name">
+                          <td>
+                            <a
+                              :href="buildUserPageUrl(user.reviewed_user_name)"
+                              class="has-text-link"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {{ user.reviewed_user_name }}
+                            </a>
+                          </td>
+                          <td>{{ user.review_count }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <h3 class="title is-5 mt-5">Recent Reviews</h3>
+              <div class="table-container">
+                <table class="table is-striped is-fullwidth">
+                  <thead>
+                    <tr>
+                      <th>Reviewer</th>
+                      <th>Reviewed User</th>
+                      <th>Page</th>
+                      <th>Review Date</th>
+                      <th>Delay (days)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="record in state.statistics.records" :key="record.reviewed_revision_id">
+                      <td>
+                        <a
+                          :href="buildUserPageUrl(record.reviewer_name)"
+                          class="has-text-link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {{ record.reviewer_name }}
+                        </a>
+                      </td>
+                      <td>
+                        <a
+                          :href="buildUserPageUrl(record.reviewed_user_name)"
+                          class="has-text-link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {{ record.reviewed_user_name }}
+                        </a>
+                      </td>
+                      <td>
+                        <a
+                          :href="buildPageUrl(record.page_title)"
+                          class="has-text-link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {{ formatTitle(record.page_title) }}
+                        </a>
+                      </td>
+                      <td>{{ formatDateTime(record.reviewed_timestamp) }}</td>
+                      <td>{{ record.review_delay_days }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="notification is-warning" v-else-if="!state.statistics.loading">
+              No statistics available. Click "Refresh statistics" to fetch data.
+            </div>
+          </div>
+        </div>
+
       <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
       <div class="notification is-info" v-if="state.loading">Loading data…</div>
 
@@ -138,9 +398,9 @@
               <div class="show-diff-checkbox">
                 <input
                   class="large-checkbox"
-                  type="checkbox" 
-                  id="showdiff" 
-                  name="showdiff" 
+                  type="checkbox"
+                  id="showdiff"
+                  name="showdiff"
                   v-model="state.diffs.showDiffs"
                   @change="saveDiffsToLocalStorage"
                 >
@@ -173,9 +433,9 @@
                   <div class="show-diff-checkbox">
                     <input
                       class="large-checkbox"
-                      type="checkbox" 
-                      id="showPagediff" 
-                      name="showPagediff" 
+                      type="checkbox"
+                      id="showPagediff"
+                      name="showPagediff"
                       v-model="state.diffs.showDiffsByPage[page.pageid]"
                     >
                     <label for="showPagediff">Show Diffs</label>
