@@ -152,15 +152,12 @@
 
       <!-- FRS Key Mode: Single Chart Display -->
       <section class="section" v-show="state.filterMode === 'frs_key'">
-        <div class="box">
-          <canvas id="singleFrsKeyChart" style="width: 80%; height: 400px; margin: 0 auto;"></canvas>
-        </div>
+        <canvas id="singleFrsKeyChart" style="width: 80%; height: 400px; margin: 0 auto;"></canvas>
       </section>
 
       <!-- Wiki Mode Charts Display -->
       <section class="section" v-show="state.filterMode === 'wiki'">
-        <div v-for="(series, key) in enabledSeries" :key="key" class="box mb-4">
-          <h3 class="title is-5">{{ series.label }}</h3>
+        <div v-for="(series, key) in enabledSeries" :key="key" class="mb-4">
           <div style="width: 80%; height: 400px; margin: 0 auto;">
             <canvas :id="`chart-${series.key}`" style="width: 100%; height: 100%;"></canvas>
           </div>
