@@ -65,8 +65,9 @@ class Command(BaseCommand):
         self.stdout.write(f"Loading statistics for {wiki.code}...")
 
         try:
-            site = pywikibot.Site(code=wiki.code, fam=wiki.family)
-            superset = SupersetQuery(site=site)
+            # Superset queries run on meta.wikimedia.org, not individual wikis
+            meta_site = pywikibot.Site("meta", "meta")
+            superset = SupersetQuery(site=meta_site)
 
             # Load FlaggedRevs statistics
             self._load_flaggedrevs_statistics(wiki, superset, full_refresh)

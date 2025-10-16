@@ -12,12 +12,17 @@ createApp({
       tableData: [],
       loading: false,
       error: null,
+      lastUpdated: null, // Timestamp of last data refresh
 
       // Chart
       chart: null,
+      singleChart: null, // For FRS Key mode single chart
 
       // Filters
       selectedWikis: [],
+      filterMode: 'wiki', // 'wiki', 'frs_key', 'yearmonth'
+      selectedFrsKey: 'pendingLag_average', // Default FRS key selection
+      selectedWikiForTable: 'fi', // Default wiki for table display
       series: {
         pendingLag_average: true,
         totalPages_ns0: true,
@@ -70,7 +75,8 @@ createApp({
         { key: "reviews_per_reviewer", label: "Reviews Per Reviewer" },
       ];
 
-      return seriesConfig.filter(series => state.series[series.key]);
+      // Always show all series - filtering is now done by wiki selection
+      return seriesConfig;
     });
 
     const isSingleMonthView = computed(() => {
@@ -95,6 +101,119 @@ createApp({
 
       return Object.values(wikiData).sort((a, b) => a.wiki.localeCompare(b.wiki));
     });
+
+    const yearMonthTableData = computed(() => {
+      if (state.filterMode !== 'yearmonth') return [];
+
+      // Group data by wiki for the selected month
+      const wikiData = {};
+      state.tableData.forEach(entry => {
+        if (!wikiData[entry.wiki]) {
+          wikiData[entry.wiki] = {
+            wiki: entry.wiki,
+            pendingLag_average: entry.pendingLag_average || 0,
+            totalPages_ns0: entry.totalPages_ns0 || 0,
+            reviewedPages_ns0: entry.reviewedPages_ns0 || 0,
+            syncedPages_ns0: entry.syncedPages_ns0 || 0,
+            pendingChanges: entry.pendingChanges || 0,
+            number_of_reviewers: entry.number_of_reviewers || 0,
+            number_of_reviews: entry.number_of_reviews || 0,
+            reviews_per_reviewer: entry.reviews_per_reviewer || 0,
+          };
+        }
+      });
+
+      return Object.values(wikiData).sort((a, b) => a.wiki.localeCompare(b.wiki));
+    });
+
+    const yearMonthTableTitle = computed(() => {
+      if (state.filterMode !== 'yearmonth' || !state.tableData.length) return 'YearMonth Data';
+
+      // Get the date from the first entry and format as YYYYMM
+      const firstDate = state.tableData[0]?.date;
+      if (firstDate) {
+        return firstDate.replace('-', '').substring(0, 6); // Convert 2023-10-01 to 202310
+      }
+      return 'YearMonth Data';
+    });
+
+    // FRS Key table computed properties
+    const selectedFrsKeyLabel = computed(() => {
+      const seriesConfig = {
+        pendingLag_average: "Pending Lag (Average)",
+        totalPages_ns0: "Total Pages (NS:0)",
+        reviewedPages_ns0: "Reviewed Pages (NS:0)",
+        syncedPages_ns0: "Synced Pages (NS:0)",
+        pendingChanges: "Pending Changes",
+        number_of_reviewers: "Number of Reviewers",
+        number_of_reviews: "Number of Reviews",
+        reviews_per_reviewer: "Reviews Per Reviewer",
+      };
+      return seriesConfig[state.selectedFrsKey] || state.selectedFrsKey;
+    });
+
+    const frsKeyTableDates = computed(() => {
+      if (state.filterMode !== 'frs_key' || !state.tableData.length) return [];
+
+      // Get unique dates and format them as YYYYMM
+      const dates = [...new Set(state.tableData.map(d => d.date))].sort();
+      return dates.map(date => {
+        // Convert 2023-10-01 to 202310
+        return date.replace('-', '').substring(0, 6);
+      });
+    });
+
+    // Wiki table data for the selected wiki only
+    const wikiTableData = computed(() => {
+      if (state.filterMode !== 'wiki' || !state.tableData.length) return [];
+
+      // Filter data for the selected wiki only
+      return state.tableData
+        .filter(entry => entry.wiki === state.selectedWikiForTable)
+        .sort((a, b) => a.date.localeCompare(b.date));
+    });
+
+    // Formatted last updated timestamp
+    const lastUpdatedFormatted = computed(() => {
+      if (!state.lastUpdated) return 'Never';
+
+      const date = new Date(state.lastUpdated);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+      if (diffMinutes < 1) return 'Just now';
+      if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+      if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+      if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+
+      return date.toLocaleString();
+    });
+
+    // Method to get FRS Key value for a specific wiki and date
+    function getFrsKeyValue(wiki, date) {
+      // Convert YYYYMM back to YYYY-MM-DD format for lookup
+      const year = date.substring(0, 4);
+      const month = date.substring(4, 6);
+      const lookupDate = `${year}-${month}-01`;
+
+      const entry = state.tableData.find(d => d.wiki === wiki && d.date === lookupDate);
+      if (!entry) return 'N/A';
+
+      const value = entry[state.selectedFrsKey];
+      if (value === null || value === undefined) return 'N/A';
+
+      // Format based on data type
+      if (state.selectedFrsKey === 'pendingLag_average' || state.selectedFrsKey === 'reviews_per_reviewer') {
+        return value.toFixed(1);
+      } else if (state.selectedFrsKey.includes('Pages') || state.selectedFrsKey === 'pendingChanges') {
+        return value.toLocaleString();
+      } else {
+        return value.toString();
+      }
+    }
 
     // Chart management
     function initializeChart() {
@@ -146,11 +265,23 @@ createApp({
     }
 
     function updateChart() {
+      console.log('updateChart called, filterMode:', state.filterMode);
+      console.log('tableData length:', state.tableData.length);
+
       if (state.tableData.length === 0) {
+        console.log('No table data, returning');
         return;
       }
 
-      // Destroy existing chart to avoid reactivity issues
+      // Destroy existing charts to avoid reactivity issues
+      if (state.charts) {
+        Object.values(state.charts).forEach(chart => {
+          if (chart) {
+            chart.destroy();
+          }
+        });
+        state.charts = {};
+      }
       if (state.chart) {
         state.chart.destroy();
         state.chart = null;
@@ -181,28 +312,107 @@ createApp({
         { key: "reviews_per_reviewer", label: "Reviews Per Reviewer" },
       ];
 
-      selectedWikis.forEach(wiki => {
-        seriesConfig.forEach(series => {
-          if (!state.series[series.key]) return;
+      // Create separate charts for each data series when in Wiki mode
+      if (state.filterMode === 'wiki') {
+        console.log('Creating separate charts for Wiki mode');
+        seriesConfig.forEach((series, seriesIndex) => {
+          const canvasId = `chart-${series.key}`;
+          const ctx = document.getElementById(canvasId);
+          console.log(`Looking for canvas: ${canvasId}, found:`, ctx);
+          if (!ctx) {
+            console.log(`Canvas ${canvasId} not found, skipping`);
+            return;
+          }
 
-          const seriesData = labels.map(date => {
-            const entry = data.find(d => d.wiki === wiki && d.date === date);
-            return entry ? (entry[series.key] || 0) : null;
+          const datasets = [];
+          let colorIndex = 0;
+
+          selectedWikis.forEach(wiki => {
+            const seriesData = labels.map(date => {
+              const entry = data.find(d => d.wiki === wiki && d.date === date);
+              return entry ? (entry[series.key] || null) : null;
+            });
+
+            // Debug Pending Lag data specifically
+            if (series.key === 'pendingLag_average') {
+              console.log(`${wiki}wiki_p Pending Lag data:`, seriesData);
+              console.log(`${wiki}wiki_p non-null values:`, seriesData.filter(val => val !== null && val !== undefined));
+            }
+
+            if (seriesData.some(val => val !== null && val !== undefined)) {
+              datasets.push({
+                label: `${wiki}wiki_p`,
+                data: seriesData,
+                borderColor: colors[colorIndex % colors.length],
+                backgroundColor: colors[colorIndex % colors.length] + "20",
+                tension: 0.1,
+                fill: false,
+              });
+              colorIndex++;
+            }
           });
 
-          if (seriesData.some(val => val !== null && val !== undefined)) {
-            datasets.push({
-              label: `${wiki} - ${series.label}`,
-              data: seriesData,
-              borderColor: colors[colorIndex % colors.length],
-              backgroundColor: colors[colorIndex % colors.length] + "20",
-              tension: 0.1,
-              fill: false,
-            });
-            colorIndex++;
-          }
+          if (!state.charts) state.charts = {};
+          console.log(`Creating chart for ${series.label} with ${datasets.length} datasets`);
+          state.charts[series.key] = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: datasets,
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                title: {
+                  display: true,
+                  text: series.label,
+                },
+                legend: {
+                  display: true,
+                  position: 'top',
+                },
+              },
+              scales: {
+                x: {
+                  type: 'category',
+                  grid: {
+                    display: true,
+                    color: 'rgba(0, 0, 0, 0.05)',
+                  },
+                  ticks: {
+                    maxRotation: 0,
+                    minRotation: 0,
+                    autoSkip: true,
+                    callback: function(value, index, ticks) {
+                      // Extract year from the date string
+                      const dateStr = this.getLabelForValue(value);
+                      if (dateStr) {
+                        const year = dateStr.split('-')[0];
+                        // Only show year for the first occurrence of each year
+                        if (index === 0) {
+                          return year;
+                        }
+                        // Check if this year is different from the previous tick's year
+                        const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
+                        const prevYear = prevDateStr ? prevDateStr.split('-')[0] : '';
+                        if (year !== prevYear) {
+                          return year;
+                        }
+                        return '';
+                      }
+                      return '';
+                    },
+                  },
+                },
+                y: {
+                  beginAtZero: true,
+                },
+              },
+            },
+          });
         });
-      });
+      }
 
       // Only update main chart if we're in chart or both mode
       if (state.viewMode !== 'chart' && state.viewMode !== 'both') {
@@ -362,6 +572,215 @@ createApp({
       });
     }
 
+    // Update the single FRS Key chart based on selected metric
+    function updateFrsKeyChart() {
+      console.log('updateFrsKeyChart called, selectedFrsKey:', state.selectedFrsKey);
+
+      if (state.tableData.length === 0) {
+        console.log('No table data, returning');
+        return;
+      }
+
+      // Destroy existing single chart if it exists
+      if (state.singleChart) {
+        state.singleChart.destroy();
+        state.singleChart = null;
+      }
+
+      const ctx = document.getElementById('singleFrsKeyChart');
+      if (!ctx) {
+        console.log('singleFrsKeyChart canvas not found');
+        return;
+      }
+
+      // Get the label for the selected FRS key
+      const seriesConfig = {
+        pendingLag_average: "Pending Lag (Average)",
+        totalPages_ns0: "Total Pages (NS:0)",
+        reviewedPages_ns0: "Reviewed Pages (NS:0)",
+        syncedPages_ns0: "Synced Pages (NS:0)",
+        pendingChanges: "Pending Changes",
+        number_of_reviewers: "Number of Reviewers",
+        number_of_reviews: "Number of Reviews",
+        reviews_per_reviewer: "Reviews Per Reviewer",
+      };
+
+      const selectedLabel = seriesConfig[state.selectedFrsKey] || state.selectedFrsKey;
+
+      // Prepare data
+      const data = JSON.parse(JSON.stringify(state.tableData));
+      const selectedWikis = [...state.selectedWikis];
+      const labels = [...new Set(data.map(d => d.date))].sort();
+      const colors = ["#3273dc", "#48c774", "#ffdd57", "#f14668", "#00d1b2", "#ff3860", "#209cee", "#ff6348"];
+
+      const datasets = [];
+      let colorIndex = 0;
+
+      selectedWikis.forEach(wiki => {
+        const seriesData = labels.map(date => {
+          const entry = data.find(d => d.wiki === wiki && d.date === date);
+          return entry ? (entry[state.selectedFrsKey] || null) : null;
+        });
+
+        // Debug: Log the data for each wiki
+        console.log(`${wiki}wiki_p ${state.selectedFrsKey} data:`, seriesData);
+        console.log(`${wiki}wiki_p non-null values:`, seriesData.filter(val => val !== null && val !== undefined));
+
+        if (seriesData.some(val => val !== null && val !== undefined)) {
+          datasets.push({
+            label: `${wiki}wiki_p`,
+            data: seriesData,
+            borderColor: colors[colorIndex % colors.length],
+            backgroundColor: colors[colorIndex % colors.length] + "20",
+            tension: 0.4,
+            borderWidth: 3,
+            pointRadius: 4,
+            fill: false,
+          });
+          colorIndex++;
+        }
+      });
+
+      console.log(`Creating FRS Key chart for ${selectedLabel} with ${datasets.length} datasets`);
+
+      // If no datasets available, show a message instead of creating an empty chart
+      if (datasets.length === 0) {
+        console.log('No datasets available - showing no data message');
+        // Clear any existing chart
+        if (state.singleChart) {
+          state.singleChart.destroy();
+          state.singleChart = null;
+        }
+
+        // Show a message in the canvas area
+        ctx.style.display = 'none';
+
+        // Create a message element if it doesn't exist
+        let messageEl = ctx.parentElement.querySelector('.no-data-message');
+        if (!messageEl) {
+          messageEl = document.createElement('div');
+          messageEl.className = 'no-data-message';
+          messageEl.style.cssText = `
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 300px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            color: #6c757d;
+            font-size: 16px;
+            text-align: center;
+            padding: 20px;
+          `;
+          messageEl.innerHTML = `
+            <div>
+              <strong>No data available</strong><br>
+              The selected wikis (${selectedWikis.map(w => `${w}wiki_p`).join(', ')})
+              have no data for "${selectedLabel}".
+            </div>
+          `;
+          ctx.parentElement.appendChild(messageEl);
+        }
+        messageEl.style.display = 'flex';
+        return;
+      }
+
+      // Hide any existing no-data message
+      const messageEl = ctx.parentElement.querySelector('.no-data-message');
+      if (messageEl) {
+        messageEl.style.display = 'none';
+      }
+      ctx.style.display = 'block';
+
+      // Create the chart
+      state.singleChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: datasets,
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: {
+            duration: 750,
+          },
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: selectedLabel,
+              font: {
+                size: 16,
+                weight: 'bold',
+              },
+            },
+            legend: {
+              display: true,
+              position: 'right',
+              align: 'center',
+              labels: {
+                boxWidth: 12,
+                padding: 10,
+                font: {
+                  size: 11,
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              type: 'category',
+              grid: {
+                display: true,
+                color: 'rgba(0, 0, 0, 0.05)',
+              },
+              ticks: {
+                maxRotation: 0,
+                minRotation: 0,
+                autoSkip: true,
+                callback: function(value, index, ticks) {
+                  // Extract year from the date string
+                  const dateStr = this.getLabelForValue(value);
+                  if (dateStr) {
+                    const year = dateStr.split('-')[0];
+                    // Only show year for the first occurrence of each year
+                    if (index === 0) {
+                      return year;
+                    }
+                    // Check if this year is different from the previous tick's year
+                    const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
+                    const prevYear = prevDateStr ? prevDateStr.split('-')[0] : '';
+                    if (year !== prevYear) {
+                      return year;
+                    }
+                    return '';
+                  }
+                  return '';
+                },
+              },
+            },
+            y: {
+              beginAtZero: true,
+              grid: {
+                display: true,
+                color: 'rgba(0, 0, 0, 0.05)',
+              },
+              ticks: {
+                callback: function(value) {
+                  return value.toLocaleString();
+                },
+              },
+            },
+          },
+        },
+      });
+    }
+
     // Data loading
     async function loadData() {
       if (state.loading) return;
@@ -374,7 +793,8 @@ createApp({
 
         // Build URL parameters for API calls
         const apiParams = new URLSearchParams();
-        if (state.selectedMonth) {
+        if (state.selectedMonth && state.filterMode === 'yearmonth') {
+          // Only apply month filtering when in YearMonth mode
           // Convert month selection (e.g., "202412") to date range
           const year = parseInt(state.selectedMonth.substring(0, 4));
           const month = parseInt(state.selectedMonth.substring(4, 6));
@@ -451,12 +871,16 @@ createApp({
 
         // Update chart after a small delay to avoid reactivity issues
         setTimeout(async () => {
-          if (state.viewMode === 'separate') {
+          if (state.filterMode === 'wiki') {
             // Wait for Vue to update the DOM with new canvas elements
             await nextTick();
             setTimeout(() => {
-              createSeparateCharts();
-            }, 100);
+              updateChart();
+            }, 200);
+          } else if (state.filterMode === 'frs_key') {
+            // For FRS Key mode, call updateFrsKeyChart
+            await nextTick();
+            updateFrsKeyChart();
           } else {
             updateChart();
           }
@@ -465,6 +889,8 @@ createApp({
       } catch (error) {
         state.error = error.message;
       } finally {
+        // Update timestamp when data loading completes (success or failure)
+        state.lastUpdated = new Date().toISOString();
         state.loading = false;
       }
     }
@@ -477,33 +903,34 @@ createApp({
     function updateUrl() {
       const params = new URLSearchParams();
 
+      // Handle filter mode
+      if (state.filterMode && state.filterMode !== 'wiki') {
+        params.set('mode', state.filterMode);
+      }
+
       // Handle wiki selection
       if (state.selectedWikis.length === 1) {
-        // Single wiki - use 'wiki' parameter
-        params.set('wiki', state.selectedWikis[0]);
+        // Single wiki - use 'wiki' parameter with wiki_p format
+        params.set('wiki', `${state.selectedWikis[0]}wiki_p`);
       } else if (state.selectedWikis.length > 1) {
-        // Multiple wikis - use 'db' parameter
-        params.set('db', state.selectedWikis.join(','));
+        // Multiple wikis - use 'db' parameter with wiki_p format
+        const wikisWithSuffix = state.selectedWikis.map(w => `${w}wiki_p`);
+        params.set('db', wikisWithSuffix.join(','));
       }
 
-      // Handle data series selection
-      const enabledSeries = Object.entries(state.series)
-        .filter(([key, enabled]) => enabled)
-        .map(([key]) => key);
-
-      if (enabledSeries.length > 0 && enabledSeries.length < Object.keys(state.series).length) {
-        // Only add frs_key if not all series are selected
-        params.set('frs_key', enabledSeries.join(','));
+      // Handle FRS key selection (only in frs_key mode)
+      if (state.filterMode === 'frs_key' && state.selectedFrsKey) {
+        // Convert underscore to hyphen for URL (e.g., pendingLag_average -> pendingLag-average)
+        const frsKeyParam = state.selectedFrsKey.replace(/_/g, '-');
+        params.set('frs_key', frsKeyParam);
       }
 
-      // Handle view mode
-      if (state.viewMode !== 'both') {
-        params.set('view', state.viewMode);
-      }
-
-      // Handle month selection
-      if (state.selectedMonth) {
-        params.set('yearmonth', state.selectedMonth);
+      // Handle month selection (only in yearmonth mode)
+      if (state.filterMode === 'yearmonth' && state.selectedMonth) {
+        // Convert YYYYMM to YYYY-MM format
+        const year = state.selectedMonth.substring(0, 4);
+        const month = state.selectedMonth.substring(4, 6);
+        params.set('month', `${year}-${month}`);
       }
 
       const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
@@ -514,56 +941,67 @@ createApp({
     function loadUrlParams() {
       const params = new URLSearchParams(window.location.search);
 
-      // Handle 'db' parameter (multiple wikis)
+      // Handle 'mode' parameter (filter mode)
+      const modeParam = params.get('mode');
+      if (modeParam && ['wiki', 'frs_key', 'yearmonth'].includes(modeParam)) {
+        state.filterMode = modeParam;
+      }
+
+      // Handle 'db' parameter (multiple wikis) - format: fiwiki_p,dewiki_p
       const dbParam = params.get('db');
       if (dbParam) {
-        state.selectedWikis = dbParam.split(',').filter(w =>
+        state.selectedWikis = dbParam.split(',').map(w => {
+          // Remove wiki_p suffix if present
+          return w.endsWith('wiki_p') ? w.slice(0, -6) : w;
+        }).filter(w =>
           AVAILABLE_WIKIS.some(aw => aw.code === w)
         );
       }
 
-      // Handle 'wiki' parameter (single wiki - overrides 'db')
+      // Handle 'wiki' parameter (single wiki - overrides 'db') - format: fiwiki_p
       const wikiParam = params.get('wiki');
       if (wikiParam) {
-        const wiki = AVAILABLE_WIKIS.find(aw => aw.code === wikiParam);
+        // Remove wiki_p suffix if present
+        const wikiCode = wikiParam.endsWith('wiki_p') ? wikiParam.slice(0, -6) : wikiParam;
+        const wiki = AVAILABLE_WIKIS.find(aw => aw.code === wikiCode);
         if (wiki) {
-          state.selectedWikis = [wikiParam];
+          state.selectedWikis = [wikiCode];
         }
       }
 
-      // Handle 'frs_key' parameter (specific data series)
+      // Handle 'frs_key' parameter in frs_key mode - format: pendingLag-average
       const frsKeyParam = params.get('frs_key');
-      if (frsKeyParam) {
-        // Reset all series
-        Object.keys(state.series).forEach(key => {
-          state.series[key] = false;
-        });
-
-        // Enable selected series
-        frsKeyParam.split(',').forEach(key => {
-          if (state.series.hasOwnProperty(key)) {
-            state.series[key] = true;
-          }
-        });
+      if (frsKeyParam && state.filterMode === 'frs_key') {
+        // Convert hyphen to underscore (e.g., pendingLag-average -> pendingLag_average)
+        const frsKey = frsKeyParam.replace(/-/g, '_');
+        if (state.series.hasOwnProperty(frsKey)) {
+          state.selectedFrsKey = frsKey;
+        }
       }
 
-      // Handle 'yearmonth' parameter (single month view)
-      const yearmonthParam = params.get('yearmonth');
-      if (yearmonthParam) {
-        state.selectedMonth = yearmonthParam;
-      }
-
-      // Handle 'view' parameter
-      const viewParam = params.get('view');
-      if (viewParam && ['chart', 'table', 'both', 'separate'].includes(viewParam)) {
-        state.viewMode = viewParam;
+      // Handle 'month' parameter (single month view) - format: 2024-01
+      const monthParam = params.get('month');
+      if (monthParam && state.filterMode === 'yearmonth') {
+        // Convert YYYY-MM to YYYYMM format
+        state.selectedMonth = monthParam.replace('-', '');
       }
     }
 
     // Watchers
-    watch(() => state.selectedWikis, () => {
+    watch(() => state.selectedWikis, async () => {
+      console.log('selectedWikis changed:', state.selectedWikis);
       updateUrl();
-      loadData();
+
+      // Call the appropriate chart update function based on filter mode
+      if (state.filterMode === 'frs_key') {
+        // Add a small delay to ensure DOM updates are complete
+        await nextTick();
+        setTimeout(() => {
+          updateFrsKeyChart();
+        }, 50);
+      } else {
+        loadData();
+      }
     }, { deep: true });
 
     watch(() => state.selectedMonth, () => {
@@ -574,29 +1012,50 @@ createApp({
       }, 100);
     });
 
-    watch(() => state.series, () => {
-      updateUrl();
-      // Trigger appropriate chart rendering when series change
-      setTimeout(() => {
-        if (state.viewMode === 'separate') {
-          createSeparateCharts();
-        } else {
-          updateChart();
-        }
-      }, 100);
-    }, { deep: true });
+    // Removed series watcher - now filtering is done by wiki selection only
 
-    watch(() => state.viewMode, async () => {
+    watch(() => state.filterMode, async () => {
       updateUrl();
-      // Trigger appropriate chart rendering when view mode changes
-      if (state.viewMode === 'separate') {
+
+      // Clear selectedMonth when switching away from YearMonth mode
+      if (state.filterMode !== 'yearmonth' && state.selectedMonth) {
+        state.selectedMonth = '';
+      }
+
+      // Initialize selectedWikis based on filter mode
+      if (state.filterMode === 'frs_key') {
+        // In FRS Key mode, select all available wikis by default
+        if (state.selectedWikis.length === 0) {
+          state.selectedWikis = AVAILABLE_WIKIS.map(w => w.code);
+        }
+      } else if (state.filterMode === 'wiki') {
+        // In Wiki mode, initialize selectedWikiForTable if not set
+        if (!state.selectedWikiForTable) {
+          state.selectedWikiForTable = AVAILABLE_WIKIS[0].code;
+        }
+      }
+
+      // Trigger appropriate chart rendering when filter mode changes
+      if (state.filterMode === 'wiki') {
         // Wait for Vue to update the DOM with new canvas elements
         await nextTick();
         setTimeout(() => {
-          createSeparateCharts();
+          updateChart();
         }, 500);  // Increased timeout to give Vue more time to render
+      } else if (state.filterMode === 'frs_key') {
+        await nextTick();
+        updateFrsKeyChart();
       } else {
         updateChart();
+      }
+    });
+
+    // Watch for changes to selectedFrsKey and update the chart
+    watch(() => state.selectedFrsKey, async () => {
+      if (state.filterMode === 'frs_key') {
+        updateUrl();
+        await nextTick();
+        updateFrsKeyChart();
       }
     });
 
@@ -652,6 +1111,13 @@ createApp({
       enabledSeries,
       isSingleMonthView,
       singleMonthData,
+      yearMonthTableData,
+      yearMonthTableTitle,
+      selectedFrsKeyLabel,
+      frsKeyTableDates,
+      wikiTableData,
+      lastUpdatedFormatted,
+      getFrsKeyValue,
       filteredTableData,
       loadData,
       refreshData,

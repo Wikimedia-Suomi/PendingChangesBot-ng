@@ -27,6 +27,12 @@
                 <button class="button is-info" @click="refreshData" :class="{'is-loading': state.loading}">
                   Refresh Data
                 </button>
+                <div class="has-text-grey is-size-7 ml-3" style="display: flex; align-items: center;">
+                  <span class="icon is-small">
+                    <i class="fas fa-clock"></i>
+                  </span>
+                  <span class="ml-1">Last updated: {{ lastUpdatedFormatted }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -37,116 +43,92 @@
       <section class="section">
         <div class="box">
           <h2 class="title is-5">Filters</h2>
-          <div class="columns">
-            <!-- Wiki Selection -->
-            <div class="column">
+          <div class="columns is-variable is-1">
+
+            <!-- Filter Mode Selection -->
+            <div class="column is-narrow">
               <div class="field">
-                <label class="label">Select Wikis</label>
+                <label class="label">Filter Mode</label>
                 <div class="control">
-                  <div class="select is-multiple is-fullwidth">
-                    <select multiple v-model="state.selectedWikis" @change="updateUrl" size="8">
+                  <div class="select">
+                    <select v-model="state.filterMode" @change="updateUrl">
+                      <option value="wiki">Wiki</option>
+                      <option value="frs_key">FRS Key</option>
+                      <option value="yearmonth">YearMonth</option>
+                    </select>
+                  </div>
+                </div>
+                <p class="help">Choose the primary filter mode</p>
+              </div>
+            </div>
+
+            <!-- Wiki Selection for Table (only shown when Wiki mode is selected) -->
+            <div class="column is-narrow" v-if="state.filterMode === 'wiki'">
+              <div class="field">
+                <label class="label">Select Wiki for Table</label>
+                <div class="control">
+                  <div class="select">
+                    <select v-model="state.selectedWikiForTable" @change="updateUrl">
                       <option v-for="wiki in availableWikis" :key="wiki.code" :value="wiki.code">
-                        {{ wiki.name }} ({{ wiki.code }})
+                        {{ wiki.code }}wiki_p
                       </option>
                     </select>
                   </div>
                 </div>
-                <p class="help">Hold Ctrl/Cmd to select multiple wikis</p>
+                <p class="help">Choose which wiki to show in table</p>
               </div>
             </div>
 
-            <!-- Month Selection -->
-            <div class="column">
+            <!-- Month Selection (only shown when YearMonth mode is selected) -->
+            <div class="column is-narrow" v-if="state.filterMode === 'yearmonth'">
               <div class="field">
                 <label class="label">Select Month</label>
                 <div class="control">
-                  <div class="select is-fullwidth">
+                  <div class="select">
                     <select v-model="state.selectedMonth" @change="updateUrl">
-                      <option value="">All months</option>
                       <option v-for="month in availableMonths" :key="month.value" :value="month.value">
                         {{ month.label }}
                       </option>
                     </select>
                   </div>
                 </div>
-                <p class="help">Choose a specific month or view all</p>
+                <p class="help">Choose a specific month</p>
               </div>
             </div>
 
-            <!-- View Mode Selection -->
-            <div class="column">
+            <!-- FRS Key Selection (only shown when FRS Key mode is selected) -->
+            <div class="column is-narrow" v-if="state.filterMode === 'frs_key'">
               <div class="field">
-                <label class="label">View Mode</label>
+                <label class="label">Select Data Series</label>
                 <div class="control">
                   <div class="select">
-                    <select v-model="state.viewMode" @change="updateUrl">
-                      <option value="both">Chart & Table</option>
-                      <option value="chart">Chart Only</option>
-                      <option value="separate">Separate Charts</option>
-                      <option value="table">Table Only</option>
+                    <select v-model="state.selectedFrsKey" @change="updateUrl">
+                      <option value="pendingLag_average">Pending Lag (Average)</option>
+                      <option value="totalPages_ns0">Total Pages (NS:0)</option>
+                      <option value="reviewedPages_ns0">Reviewed Pages (NS:0)</option>
+                      <option value="syncedPages_ns0">Synced Pages (NS:0)</option>
+                      <option value="pendingChanges">Pending Changes</option>
+                      <option value="number_of_reviewers">Number of Reviewers</option>
+                      <option value="number_of_reviews">Number of Reviews</option>
+                      <option value="reviews_per_reviewer">Reviews Per Reviewer</option>
                     </select>
                   </div>
                 </div>
+                <p class="help">Choose which metric to display</p>
               </div>
             </div>
 
-            <!-- Data Series Selection -->
-            <div class="column">
+            <!-- Wiki Selection -->
+            <div class="column is-narrow">
               <div class="field">
-                <label class="label">Data Series</label>
-                <div class="control">
+                <label class="label">Select Wikis</label>
+                <div class="control" v-for="wiki in availableWikis" :key="wiki.code">
                   <label class="checkbox">
-                    <input type="checkbox" v-model="state.series.pendingLag_average" @change="updateChart">
-                    Pending Lag (Average)
+                    <input type="checkbox" :value="wiki.code" v-model="state.selectedWikis" @change="updateUrl">
+                    {{ wiki.code }}wiki_p
                   </label>
                 </div>
-                <div class="control">
-                  <label class="checkbox">
-                    <input type="checkbox" v-model="state.series.totalPages_ns0" @change="updateChart">
-                    Total Pages (NS:0)
-                  </label>
-                </div>
-                <div class="control">
-                  <label class="checkbox">
-                    <input type="checkbox" v-model="state.series.reviewedPages_ns0" @change="updateChart">
-                    Reviewed Pages (NS:0)
-                  </label>
-                </div>
-                <div class="control">
-                  <label class="checkbox">
-                    <input type="checkbox" v-model="state.series.syncedPages_ns0" @change="updateChart">
-                    Synced Pages (NS:0)
-                  </label>
-                </div>
-                <div class="control">
-                  <label class="checkbox">
-                    <input type="checkbox" v-model="state.series.pendingChanges" @change="updateChart">
-                    Pending Changes
-                  </label>
-                </div>
-              </div>
-
-              <!-- Stretch Goal: Review Activity -->
-              <div class="field mt-4">
-                <label class="label">Review Activity (Stretch Goal)</label>
-                <div class="control">
-                  <label class="checkbox">
-                    <input type="checkbox" v-model="state.series.number_of_reviewers" @change="updateChart">
-                    Number of Reviewers
-                  </label>
-                </div>
-                <div class="control">
-                  <label class="checkbox">
-                    <input type="checkbox" v-model="state.series.number_of_reviews" @change="updateChart">
-                    Number of Reviews
-                  </label>
-                </div>
-                <div class="control">
-                  <label class="checkbox">
-                    <input type="checkbox" v-model="state.series.reviews_per_reviewer" @change="updateChart">
-                    Reviews Per Reviewer
-                  </label>
-                </div>
+                <p class="help">Select which wikis to show in charts</p>
               </div>
             </div>
           </div>
@@ -167,30 +149,92 @@
         </div>
       </section>
 
-      <!-- Combined Chart Display -->
-      <section class="section" v-show="state.viewMode === 'both' || state.viewMode === 'chart'">
+      <!-- FRS Key Mode: Single Chart Display -->
+      <section class="section" v-show="state.filterMode === 'frs_key'">
         <div class="box">
-          <canvas id="statisticsChart" style="max-height: 500px;"></canvas>
+          <canvas id="singleFrsKeyChart" style="max-height: 500px;"></canvas>
         </div>
       </section>
 
-      <!-- Separate Charts Display -->
-      <section class="section" v-show="state.viewMode === 'separate'">
+      <!-- Wiki Mode Charts Display -->
+      <section class="section" v-show="state.filterMode === 'wiki'">
         <div v-for="(series, key) in enabledSeries" :key="key" class="box mb-4">
           <h3 class="title is-5">{{ series.label }}</h3>
           <canvas :id="`chart-${series.key}`" style="max-height: 300px;"></canvas>
         </div>
       </section>
 
-      <!-- Single Month All Wikis Table View -->
-      <section class="section" v-if="isSingleMonthView && state.tableData && state.tableData.length > 0" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
+      <!-- FRS Key Table View -->
+      <section class="section" v-if="state.filterMode === 'frs_key' && state.tableData && state.tableData.length > 0">
         <div class="box">
-          <h2 class="title is-5">All Wikis - {{ singleMonthData[0]?.date || '' }}</h2>
+          <h2 class="title is-5">{{ selectedFrsKeyLabel }}</h2>
+          <div class="table-container">
+            <table class="table is-striped is-hoverable is-fullwidth">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th v-for="wiki in state.selectedWikis" :key="wiki">{{ wiki }}wiki_p</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="date in frsKeyTableDates" :key="date">
+                  <td><strong>{{ date }}</strong></td>
+                  <td v-for="wiki in state.selectedWikis" :key="wiki">
+                    {{ getFrsKeyValue(wiki, date) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- YearMonth Table View -->
+      <section class="section" v-if="state.filterMode === 'yearmonth' && state.tableData && state.tableData.length > 0">
+        <div class="box">
+          <h2 class="title is-5">{{ yearMonthTableTitle }}</h2>
           <div class="table-container">
             <table class="table is-striped is-hoverable is-fullwidth">
               <thead>
                 <tr>
                   <th>Wiki</th>
+                  <th>Pending Lag</th>
+                  <th>Total Pages</th>
+                  <th>Reviewed Pages</th>
+                  <th>Synced Pages</th>
+                  <th>Pending Changes</th>
+                  <th>Reviewers</th>
+                  <th>Reviews</th>
+                  <th>Reviews/Reviewer</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in yearMonthTableData" :key="row.wiki">
+                  <td><strong>{{ row.wiki }}wiki_p</strong></td>
+                  <td>{{ row.pendingLag_average?.toFixed(1) || 'N/A' }}</td>
+                  <td>{{ row.totalPages_ns0?.toLocaleString() || 'N/A' }}</td>
+                  <td>{{ row.reviewedPages_ns0?.toLocaleString() || 'N/A' }}</td>
+                  <td>{{ row.syncedPages_ns0?.toLocaleString() || 'N/A' }}</td>
+                  <td>{{ row.pendingChanges?.toLocaleString() || 'N/A' }}</td>
+                  <td>{{ row.number_of_reviewers || 'N/A' }}</td>
+                  <td>{{ row.number_of_reviews || 'N/A' }}</td>
+                  <td>{{ row.reviews_per_reviewer?.toFixed(1) || 'N/A' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Wiki Mode Data Table -->
+      <section class="section" v-if="state.filterMode === 'wiki' && state.tableData && state.tableData.length > 0" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
+        <div class="box">
+          <h2 class="title is-5">{{ state.selectedWikiForTable }}wiki_p</h2>
+          <div class="table-container">
+            <table class="table is-striped is-hoverable is-fullwidth">
+              <thead>
+                <tr>
+                  <th>Date</th>
                   <th v-if="state.series.pendingLag_average">Pending Lag</th>
                   <th v-if="state.series.totalPages_ns0">Total Pages</th>
                   <th v-if="state.series.reviewedPages_ns0">Reviewed Pages</th>
@@ -202,16 +246,16 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in singleMonthData" :key="row.wiki">
-                  <td><strong>{{ row.wiki }}</strong></td>
-                  <td v-if="state.series.pendingLag_average">{{ row.pendingLag_average?.toFixed(1) || 'N/A' }}</td>
-                  <td v-if="state.series.totalPages_ns0">{{ row.totalPages_ns0?.toLocaleString() || 'N/A' }}</td>
-                  <td v-if="state.series.reviewedPages_ns0">{{ row.reviewedPages_ns0?.toLocaleString() || 'N/A' }}</td>
-                  <td v-if="state.series.syncedPages_ns0">{{ row.syncedPages_ns0?.toLocaleString() || 'N/A' }}</td>
-                  <td v-if="state.series.pendingChanges">{{ row.pendingChanges?.toLocaleString() || 'N/A' }}</td>
+                <tr v-for="row in wikiTableData" :key="row.date">
+                  <td>{{ row.date }}</td>
+                  <td v-if="state.series.pendingLag_average">{{ row.pendingLag_average || 'N/A' }}</td>
+                  <td v-if="state.series.totalPages_ns0">{{ row.totalPages_ns0 || 'N/A' }}</td>
+                  <td v-if="state.series.reviewedPages_ns0">{{ row.reviewedPages_ns0 || 'N/A' }}</td>
+                  <td v-if="state.series.syncedPages_ns0">{{ row.syncedPages_ns0 || 'N/A' }}</td>
+                  <td v-if="state.series.pendingChanges">{{ row.pendingChanges || 'N/A' }}</td>
                   <td v-if="state.series.number_of_reviewers">{{ row.number_of_reviewers || 'N/A' }}</td>
                   <td v-if="state.series.number_of_reviews">{{ row.number_of_reviews || 'N/A' }}</td>
-                  <td v-if="state.series.reviews_per_reviewer">{{ row.reviews_per_reviewer?.toFixed(1) || 'N/A' }}</td>
+                  <td v-if="state.series.reviews_per_reviewer">{{ row.reviews_per_reviewer ? row.reviews_per_reviewer.toFixed(2) : 'N/A' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -220,7 +264,7 @@
       </section>
 
       <!-- Regular Data Table -->
-      <section class="section" v-if="!isSingleMonthView && state.tableData && state.tableData.length > 0" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
+      <section class="section" v-if="!isSingleMonthView && state.tableData && state.tableData.length > 0 && state.filterMode !== 'yearmonth' && state.filterMode !== 'frs_key' && state.filterMode !== 'wiki'" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
         <div class="box">
           <h2 class="title is-5">Data Table</h2>
           <div class="table-container">
@@ -263,7 +307,6 @@
         <div class="notification is-warning">
           <p><strong>No data available.</strong></p>
           <p>Please select at least one wiki and ensure statistics data has been loaded.</p>
-          <p>Run: <code>python manage.py load_statistics</code> to load data from Superset.</p>
         </div>
       </section>
     </div>
