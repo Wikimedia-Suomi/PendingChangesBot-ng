@@ -1,86 +1,495 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <title>LiftWing Model Visualization</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 2rem;
-        }
+<meta charset="UTF-8">
+<title>LiftWing Model Predictions - Revision History</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    body {
+    font-family: "Segoe UI", sans-serif;
+    margin: 40px;
+    background-color: #f7f7f7;
+    color: #333;
+    }
+    h2 {
+    color: #1a73e8;
+    }
+    .controls {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    input, select, button {
+        padding: 10px 15px;
+    margin: 5px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+        font-size: 14px;
+    }
+    button {
+    background-color: #1a73e8;
+    color: white;
+    cursor: pointer;
+        font-weight: 600;
+    }
+    button:hover {
+    background-color: #1258b0;
+    }
+    button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+    }
+    .status {
+        margin-top: 15px;
+        padding: 10px;
+        background: #e3f2fd;
+        border-left: 4px solid #1a73e8;
+        border-radius: 4px;
+        display: none;
+    }
+    .status.error {
+        background: #ffebee;
+        border-left-color: #d32f2f;
+        color: #d32f2f;
+    }
+    .status.success {
+        background: #e8f5e9;
+        border-left-color: #388e3c;
+        color: #388e3c;
+    }
+    .chart-container {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        display: none;
+    }
+    .table-container {
+    background: white;
+        padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        display: none;
+        overflow-x: auto;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+    th, td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+    th {
+        background-color: #1a73e8;
+        color: white;
+        font-weight: 600;
+    }
+    tr:hover {
+        background-color: #f5f5f5;
+        cursor: pointer;
+    }
+    .loading {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #1a73e8;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-left: 10px;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .progress-bar {
+        width: 100%;
+        height: 20px;
+        background-color: #e0e0e0;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 10px;
+        display: none;
+    }
+    .progress-fill {
+        height: 100%;
+        background-color: #1a73e8;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+</style>
+</head>
+<body>
+<h2>LiftWing Model Visualization - Revision History</h2>
 
-        .form-section {
-            margin-bottom: 1.5rem;
-        }
+<div class="controls">
+    <label for="wiki"><b>Wiki:</b></label>
+<select id="wiki">
+        <option value="en">English Wikipedia</option>
+        <option value="de">German Wikipedia</option>
+        <option value="fr">French Wikipedia</option>
+        <option value="hi">Hindi Wikipedia</option>
+        <option value="fi">Finnish Wikipedia</option>
+        <option value="es">Spanish Wikipedia</option>
+</select>
 
-        input,
-        select,
-        button {
-            padding: 0.5rem;
-            font-size: 1rem;
-        }
-    </style>
-    <script>
-        async function validateArticle() {
-            const wiki = document.getElementById("wiki").value;
-            const article = document.getElementById("article").value;
+    <label for="article"><b>Article Title:</b></label>
+    <input type="text" id="article" placeholder="e.g., Python (programming language)" size="40">
 
-            const resp = await fetch("/api/visualization/validate/", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRFToken": getCookie('csrftoken')
-                },
-                body: JSON.stringify({ wiki, article })
+    <label for="model"><b>Model:</b></label>
+<select id="model">
+    <option value="articlequality">Article Quality</option>
+    <option value="draftquality">Draft Quality</option>
+</select>
+
+    <button id="analyzeBtn">Analyze Article</button>
+    
+    <div class="status" id="status"></div>
+    <div class="progress-bar" id="progressBar">
+        <div class="progress-fill" id="progressFill"></div>
+    </div>
+</div>
+
+<div class="chart-container" id="chartContainer">
+    <h3>Model Scores Over Revision History</h3>
+    <canvas id="chart"></canvas>
+</div>
+
+<div class="table-container" id="tableContainer">
+    <h3>Revision History</h3>
+    <table id="revisionTable">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Revision ID</th>
+                <th>Timestamp</th>
+                <th>User</th>
+                <th>Comment</th>
+                <th>Prediction</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<script>
+    // Get CSRF token for Django
+    function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+        cookie = cookie.trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+        }
+        }
+    }
+    return cookieValue;
+    }
+
+    // DOM Elements
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const statusDiv = document.getElementById("status");
+    const chartContainer = document.getElementById("chartContainer");
+    const tableContainer = document.getElementById("tableContainer");
+    const progressBar = document.getElementById("progressBar");
+    const progressFill = document.getElementById("progressFill");
+    const ctx = document.getElementById("chart").getContext("2d");
+    const tableBody = document.getElementById("tableBody");
+    
+    let chart;
+
+    // Utility functions
+    function showStatus(message, type = 'info') {
+        statusDiv.className = `status ${type}`;
+        statusDiv.textContent = message;
+        statusDiv.style.display = 'block';
+    }
+
+    function hideStatus() {
+        statusDiv.style.display = 'none';
+    }
+
+    function updateProgress(percent) {
+        progressBar.style.display = 'block';
+        progressFill.style.width = percent + '%';
+    }
+
+    function hideProgress() {
+        progressBar.style.display = 'none';
+        progressFill.style.width = '0%';
+    }
+
+    function setButtonState(disabled) {
+        analyzeBtn.disabled = disabled;
+        analyzeBtn.textContent = disabled ? 'Analyzing...' : 'Analyze Article';
+    }
+
+    // Validate article exists
+    async function validateArticle(wiki, article) {
+        const response = await fetch("/validate_article/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: JSON.stringify({ wiki, article }),
+        });
+        const data = await response.json();
+        return data;
+    }
+
+    // Fetch all revisions for an article
+    async function fetchRevisions(wiki, article) {
+        const response = await fetch("/fetch_revisions/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: JSON.stringify({ wiki, article }),
+        });
+        const data = await response.json();
+        return data;
+    }
+
+    // Fetch LiftWing predictions for multiple revisions
+    async function fetchPredictionsForRevisions(wiki, article, model, revisions, onProgress) {
+        const predictions = [];
+        const batchSize = 10; // Process 10 revisions at a time
+        
+        for (let i = 0; i < revisions.length; i += batchSize) {
+            const batch = revisions.slice(i, i + batchSize);
+            const batchPromises = batch.map(async (rev) => {
+    try {
+        const response = await fetch("/fetch_predictions/", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCookie("csrftoken"),
+        },
+                        body: JSON.stringify({ 
+                            wiki, 
+                            article, 
+                            model,
+                            rev_id: rev.revid 
+                        }),
+                    });
+                    const data = await response.json();
+                    return {
+                        revid: rev.revid,
+                        timestamp: rev.timestamp,
+                        user: rev.user,
+                        comment: rev.comment,
+                        prediction: data.prediction || null,
+                        error: data.error || null
+                    };
+                } catch (err) {
+                    return {
+                        revid: rev.revid,
+                        timestamp: rev.timestamp,
+                        user: rev.user,
+                        comment: rev.comment,
+                        prediction: null,
+                        error: err.toString()
+                    };
+                }
             });
-
-            const data = await resp.json();
-            const result = document.getElementById("result");
-            if (data.valid) {
-                result.innerText = "✅ Article found!";
-                result.style.color = "green";
-            } else {
-                result.innerText = "❌ Article not found";
-                result.style.color = "red";
-            }
+            
+            const batchResults = await Promise.all(batchPromises);
+            predictions.push(...batchResults);
+            
+            // Update progress
+            const progress = Math.min(100, Math.round(((i + batchSize) / revisions.length) * 100));
+            if (onProgress) onProgress(progress);
         }
+        
+        return predictions;
+    }
 
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
+    // Create line chart
+    function createLineChart(revisionData, model) {
+        if (chart) chart.destroy();
+        
+        // Extract labels and data
+        const labels = revisionData.map((r, idx) => `Rev ${idx + 1}`);
+        const timestamps = revisionData.map(r => r.timestamp);
+        
+        // Get the primary prediction value for each revision
+        const predictionValues = revisionData.map(r => {
+            if (!r.prediction || !r.prediction[model]) return null;
+            const pred = r.prediction[model];
+            // Return the prediction class or highest probability
+            if (pred.prediction) {
+                // Map quality classes to numeric values for visualization
+                const qualityMap = {
+                    'FA': 6, 'GA': 5, 'B': 4, 'C': 3, 'Start': 2, 'Stub': 1
+                };
+                return qualityMap[pred.prediction] || 0;
+            }
+            return null;
+        });
+        
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+            datasets: [{
+                    label: model + ' Score',
+                    data: predictionValues,
+                    borderColor: 'rgba(26, 115, 232, 1)',
+                    backgroundColor: 'rgba(26, 115, 232, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+            }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const idx = context.dataIndex;
+                                const rev = revisionData[idx];
+                                if (rev.prediction && rev.prediction[model]) {
+                                    return `Prediction: ${rev.prediction[model].prediction || 'N/A'}`;
+                                }
+                                return 'No data';
+                            },
+                            afterLabel: function(context) {
+                                const idx = context.dataIndex;
+                                return `Timestamp: ${timestamps[idx]}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Quality Score'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Revision Number'
+                        }
                     }
                 }
             }
-            return cookieValue;
+        });
+        
+        chartContainer.style.display = 'block';
+    }
+
+    // Populate revision table
+    function populateTable(revisionData, model) {
+        tableBody.innerHTML = '';
+        
+        revisionData.forEach((rev, idx) => {
+            const row = tableBody.insertRow();
+            row.innerHTML = `
+                <td>${idx + 1}</td>
+                <td><a href="https://en.wikipedia.org/?diff=${rev.revid}" target="_blank">${rev.revid}</a></td>
+                <td>${new Date(rev.timestamp).toLocaleString()}</td>
+                <td>${rev.user || 'Unknown'}</td>
+                <td>${rev.comment ? rev.comment.substring(0, 50) + '...' : 'No comment'}</td>
+                <td>${rev.prediction && rev.prediction[model] ? rev.prediction[model].prediction || 'N/A' : 'N/A'}</td>
+            `;
+        });
+        
+        tableContainer.style.display = 'block';
+    }
+
+    // Main analysis function
+    analyzeBtn.addEventListener("click", async () => {
+        const wiki = document.getElementById("wiki").value;
+        const article = document.getElementById("article").value.trim();
+        const model = document.getElementById("model").value;
+
+        if (!article) {
+            showStatus("Please enter an article title.", 'error');
+            return;
         }
-    </script>
-</head>
 
-<body>
-    <h1>LiftWing Model Visualization</h1>
+        // Hide previous results
+        chartContainer.style.display = 'none';
+        tableContainer.style.display = 'none';
+        hideProgress();
+        setButtonState(true);
 
-    <div class="form-section">
-        <label for="wiki">Select Wiki:</label>
-        <select id="wiki">
-            <option value="en">English</option>
-            <option value="fi">Finnish</option>
-            <option value="fr">French</option>
-        </select>
-    </div>
-
-    <div class="form-section">
-        <label for="article">Article Title:</label>
-        <input type="text" id="article" placeholder="e.g., Albert Einstein">
-        <button onclick="validateArticle()">Validate</button>
-        <div id="result" style="margin-top: 0.5rem;"></div>
-    </div>
+        try {
+            // Step 1: Validate article
+            showStatus("Validating article...", 'info');
+            const validation = await validateArticle(wiki, article);
+            
+            if (!validation.valid || !validation.exists) {
+                showStatus(`Article "${article}" not found on ${wiki}.wikipedia.org`, 'error');
+                setButtonState(false);
+                return;
+            }
+            
+            showStatus(`Article found: ${validation.normalized_title}`, 'success');
+            
+            // Step 2: Fetch revisions (limit to latest 50 for demo)
+            showStatus("Fetching revision history...", 'info');
+            const revData = await fetchRevisions(wiki, validation.normalized_title);
+            
+            if (!revData.revisions || revData.revisions.length === 0) {
+                showStatus("No revisions found for this article", 'error');
+                setButtonState(false);
+                return;
+            }
+            
+            // Limit to latest 20 revisions for demo (reverse order - oldest first)
+            const revisions = revData.revisions.slice(0, 20).reverse();
+            showStatus(`Found ${revisions.length} revisions`, 'success');
+            
+            // Step 3: Fetch predictions
+            showStatus(`Fetching LiftWing predictions for ${revisions.length} revisions...`, 'info');
+            updateProgress(0);
+            
+            const predictions = await fetchPredictionsForRevisions(
+                wiki,
+                validation.normalized_title, 
+                model, 
+                revisions,
+                (progress) => updateProgress(progress)
+            );
+            
+            hideProgress();
+            showStatus(`Analysis complete! Processed ${predictions.length} revisions`, 'success');
+            
+            // Step 4: Visualize
+            createLineChart(predictions, model);
+            populateTable(predictions, model);
+            
+            setButtonState(false);
+            
+    } catch (err) {
+            console.error(err);
+            showStatus(`Error: ${err.toString()}`, 'error');
+            setButtonState(false);
+            hideProgress();
+    }
+    });
+</script>
 </body>
-
 </html>

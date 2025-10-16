@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import EditorProfile, PendingPage, PendingRevision, Wiki, WikiConfiguration
+from .models import (
+    ArticleRevisionHistory,
+    EditorProfile,
+    LiftWingPrediction,
+    PendingPage,
+    PendingRevision,
+    Wiki,
+    WikiConfiguration,
+)
 
 
 @admin.register(Wiki)
@@ -34,3 +42,19 @@ class EditorProfileAdmin(admin.ModelAdmin):
     list_display = ("username", "wiki", "is_blocked", "is_bot")
     search_fields = ("username",)
     list_filter = ("wiki", "is_blocked", "is_bot")
+
+
+@admin.register(LiftWingPrediction)
+class LiftWingPredictionAdmin(admin.ModelAdmin):
+    list_display = ("revid", "wiki", "model_name", "prediction_class", "fetched_at")
+    search_fields = ("revid", "model_name")
+    list_filter = ("wiki", "model_name", "fetched_at")
+    readonly_fields = ("fetched_at", "updated_at")
+
+
+@admin.register(ArticleRevisionHistory)
+class ArticleRevisionHistoryAdmin(admin.ModelAdmin):
+    list_display = ("title", "revid", "wiki", "user", "timestamp", "fetched_at")
+    search_fields = ("title", "revid", "user")
+    list_filter = ("wiki", "timestamp")
+    readonly_fields = ("fetched_at",)

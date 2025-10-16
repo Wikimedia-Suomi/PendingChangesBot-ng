@@ -186,3 +186,57 @@ class EditorProfile(models.Model):
     def __str__(self) -> str:  # pragma: no cover - debug helper
         return f"{self.username} on {self.wiki.code}"
 
+
+class LiftWingPrediction(models.Model):
+    """Caches LiftWing model predictions for article revisions."""
+
+    wiki = models.ForeignKey(Wiki, on_delete=models.CASCADE, related_name="liftwing_predictions")
+    revid = models.BigIntegerField()
+    model_name = models.CharField(max_length=100)
+    prediction_class = models.CharField(max_length=50, blank=True)
+    prediction_data = models.JSONField(default=dict, blank=True)
+    fetched_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("wiki", "revid", "model_name")
+        ordering = ["-fetched_at"]
+        indexes = [
+            models.Index(fields=["wiki", "model_name"]),
+            models.Index(fields=["revid"]),
+        ]
+
+    @property
+    def is_expired(self) -> bool:
+        """Predictions expire after 24 hours."""
+        return self.fetched_at < timezone.now() - timedelta(hours=24)
+
+    def __str__(self) -> str:  # pragma: no cover - debug helper
+        return f"{self.model_name} prediction for revision {self.revid} on {self.wiki.code}"
+
+
+class ArticleRevisionHistory(models.Model):
+    """Caches complete revision history for articles."""
+
+    wiki = models.ForeignKey(Wiki, on_delete=models.CASCADE, related_name="article_revisions")
+    pageid = models.BigIntegerField()
+    title = models.CharField(max_length=500)
+    revid = models.BigIntegerField()
+    parentid = models.BigIntegerField(null=True, blank=True)
+    user = models.CharField(max_length=255, blank=True)
+    timestamp = models.DateTimeField()
+    comment = models.TextField(blank=True)
+    size = models.IntegerField(null=True, blank=True)
+    fetched_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("wiki", "pageid", "revid")
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["wiki", "pageid"]),
+            models.Index(fields=["revid"]),
+            models.Index(fields=["timestamp"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - debug helper
+        return f"Revision {self.revid} of {self.title}"

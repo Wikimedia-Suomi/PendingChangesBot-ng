@@ -1,5 +1,4 @@
 from django.urls import path
-
 from . import views
 
 urlpatterns = [
@@ -8,7 +7,11 @@ urlpatterns = [
     path("api/wikis/<int:pk>/refresh/", views.api_refresh, name="api_refresh"),
     path("api/wikis/<int:pk>/pending/", views.api_pending, name="api_pending"),
     path("liftwing/", views.liftwing_page, name="liftwing"),
-    path("api/visualization/validate/", views.validate_article, name="validate_article"),
+    path("validate_article/", views.validate_article, name="validate_article"),
+    path("fetch_revisions/", views.fetch_revisions, name="fetch_revisions"),
+    path("fetch_predictions/", views.fetch_predictions, name="fetch_predictions"),
+    path("fetch_liftwing_predictions/", views.fetch_liftwing_predictions, name="fetch_liftwing_predictions"),
+
     path(
         "api/wikis/<int:pk>/pages/<int:pageid>/revisions/",
         views.api_page_revisions,

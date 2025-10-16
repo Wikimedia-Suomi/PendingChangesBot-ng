@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 from http import HTTPStatus
+from urllib.parse import urlencode
+
 
 import requests
 from django.core.cache import cache
@@ -17,6 +19,9 @@ from .services import WikiClient
 
 logger = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 1
+
+VALIDATION_TIMEOUT = 8  # seconds
+USER_AGENT = "PendingChangesBot/1.0 (https://github.com/Wikimedia-Suomi/PendingChangesBot-ng)"
 
 
 def index(request: HttpRequest) -> HttpResponse:
@@ -426,18 +431,290 @@ def fetch_diff(request):
 def liftwing_page(request):
     return render(request, "reviews/lift.html")
 
+@csrf_exempt
 def validate_article(request):
-    if request.method == "POST":
-        import json
+    """
+    POST JSON: { "wiki": <wiki id|code|{id:,code:}>, "article": "Page title" }
+    Response JSON: { "valid": bool, "exists": bool, "pageid": int|null,
+        "normalized_title": str|null, "missing": bool, "error": null|str }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    article = payload.get("article")
+    wiki_code = payload.get("wiki", "en")
+
+    if not article or not isinstance(article, str) or not article.strip():
+        return JsonResponse({"valid": False, "error": "Empty article title"}, status=200)
+
+    # Construct API endpoint directly from wiki code
+    # This works without requiring database Wiki objects
+    api_endpoint = f"https://{wiki_code}.wikipedia.org/w/api.php"
+
+    params = {
+        "action": "query",
+        "format": "json",
+        "formatversion": 2,
+        "titles": article,
+        "redirects": 1,
+        "prop": "info",
+    }
+
+    # Build query URL safely
+    if "?" not in api_endpoint:
+        query_url = f"{api_endpoint}?{urlencode(params)}"
+    else:
+        query_url = f"{api_endpoint}&{urlencode(params)}"
+
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        resp = requests.get(query_url, headers=headers, timeout=VALIDATION_TIMEOUT)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.exception("Failed to call MediaWiki API for validation: %s", exc)
+        return JsonResponse(
+            {"valid": False, "error": f"API request failed: {str(exc)}", "url": query_url},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+
+    try:
+        data = resp.json()
+    except ValueError:
+        logger.error("MediaWiki API returned non-json for %s", query_url)
+        return JsonResponse(
+            {"valid": False, "error": "API returned invalid JSON"},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+
+    query = data.get("query", {})
+    pages = query.get("pages", [])
+    if not pages:
+        return JsonResponse({"valid": False, "error": "Unexpected API response"}, status=500)
+
+    page = pages[0]
+    missing = bool(page.get("missing", False))
+    normalized_title = page.get("title")
+    pageid = page.get("pageid")
+
+    result = {
+        "valid": True,
+        "exists": not missing,
+        "missing": missing,
+        "pageid": pageid if pageid is not None else None,
+        "normalized_title": normalized_title,
+        "error": None,
+    }
+    return JsonResponse(result, status=200)
+
+
+def _resolve_wiki_from_payload(wiki_value):
+    """
+    Accept either integer pk, string code, or dictionary with 'id'/'code'.
+    Returns Wiki instance or raises LookupError.
+    """
+    from .models import Wiki
+
+    if wiki_value is None:
+        raise LookupError("Missing wiki parameter")
+
+    # If a dict was passed (from frontend), try keys
+    if isinstance(wiki_value, dict):
+        if "id" in wiki_value:
+            try:
+                return Wiki.objects.get(pk=int(wiki_value["id"]))
+            except Exception:
+                raise LookupError(f"Unknown wiki id {wiki_value['id']}")
+        if "code" in wiki_value:
+            try:
+                return Wiki.objects.get(code=str(wiki_value["code"]))
+            except Exception:
+                raise LookupError(f"Unknown wiki code {wiki_value['code']}")
+
+    # If numeric string or int -> assume pk
+    try:
+        pk = int(wiki_value)
+        try:
+            return Wiki.objects.get(pk=pk)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # Otherwise assume code
+    try:
+        return Wiki.objects.get(code=str(wiki_value))
+    except Exception:
+        raise LookupError(f"Unknown wiki identifier: {wiki_value!r}")
+    
+@csrf_exempt
+def fetch_revisions(request):
+    if request.method != 'POST':
+        return JsonResponse({"error": "Invalid method"}, status=405)
+    
+    try:
         data = json.loads(request.body)
-        wiki = data.get("wiki")
-        article = data.get("article")
-        # TODO: Implement actual validation (API call to MediaWiki)
-        if article and len(article.strip()) > 2:
-            return JsonResponse({"valid": True})
-        else:
-            return JsonResponse({"valid": False})
-    return JsonResponse({"error": "Invalid method"}, status=405)
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+    
+    wiki = data.get('wiki', 'en')
+    article = data.get('article', '')
+    
+    if not article:
+        return JsonResponse({"error": "Missing article title"}, status=400)
+    
+    base_url = f"https://{wiki}.wikipedia.org/w/api.php"
+
+    params = {
+        "action": "query",
+        "prop": "revisions",
+        "titles": article,
+        "rvlimit": 50,  # Limit to 50 revisions for performance
+        "rvprop": "ids|timestamp|user|comment",
+        "format": "json",
+        "formatversion": "2"  # Use format version 2 for consistent response
+    }
+    
+    headers = {"User-Agent": USER_AGENT}
+
+    try:
+        response = requests.get(base_url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        pages = data.get("query", {}).get("pages", [])
+        
+        if not pages:
+            return JsonResponse({"error": "No pages found in API response"}, status=404)
+        
+        revisions = []
+        for page in pages:
+            if "missing" in page:
+                return JsonResponse({"error": "Article not found"}, status=404)
+            
+            page_revisions = page.get("revisions", [])
+            revisions.extend(page_revisions)
+        
+        if not revisions:
+            return JsonResponse({"error": "No revisions found for this article"}, status=404)
+
+        return JsonResponse({"title": article, "revisions": revisions})
+    except requests.RequestException as e:
+        logger.exception("Failed to fetch revisions for %s: %s", article, e)
+        return JsonResponse({"error": f"Failed to fetch revisions: {str(e)}"}, status=500)
+    except Exception as e:
+        logger.exception("Unexpected error fetching revisions: %s", e)
+        return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
+    
+@csrf_exempt
+def fetch_liftwing_predictions(request):
+    """
+    POST JSON: { "wiki": "en", "model": "articlequality", "revisions": [12345, 67890] }
+    Response: { "predictions": { "12345": {...}, "67890": {...} } }
+    """
+    data = json.loads(request.body)
+    wiki = data.get("wiki", "en")
+    model = data.get("model", "articlequality")
+    revisions = data.get("revisions", [])
+
+    if not revisions:
+        return JsonResponse({"error": "Missing revisions list"}, status=400)
+
+    predictions = {}
+    for rev_id in revisions:
+        url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/v1/predict"
+        payload = {"rev_id": rev_id}
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            predictions[rev_id] = data.get("output", {})
+        except Exception as e:
+            predictions[rev_id] = {"error": str(e)}
+
+    return JsonResponse({"predictions": predictions})
+
+@csrf_exempt
+def fetch_predictions(request):
+    """
+    POST JSON: { "wiki": "en", "article": "Allu Arjun", "model": "articlequality", "rev_id": 123456 (optional) }
+    Calls the LiftWing API to fetch predictions for an article.
+    If rev_id is provided, uses it directly. Otherwise fetches latest revision.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    wiki = data.get("wiki", "en")
+    article = data.get("article", "")
+    model = data.get("model", "articlequality")
+    rev_id = data.get("rev_id")  # Optional: use specific revision
+
+    headers = {"User-Agent": USER_AGENT}
+    
+    # If rev_id not provided, fetch the latest revision ID
+    if not rev_id:
+        if not article:
+            return JsonResponse({"error": "Missing article title or rev_id"}, status=400)
+            
+        # LiftWing API endpoint for model inference
+        api_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+
+        # Fetch the latest revision ID of the article
+        rev_api = f"https://{wiki}.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "titles": article,
+            "prop": "revisions",
+            "rvlimit": 1,
+            "rvprop": "ids",
+            "format": "json",
+        }
+        
+        try:
+            rev_resp = requests.get(rev_api, params=params, headers=headers, timeout=10)
+            rev_resp.raise_for_status()
+            rev_data = rev_resp.json()
+            pages = rev_data.get("query", {}).get("pages", {})
+            for page_id, page_info in pages.items():
+                if "revisions" in page_info:
+                    rev_id = page_info["revisions"][0]["revid"]
+                    break
+        except Exception as e:
+            return JsonResponse({"error": f"Failed to fetch revision ID: {e}"}, status=500)
+
+        if not rev_id:
+            return JsonResponse({"error": "No revision found for this article"}, status=404)
+    
+    # LiftWing API endpoint for model inference
+    api_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+
+    # Call LiftWing API
+    payload = {"rev_id": rev_id}
+
+    try:
+        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        prediction = response.json()
+        return JsonResponse({
+            "wiki": wiki,
+            "article": article,
+            "rev_id": rev_id,
+            "model": model,
+            "prediction": prediction
+        })
+    except requests.RequestException as e:
+        return JsonResponse({"error": f"LiftWing request failed: {str(e)}"}, status=500)
+
+    
 
 @require_GET
 def liftwing_models(request, wiki_code):
