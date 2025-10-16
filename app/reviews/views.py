@@ -236,7 +236,11 @@ def api_refresh(request: HttpRequest, pk: int) -> JsonResponse:
     try:
         pages = client.refresh()
     except Exception as exc:  # pragma: no cover - network failures handled in UI
-        logger.exception("Failed to refresh pending changes for %s", wiki.code)
+        logging.getLogger(__name__).warning(
+            "Failed to refresh pending changes for %s: %s",
+            wiki.code,
+            exc,
+        )
         return JsonResponse(
             {"error": str(exc)},
             status=HTTPStatus.BAD_GATEWAY,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -56,6 +57,17 @@ class WikiClient:
             )
             response = request.submit()
             log_events = response.get("query", {}).get("logevents", [])
+            if log_events is None:
+                log_events = []
+            elif not isinstance(log_events, Iterable):
+                try:
+                    log_events = list(log_events)
+                except TypeError:
+                    logger.warning(
+                        "Review log response is not iterable (type=%s)",
+                        type(log_events).__name__,
+                    )
+                    log_events = []
 
             for event in log_events:
                 params = event.get("params", {})
@@ -444,6 +456,18 @@ def was_user_blocked_after(code: str, family: str, username: str, year: int) -> 
             reverse=True,
             total=1,  # Only need to find one block event
         )
+
+        if block_events is None:
+            block_events = []
+        elif not isinstance(block_events, Iterable):
+            try:
+                block_events = list(block_events)
+            except TypeError:
+                logger.warning(
+                    "Block log response is not iterable (type=%s)",
+                    type(block_events).__name__,
+                )
+                block_events = []
 
         # Check if any 'block' action exists
         for event in block_events:

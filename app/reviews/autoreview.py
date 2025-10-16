@@ -9,13 +9,19 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
+import mwparserfromhell
 import pywikibot
 from bs4 import BeautifulSoup
 from django.conf import settings
 from pywikibot.comms import http
 from reviewer.utils.is_living_person import is_living_person
 
+
+from .check_domains import domains_previously_used
+from .models import EditorProfile, PendingPage, PendingRevision, Wiki
+
 from .models import EditorProfile, ModelScores, PendingPage, PendingRevision, Wiki
+
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
@@ -291,7 +297,115 @@ def _evaluate_revision(
             ),
         }
 
+    # Test 4: External links should reference previously used domains.
+    added_links = _get_added_external_links(revision)
+    if added_links:
+        site = pywikibot.Site(code=revision.page.wiki.code, fam=revision.page.wiki.family)
+        domain_ok, domain_details = domains_previously_used(site, added_links)
+
+        if not domain_ok:
+            problematic_domains = _problematic_external_domains(domain_details)
+            tests.append(
+                {
+                    "id": "external-link-domains",
+                    "title": "External link domains",
+                    "status": "fail",
+                    "message": (
+                        "New external links reference domains without prior usage: {}.".format(
+                            ", ".join(sorted(problematic_domains))
+                            if problematic_domains
+                            else "unknown"
+                        )
+                    ),
+                }
+            )
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="manual",
+                    label="Requires human review",
+                    reason="External links reference domains with no prior usage.",
+                ),
+            }
+
+        tests.append(
+            {
+                "id": "external-link-domains",
+                "title": "External link domains",
+                "status": "ok",
+                "message": "All new external links reference previously used domains.",
+            }
+        )
+    else:
+        tests.append(
+            {
+                "id": "external-link-domains",
+                "title": "External link domains",
+                "status": "ok",
+                "message": "No new external links detected.",
+            }
+        )
+
+    # Test 5: Blocking categories on the old version prevent automatic approval.
+    # Test 6: Blocking categories on the old version prevent automatic approval.
+    # Test 6: Check if additions have been superseded in current stable version
+    try:
+        # Get the current stable wikitext
+        stable_revision = PendingRevision.objects.filter(
+            page=revision.page, revid=revision.page.stable_revid
+        ).first()
+
+        if stable_revision:
+            current_stable_wikitext = stable_revision.get_wikitext()
+            threshold = revision.page.wiki.configuration.superseded_similarity_threshold
+
+            if _is_addition_superseded(revision, current_stable_wikitext, threshold):
+                tests.append(
+                    {
+                        "id": "superseded-additions",
+                        "title": "Superseded additions",
+                        "status": "ok",
+                        "message": (
+                            "The additions from this revision have been superseded "
+                            "or removed in the latest version."
+                        ),
+                    }
+                )
+                return {
+                    "tests": tests,
+                    "decision": AutoreviewDecision(
+                        status="approve",
+                        label="Would be auto-approved",
+                        reason=(
+                            "The additions from this revision have been superseded "
+                            "or removed in the latest version."
+                        ),
+                    ),
+                }
+            else:
+                tests.append(
+                    {
+                        "id": "superseded-additions",
+                        "title": "Superseded additions",
+                        "status": "not_ok",
+                        "message": "The additions from this revision are still relevant.",
+                    }
+                )
+    except Exception as e:
+        logger.error(f"Error checking superseded additions for revision {revision.revid}: {e}")
+        tests.append(
+            {
+                "id": "superseded-additions",
+                "title": "Superseded additions check",
+                "status": "not_ok",
+                "message": "Could not verify if additions were superseded.",
+            }
+        )
+
+    # Test 7: Blocking categories on the old version prevent automatic approval.
+
     # TEST 6: Blocking categories (blocks immediately)
+
     blocking_hits = _blocking_category_hits(revision, blocking_categories)
     if blocking_hits:
         tests.append(
@@ -758,6 +872,73 @@ def _validate_isbn_10(isbn: str) -> bool:
 
     return total % 11 == (11 - check_digit) % 11
 
+def _get_redirect_aliases(wiki: Wiki) -> list[str]:
+    config = wiki.configuration
+    if config.redirect_aliases:
+        return config.redirect_aliases
+
+    try:
+        site = pywikibot.Site(code=wiki.code, fam=wiki.family)
+        request = site.simple_request(
+            action="query",
+            meta="siteinfo",
+            siprop="magicwords",
+            formatversion=2,
+        )
+        response = request.submit()
+
+        magic_words = response.get("query", {}).get("magicwords", [])
+        if not isinstance(magic_words, list):
+            try:
+                magic_words = list(magic_words)
+            except TypeError:
+                magic_words = []
+
+        for magic_word in magic_words:
+            if not isinstance(magic_word, dict):
+                continue
+            if magic_word.get("name") != "redirect":
+                continue
+            aliases = magic_word.get("aliases", [])
+            if not isinstance(aliases, list):
+                continue
+
+            config.redirect_aliases = aliases
+            config.save(update_fields=["redirect_aliases", "updated_at"])
+            return aliases
+    except Exception:  # pragma: no cover - network failure fallback
+        logger.exception("Failed to fetch redirect magic words for %s", wiki.code)
+
+    language_fallbacks = {
+        "de": ["#WEITERLEITUNG", "#REDIRECT"],
+        "en": ["#REDIRECT"],
+        "pl": ["#PATRZ", "#PRZEKIERUJ", "#TAM", "#REDIRECT"],
+        "fi": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+    }
+
+    fallback_aliases = language_fallbacks.get(
+        wiki.code,
+        ["#REDIRECT"],  # fallback for non default languages
+    )
+
+    logger.warning(
+        "Using fallback redirect aliases for %s: %s",
+        wiki.code,
+        fallback_aliases,
+    )
+
+    # Not saving fallback to cache, so it can be updated later using the API
+    return fallback_aliases
+
+
+def _matched_user_groups(
+    revision: PendingRevision,
+    profile: EditorProfile | None,
+    *,
+    allowed_groups: dict[str, str],
+) -> set[str]:
+    if not allowed_groups:
+        return set()
 
 def _validate_isbn_13(isbn: str) -> bool:
     """Validate ISBN-13 checksum."""
@@ -868,6 +1049,75 @@ def _check_ores_scores(
         damaging_prob, goodfaith_prob = _fetch_ores_scores_from_api(
             revision, check_damaging, check_goodfaith
         )
+        return ""
+
+
+def _is_article_to_redirect_conversion(
+    revision: PendingRevision,
+    redirect_aliases: list[str],
+) -> bool:
+    current_wikitext = revision.get_wikitext()
+    if not _is_redirect(current_wikitext, redirect_aliases):
+        return False
+
+    if not revision.parentid:
+        return False
+
+    parent_wikitext = _get_parent_wikitext(revision)
+    if not parent_wikitext:
+        return False
+
+    if _is_redirect(parent_wikitext, redirect_aliases):
+        return False
+
+    return True
+
+
+def _get_added_external_links(revision: PendingRevision) -> list[str]:
+    current_links = _extract_external_links(revision.get_wikitext())
+    parent_links = _extract_external_links(_get_parent_wikitext(revision))
+    return sorted(current_links - parent_links)
+
+
+def _extract_external_links(wikitext: str) -> set[str]:
+    if not wikitext:
+        return set()
+
+    wikicode = mwparserfromhell.parse(wikitext)
+    links: set[str] = set()
+    for link in wikicode.filter_external_links():
+        url = str(link.url).strip()
+        if url:
+            links.add(url)
+    return links
+
+
+def _problematic_external_domains(domain_details: dict[str, dict]) -> list[str]:
+    problematic: list[str] = []
+    for domain, info in domain_details.items():
+        if domain == "__malformed__":
+            examples = info.get("url_examples", [])
+            if examples:
+                problematic.append("malformed URLs ({})".format(", ".join(examples)))
+            else:
+                problematic.append("malformed URLs")
+            continue
+
+        used = info.get("used")
+        if used:
+            continue
+
+        label = domain or "unknown"
+        if info.get("error"):
+            label = f"{label} (error)"
+        problematic.append(label)
+    return problematic
+
+
+def _validate_isbn_10(isbn: str) -> bool:
+    """Validate ISBN-10 checksum."""
+    if len(isbn) != 10:
+        return False
 
     # Evaluate thresholds and return result
     return _evaluate_ores_thresholds_result(
