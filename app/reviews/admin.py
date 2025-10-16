@@ -4,6 +4,7 @@ from .models import (
     ArticleRevisionHistory,
     EditorProfile,
     LiftWingPrediction,
+    ModelScores,
     PendingPage,
     PendingRevision,
     Wiki,
@@ -58,3 +59,16 @@ class ArticleRevisionHistoryAdmin(admin.ModelAdmin):
     search_fields = ("title", "revid", "user")
     list_filter = ("wiki", "timestamp")
     readonly_fields = ("fetched_at",)
+
+
+@admin.register(ModelScores)
+class ModelScoresAdmin(admin.ModelAdmin):
+    list_display = (
+        "revision",
+        "ores_damaging_score",
+        "ores_goodfaith_score",
+        "ores_fetched_at",
+    )
+    search_fields = ("revision__revid", "revision__page__title")
+    list_filter = ("ores_fetched_at",)
+    readonly_fields = ("ores_fetched_at",)

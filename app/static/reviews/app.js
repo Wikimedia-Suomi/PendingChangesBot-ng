@@ -160,6 +160,10 @@ createApp({
     const forms = reactive({
       blockingCategories: "",
       autoApprovedGroups: "",
+      oresDamagingThreshold: 0.0,
+      oresGoodfaithThreshold: 0.0,
+      oresDamagingThresholdLiving: 0.0,
+      oresGoodfaithThresholdLiving: 0.0,
     });
 
     const currentWiki = computed(() =>
@@ -229,7 +233,7 @@ createApp({
 
     const hasMorePages = computed(() => filteredPages.value.length > pageDisplayLimit);
 
-    function saveDiffsToLocalStorage() {      
+    function saveDiffsToLocalStorage() {
       localStorage.setItem('showDiffsSetting', !state.diffs.showDiffs);
     }
 
@@ -237,10 +241,18 @@ createApp({
       if (!currentWiki.value) {
         forms.blockingCategories = "";
         forms.autoApprovedGroups = "";
+        forms.oresDamagingThreshold = 0.0;
+        forms.oresGoodfaithThreshold = 0.0;
+        forms.oresDamagingThresholdLiving = 0.0;
+        forms.oresGoodfaithThresholdLiving = 0.0;
         return;
       }
       forms.blockingCategories = (currentWiki.value.configuration.blocking_categories || []).join("\n");
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
+      forms.oresDamagingThreshold = currentWiki.value.configuration.ores_damaging_threshold || 0.0;
+      forms.oresGoodfaithThreshold = currentWiki.value.configuration.ores_goodfaith_threshold || 0.0;
+      forms.oresDamagingThresholdLiving = currentWiki.value.configuration.ores_damaging_threshold_living || 0.0;
+      forms.oresGoodfaithThresholdLiving = currentWiki.value.configuration.ores_goodfaith_threshold_living || 0.0;
     }
 
     async function apiRequest(url, options = {}) {
@@ -351,13 +363,50 @@ createApp({
       }
     }
 
+    function validateOresThreshold(value, name) {
+      if (value === null || value === undefined || value === "") {
+        return null;
+      }
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) {
+        return `${name} must be a valid number`;
+      }
+      if (numValue < 0.0 || numValue > 1.0) {
+        return `${name} must be between 0.0 and 1.0`;
+      }
+      return null;
+    }
+
     async function saveConfiguration() {
       if (!state.selectedWikiId) {
         return;
       }
+
+      const validationErrors = [];
+      const damagingError = validateOresThreshold(forms.oresDamagingThreshold, "Damaging threshold");
+      if (damagingError) validationErrors.push(damagingError);
+
+      const goodfaithError = validateOresThreshold(forms.oresGoodfaithThreshold, "Goodfaith threshold");
+      if (goodfaithError) validationErrors.push(goodfaithError);
+
+      const damagingLivingError = validateOresThreshold(forms.oresDamagingThresholdLiving, "Damaging threshold (Living persons)");
+      if (damagingLivingError) validationErrors.push(damagingLivingError);
+
+      const goodfaithLivingError = validateOresThreshold(forms.oresGoodfaithThresholdLiving, "Goodfaith threshold (Living persons)");
+      if (goodfaithLivingError) validationErrors.push(goodfaithLivingError);
+
+      if (validationErrors.length > 0) {
+        state.error = validationErrors.join(". ");
+        return;
+      }
+
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
+        ores_damaging_threshold: forms.oresDamagingThreshold,
+        ores_goodfaith_threshold: forms.oresGoodfaithThreshold,
+        ores_damaging_threshold_living: forms.oresDamagingThresholdLiving,
+        ores_goodfaith_threshold_living: forms.oresGoodfaithThresholdLiving,
       };
       try {
         const data = await apiRequest(`/api/wikis/${state.selectedWikiId}/configuration/`, {
@@ -577,7 +626,7 @@ createApp({
      */
 
     async function showDiff(page) {
-      
+
       page.revisions.forEach(async (revision)=> {
         state.diffs.loadingDiff[revision.revid] = true;
         // when running autoreview all
@@ -609,13 +658,13 @@ createApp({
           if (link) {
               const relativeHref = link.getAttribute('href');
               const domainUrl = "//fi.wikipedia.org";
-              
+
               if (relativeHref && relativeHref.startsWith('/w/')) {
                   link.setAttribute('href', `${domainUrl}${relativeHref}`);
               }
           }
-          
-          const updatedHtml = doc.body.innerHTML; 
+
+          const updatedHtml = doc.body.innerHTML;
           state.diffs.diffHtml[revision.revid] = updatedHtml;
 
         } catch (error) {
@@ -624,7 +673,7 @@ createApp({
           state.diffs.loadingDiff[revision.revid] = false;
         }
 
-      })        
+      })
     }
 
     watch(

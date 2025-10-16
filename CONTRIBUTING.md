@@ -79,7 +79,7 @@ Before installing or running the application, ensure you have:
    ```bash
    python --version
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 --version
    ```
@@ -95,7 +95,7 @@ Before installing or running the application, ensure you have:
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    pip3 install --upgrade pip
    pip3 install -r requirements.txt
@@ -123,7 +123,7 @@ the steps below once per user account that will run PendingChangesBot:
    ```bash
    python -m pywikibot.scripts.login -site:meta
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 -m pywikibot.scripts.login -site:meta
    ```
@@ -145,7 +145,7 @@ the steps below once per user account that will run PendingChangesBot:
    python manage.py makemigrations
    python manage.py migrate
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 manage.py makemigrations
    python3 manage.py migrate
@@ -162,7 +162,7 @@ The Django project serves both the API and the Vue.js frontend from the same cod
    ```bash
    python manage.py runserver
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 manage.py runserver
    ```
@@ -181,7 +181,7 @@ Unit tests live in the Django backend project. Run them from the `app/` director
    ```bash
    python manage.py test
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 manage.py test
    ```
