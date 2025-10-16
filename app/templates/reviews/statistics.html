@@ -152,13 +152,13 @@
 
       <!-- FRS Key Mode: Single Chart Display -->
       <section class="section" v-show="state.filterMode === 'frs_key'">
-        <canvas id="singleFrsKeyChart" style="width: 80%; height: 400px; margin: 0 auto;"></canvas>
+        <canvas id="singleFrsKeyChart" style="width: 80%; height: 400px; margin: 0;"></canvas>
       </section>
 
       <!-- Wiki Mode Charts Display -->
       <section class="section" v-show="state.filterMode === 'wiki'">
         <div v-for="(series, key) in enabledSeries" :key="key" class="mb-4">
-          <div style="width: 80%; height: 400px; margin: 0 auto;">
+          <div style="width: 80%; height: 400px; margin: 0;">
             <canvas :id="`chart-${series.key}`" style="width: 100%; height: 100%;"></canvas>
           </div>
         </div>
@@ -166,9 +166,8 @@
 
       <!-- FRS Key Table View -->
       <section class="section" v-if="state.filterMode === 'frs_key' && state.tableData && state.tableData.length > 0">
-        <div class="box">
-          <h2 class="title is-5">{{ selectedFrsKeyLabel }}</h2>
-          <div class="table-container">
+        <h2 class="title is-5">{{ selectedFrsKeyLabel }}</h2>
+        <div class="table-container">
             <table class="table is-striped is-hoverable is-fullwidth">
               <thead>
                 <tr>
@@ -185,15 +184,13 @@
                 </tr>
               </tbody>
             </table>
-          </div>
         </div>
       </section>
 
       <!-- YearMonth Table View -->
       <section class="section" v-if="state.filterMode === 'yearmonth' && state.tableData && state.tableData.length > 0">
-        <div class="box">
-          <h2 class="title is-5">{{ yearMonthTableTitle }}</h2>
-          <div class="table-container">
+        <h2 class="title is-5">{{ yearMonthTableTitle }}</h2>
+        <div class="table-container">
             <table class="table is-striped is-hoverable is-fullwidth">
               <thead>
                 <tr>
@@ -222,15 +219,13 @@
                 </tr>
               </tbody>
             </table>
-          </div>
         </div>
       </section>
 
       <!-- Wiki Mode Data Table -->
       <section class="section" v-if="state.filterMode === 'wiki' && state.tableData && state.tableData.length > 0" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
-        <div class="box">
-          <h2 class="title is-5">{{ state.selectedWikiForTable }}wiki_p</h2>
-          <div class="table-container">
+        <h2 class="title is-5">{{ state.selectedWikiForTable }}wiki_p</h2>
+        <div class="table-container">
             <table class="table is-striped is-hoverable is-fullwidth">
               <thead>
                 <tr>
@@ -259,15 +254,13 @@
                 </tr>
               </tbody>
             </table>
-          </div>
         </div>
       </section>
 
       <!-- Regular Data Table -->
       <section class="section" v-if="!isSingleMonthView && state.tableData && state.tableData.length > 0 && state.filterMode !== 'yearmonth' && state.filterMode !== 'frs_key' && state.filterMode !== 'wiki'" v-show="state.viewMode === 'both' || state.viewMode === 'table'">
-        <div class="box">
-          <h2 class="title is-5">Data Table</h2>
-          <div class="table-container">
+        <h2 class="title is-5">Data Table</h2>
+        <div class="table-container">
             <table class="table is-striped is-hoverable is-fullwidth">
               <thead>
                 <tr>
@@ -298,7 +291,6 @@
                 </tr>
               </tbody>
             </table>
-          </div>
         </div>
       </section>
 
