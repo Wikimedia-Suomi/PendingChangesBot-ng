@@ -293,7 +293,7 @@ createApp({
       const selectedWikis = [...state.selectedWikis];
 
       // Get unique dates
-      const labels = [...new Set(data.map(d => d.date))].sort();
+      const labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
 
       // Build datasets
       const datasets = [];
@@ -327,9 +327,11 @@ createApp({
           let colorIndex = 0;
 
           selectedWikis.forEach(wiki => {
-            const seriesData = labels.map(date => {
-              const entry = data.find(d => d.wiki === wiki && d.date === date);
-              return entry ? (entry[series.key] || null) : null;
+            const seriesData = labels.map(year => {
+              // Find all entries for this wiki and year, then take the latest one
+              const yearEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(year));
+              const latestEntry = yearEntries.sort((a, b) => b.date.localeCompare(a.date))[0];
+              return latestEntry ? (latestEntry[series.key] || null) : null;
             });
 
             // Debug Pending Lag data specifically
@@ -345,6 +347,7 @@ createApp({
                 borderColor: colors[colorIndex % colors.length],
                 backgroundColor: colors[colorIndex % colors.length] + "20",
                 tension: 0.1,
+                pointRadius: 0,
                 fill: false,
               });
               colorIndex++;
@@ -360,8 +363,15 @@ createApp({
               datasets: datasets,
             },
             options: {
-              responsive: true,
+              responsive: false,
               maintainAspectRatio: false,
+              animation: {
+                duration: 0
+              },
+              interaction: {
+                intersect: false,
+                mode: 'index'
+              },
               plugins: {
                 title: {
                   display: true,
@@ -406,6 +416,15 @@ createApp({
                 },
                 y: {
                   beginAtZero: true,
+                  grid: {
+                    display: true,
+                    color: 'rgba(0, 0, 0, 0.05)',
+                  },
+                  ticks: {
+                    callback: function(value) {
+                      return value.toLocaleString();
+                    },
+                  },
                 },
               },
             },
@@ -493,7 +512,7 @@ createApp({
       const selectedWikis = [...state.selectedWikis];
 
       // Get unique dates
-      const labels = [...new Set(data.map(d => d.date))].sort();
+      const labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
       const colors = ["#3273dc", "#48c774", "#ffdd57", "#f14668", "#00d1b2", "#ff3860", "#209cee", "#ff6348"];
 
       enabledSeries.value.forEach((series, index) => {
@@ -517,9 +536,11 @@ createApp({
         let colorIndex = 0;
 
         selectedWikis.forEach(wiki => {
-          const seriesData = labels.map(date => {
-            const entry = data.find(d => d.wiki === wiki && d.date === date);
-            return entry ? (entry[series.key] || 0) : null;
+          const seriesData = labels.map(year => {
+            // Find all entries for this wiki and year, then take the latest one
+            const yearEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(year));
+            const latestEntry = yearEntries.sort((a, b) => b.date.localeCompare(a.date))[0];
+            return latestEntry ? (latestEntry[series.key] || 0) : null;
           });
 
           if (seriesData.some(val => val !== null && val !== undefined)) {
@@ -529,6 +550,7 @@ createApp({
               borderColor: colors[colorIndex % colors.length],
               backgroundColor: colors[colorIndex % colors.length] + "20",
               tension: 0.1,
+              pointRadius: 0,
               fill: false,
             });
             colorIndex++;
@@ -543,7 +565,7 @@ createApp({
               datasets: datasets,
             },
             options: {
-              responsive: true,
+              responsive: false,
               maintainAspectRatio: false,
               plugins: {
                 title: {
@@ -609,16 +631,18 @@ createApp({
       // Prepare data
       const data = JSON.parse(JSON.stringify(state.tableData));
       const selectedWikis = [...state.selectedWikis];
-      const labels = [...new Set(data.map(d => d.date))].sort();
+      const labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
       const colors = ["#3273dc", "#48c774", "#ffdd57", "#f14668", "#00d1b2", "#ff3860", "#209cee", "#ff6348"];
 
       const datasets = [];
       let colorIndex = 0;
 
       selectedWikis.forEach(wiki => {
-        const seriesData = labels.map(date => {
-          const entry = data.find(d => d.wiki === wiki && d.date === date);
-          return entry ? (entry[state.selectedFrsKey] || null) : null;
+        const seriesData = labels.map(year => {
+          // Find all entries for this wiki and year, then take the latest one
+          const yearEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(year));
+          const latestEntry = yearEntries.sort((a, b) => b.date.localeCompare(a.date))[0];
+          return latestEntry ? (latestEntry[state.selectedFrsKey] || null) : null;
         });
 
         // Debug: Log the data for each wiki
@@ -633,7 +657,7 @@ createApp({
             backgroundColor: colors[colorIndex % colors.length] + "20",
             tension: 0.4,
             borderWidth: 3,
-            pointRadius: 4,
+            pointRadius: 0,
             fill: false,
           });
           colorIndex++;
