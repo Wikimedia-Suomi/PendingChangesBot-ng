@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 from reviews.check_domains import (
     clear_domain_cache,
+    domains_previously_used,
     get_default_ttl,
     set_default_ttl,
-    domains_previously_used,
 )
 
 
@@ -17,15 +17,15 @@ class CountingFakeSite:
 
     def exturlusage(self, query, total=None, namespaces=None):
         self.calls += 1
-        if self.map.get(query):
+        count = int(self.map.get(query, 0) or 0)
+        for _ in range(count):
             yield SimpleNamespace(title='FakePage')
-        else:
-            if False:
-                yield None
+        if False:
+            yield None
 
 
 def test_cache_hit_avoids_second_query():
-    site = CountingFakeSite(exturlusage_map={"example.com": True})
+    site = CountingFakeSite(exturlusage_map={"example.com": 2})
     clear_domain_cache()
     ok1, d1 = domains_previously_used(site, ["https://example.com/page"])
     ok2, d2 = domains_previously_used(site, ["https://example.com/other"])  # should use cache
@@ -34,7 +34,7 @@ def test_cache_hit_avoids_second_query():
 
 
 def test_clear_cache_causes_requery():
-    site = CountingFakeSite(exturlusage_map={"example.com": True})
+    site = CountingFakeSite(exturlusage_map={"example.com": 2})
     clear_domain_cache()
     ok1, d1 = domains_previously_used(site, ["https://example.com/page"])
 
@@ -49,7 +49,7 @@ def test_clear_cache_causes_requery():
 
 
 def test_cache_respects_ttl(monkeypatch):
-    site = CountingFakeSite(exturlusage_map={"example.com": True})
+    site = CountingFakeSite(exturlusage_map={"example.com": 2})
     clear_domain_cache()
 
     original_ttl = get_default_ttl()

@@ -11,8 +11,10 @@ import mwparserfromhell
 import pywikibot
 from bs4 import BeautifulSoup
 
-from .models import EditorProfile, PendingPage, PendingRevision, Wiki
+from reviews.services import WikiClient
+
 from .check_domains import domains_previously_used
+from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 
 logger = logging.getLogger(__name__)
 
@@ -308,7 +310,9 @@ def _evaluate_revision(
                     "message": (
                         "New external links reference domains without prior "
                         "usage: {}.".format(
-                            ", ".join(sorted(problematic_domains)) if problematic_domains else "unknown"
+                            ", ".join(sorted(problematic_domains))
+                            if problematic_domains
+                            else "unknown"
                         )
                     ),
                 }
@@ -583,6 +587,13 @@ def _get_redirect_aliases(wiki: Wiki) -> list[str]:
         response = request.submit()
 
         magic_words = response.get("query", {}).get("magicwords", [])
+        if not isinstance(magic_words, list):
+            logger.debug(
+                "Unexpected magicwords payload type %s; falling back",
+                type(magic_words).__name__,
+            )
+            magic_words = []
+
         for magic_word in magic_words:
             if magic_word.get("name") == "redirect":
                 aliases = magic_word.get("aliases", [])

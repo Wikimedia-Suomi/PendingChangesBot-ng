@@ -55,7 +55,16 @@ class WikiClient:
                 formatversion=2,
             )
             response = request.submit()
-            log_events = response.get("query", {}).get("logevents", [])
+            log_events_raw = response.get("query", {}).get("logevents", [])
+            if isinstance(log_events_raw, list):
+                log_events = log_events_raw
+            else:
+                if log_events_raw not in (None, ""):
+                    logger.debug(
+                        "Unexpected logevents payload type %s; treating as empty",
+                        type(log_events_raw).__name__,
+                    )
+                log_events = []
 
             for event in log_events:
                 params = event.get("params", {})
@@ -221,7 +230,7 @@ ORDER BY fp_pending_since, rev_id DESC
 
                 revid = entry.get("rev_id")
                 try:
-                    revid_int = int(revid)
+                    int(revid)
                 except (TypeError, ValueError):
                     continue
 
@@ -629,9 +638,17 @@ def was_user_blocked_after(code: str, family: str, username: str, year: int) -> 
             total=1,  # Only need to find one block event
         )
 
+        if not hasattr(block_events, "__iter__"):
+            logger.debug(
+                "Unexpected block_events payload type %s; treating as no blocks",
+                type(block_events).__name__,
+            )
+            return False
+
         # Check if any 'block' action exists
         for event in block_events:
-            if event.action() == "block":
+            action = getattr(event, "action", None)
+            if callable(action) and action() == "block":
                 return True
 
         return False

@@ -20,36 +20,38 @@ class CapturingFakeSite:
             'total': total,
             'namespaces': namespaces,
         }
-        if self.map.get(query):
+        count = int(self.map.get(query, 0) or 0)
+        for _ in range(count):
             yield SimpleNamespace(title='FakePage')
-        else:
-            if False:
-                yield None
+        if False:
+            yield None
 
 
 def test_exturlusage_called_with_namespace_zero():
-    site = CapturingFakeSite(exturlusage_map={"example.com": True})
+    site = CapturingFakeSite(exturlusage_map={"example.com": 2})
     clear_domain_cache()
     ok, details = domains_previously_used(site, ["https://example.com/page"])
     assert site.last_call is not None
     assert site.last_call['namespaces'] == [0]
+    assert site.last_call['total'] == 2
 
 
 def test_clear_domain_cache_empties_cache():
-    site = CapturingFakeSite(exturlusage_map={"example.com": True})
+    site = CapturingFakeSite(exturlusage_map={"example.com": 2})
     # ensure value cached
     clear_domain_cache()
     ok1, d1 = domains_previously_used(site, ["https://example.com/page"])  # caches result
     # change map to false and clear cache, then requery
     site.map = {"example.com": False}
     clear_domain_cache()
-    ok2, d2 = domains_previously_used(site, ["https://example.com/page"])  # should requery and get False
+    # should requery and get False
+    ok2, d2 = domains_previously_used(site, ["https://example.com/page"])
     assert ok1 is True
     assert ok2 is False
 
 
 def test_cached_flag_reports_hit():
-    site = CapturingFakeSite(exturlusage_map={"example.com": True})
+    site = CapturingFakeSite(exturlusage_map={"example.com": 2})
     clear_domain_cache()
     ok1, d1 = domains_previously_used(site, ["https://example.com/page"])
     ok2, d2 = domains_previously_used(site, ["https://example.com/page#section"])

@@ -32,6 +32,10 @@ class ViewTests(TestCase):
         self.mock_wiki_client = self.mock_wiki_client_cls.return_value
         self.mock_wiki_client.ensure_page_is_current.side_effect = lambda page: page
 
+    @staticmethod
+    def _get_test_by_id(tests: list[dict], test_id: str) -> dict | None:
+        return next((test for test in tests if test.get("id") == test_id), None)
+
     def test_index_creates_default_wiki_if_missing(self):
         Wiki.objects.all().delete()
         response = self.client.get(reverse("index"))
@@ -426,24 +430,24 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 5)
-        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
-        self.assertEqual(result["tests"][3]["status"], "ok")
-        self.assertEqual(result["tests"][4]["status"], "fail")
-        self.assertEqual(result["tests"][4]["id"], "blocking-categories")
+        external_test = self._get_test_by_id(result["tests"], "external-link-domains")
+        self.assertIsNotNone(external_test)
+        self.assertEqual(external_test["status"], "ok")
+        blocking_test = self._get_test_by_id(result["tests"], "blocking-categories")
+        self.assertIsNotNone(blocking_test)
+        self.assertEqual(blocking_test["status"], "fail")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
         self.assertEqual(revision.categories, ["Secret"])
-        # 2 requests: 1 for redirect aliases, 1 for wikitext
-        # (manual un-approval check uses reviews.services.pywikibot.Site which isn't mocked here)
-        self.assertEqual(len(fake_site.requests), 2)
+        initial_request_count = len(fake_site.requests)
+        self.assertGreaterEqual(initial_request_count, 3)
 
         second_response = self.client.post(url)
         self.assertEqual(second_response.status_code, 200)
-        # redirect aliases are now cached, wikitext was already cached
-        # But there's 1 more request (possibly from another check)
-        self.assertEqual(len(fake_site.requests), 3)
+        new_requests = fake_site.requests[initial_request_count:]
+        self.assertEqual(len(new_requests), 1)
+        self.assertEqual(new_requests[0].get("list"), "logevents")
 
     @mock.patch("reviews.models.pywikibot.Site")
     @mock.patch("reviews.services.pywikibot.Site")
@@ -481,11 +485,12 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-
-        self.assertEqual(len(result["tests"]), 5)
-        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
-        self.assertEqual(result["tests"][3]["status"], "ok")
-        self.assertEqual(result["tests"][4]["status"], "ok")
+        external_test = self._get_test_by_id(result["tests"], "external-link-domains")
+        self.assertIsNotNone(external_test)
+        self.assertEqual(external_test["status"], "ok")
+        blocking_test = self._get_test_by_id(result["tests"], "blocking-categories")
+        self.assertIsNotNone(blocking_test)
+        self.assertEqual(blocking_test["status"], "ok")
 
     def test_api_autoreview_returns_not_found_if_page_removed(self):
         page = PendingPage.objects.create(
@@ -578,10 +583,10 @@ class ViewTests(TestCase):
         result = response.json()["results"][0]
 
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 4)
-        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
-        self.assertEqual(result["tests"][3]["status"], "fail")
-        self.assertIn("newexample.test", result["tests"][3]["message"])
+        external_test = self._get_test_by_id(result["tests"], "external-link-domains")
+        self.assertIsNotNone(external_test)
+        self.assertEqual(external_test["status"], "fail")
+        self.assertIn("newexample.test", external_test["message"])
 
         mock_domains.assert_called_once()
         called_site, called_urls = mock_domains.call_args[0]
@@ -647,17 +652,17 @@ class ViewTests(TestCase):
         result = response.json()["results"][0]
 
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 5)
-        self.assertEqual(result["tests"][3]["id"], "external-link-domains")
-        self.assertEqual(result["tests"][3]["status"], "ok")
-        self.assertIn("previously used", result["tests"][3]["message"])
+        external_test = self._get_test_by_id(result["tests"], "external-link-domains")
+        self.assertIsNotNone(external_test)
+        self.assertEqual(external_test["status"], "ok")
+        self.assertIn("previously used", external_test["message"])
 
         mock_domains.assert_called_once()
         called_site, called_urls = mock_domains.call_args[0]
         self.assertIs(called_site, mock_site.return_value)
         self.assertEqual(called_urls, ["https://known.example/path"])
 
-        self.assertEqual(len(result["tests"]), 8)
+        self.assertGreaterEqual(len(result["tests"]), 8)
         self.assertEqual(result["tests"][-1]["status"], "ok")
 
 

@@ -1,11 +1,9 @@
-import pytest
-
 from types import SimpleNamespace
 
 from reviews.check_domains import (
-    extract_domain,
     clear_domain_cache,
     domains_previously_used,
+    extract_domain,
 )
 
 # --- Helpers: Fake site objects with exturlusage behavior ---
@@ -14,7 +12,7 @@ from reviews.check_domains import (
 class FakeSite:
     """
     fake site supporting exturlusage(domain, total=..., namespaces=[0]).
-    exturlusage_map should be dict: domain -> bool (True means pages exist)
+    exturlusage_map should be dict: domain -> int (number of matching pages)
     If domain not in map -> return empty iterator.
     If exturlusage_raises is set to an Exception instance, calling exturlusage raises it.
     """
@@ -27,40 +25,49 @@ class FakeSite:
         if self.raises:
             raise self.raises
         # Return generator that yields a fake Page if domain exists in map True
-        if self.map.get(query):
-            # yield one item to represent that usage exists
+        count = int(self.map.get(query, 0) or 0)
+        for _ in range(count):
             yield SimpleNamespace(title='FakePage')
-        else:
-            if False:
-                yield None  # unreachable; just to keep generator type
+        if False:
+            yield None  # unreachable; just to keep generator type
 
 # --- Tests for extract_domain ---
 
 
-@pytest.mark.parametrize("input_url, expected", [
-    ("https://example.com/page", "example.com"),
-    ("http://www.Example.com:8080/foo", "example.com"),
-    ("//cdn.example.org/path", "cdn.example.org"),
-    ("www.example.co.uk/path", "example.co.uk"),
-    ("mailto:user@example.com", "example.com"),
-    ("bitcoin:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", None),
-    ("", None),
-    ("not a url", None),
-    ("ftp://ftp.example.net/resource", "ftp.example.net"),
-])
-def test_extract_domain(input_url, expected):
-    assert extract_domain(input_url) == expected
+def test_extract_domain_cases():
+    cases = [
+        ("https://example.com/page", "example.com"),
+        ("http://www.Example.com:8080/foo", "example.com"),
+        ("//cdn.example.org/path", "cdn.example.org"),
+        ("www.example.co.uk/path", "example.co.uk"),
+        ("mailto:user@example.com", "example.com"),
+        ("bitcoin:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", None),
+        ("", None),
+        ("not a url", None),
+        ("ftp://ftp.example.net/resource", "ftp.example.net"),
+    ]
+
+    for input_url, expected in cases:
+        assert extract_domain(input_url) == expected
 
 
 # --- Domain check tests ---
 
 
 def test_trusted_domain_approved():
-    site = FakeSite(exturlusage_map={"example.com": True})
+    site = FakeSite(exturlusage_map={"example.com": 2})
     clear_domain_cache()
     ok, details = domains_previously_used(site, ["https://example.com/article"])
     assert ok is True
     assert details["example.com"]["used"] is True
+
+
+def test_domain_only_matches_new_link_requires_review():
+    site = FakeSite(exturlusage_map={"example.com": 1})
+    clear_domain_cache()
+    ok, details = domains_previously_used(site, ["https://example.com/article"])
+    assert ok is False
+    assert details["example.com"]["used"] is False
 
 
 def test_never_used_domain_rejected():
@@ -78,7 +85,7 @@ def test_never_used_domain_rejected():
 
 
 def test_multiple_all_trusted_approved():
-    site = FakeSite(exturlusage_map={"example.com": True, "bbc.com": True})
+    site = FakeSite(exturlusage_map={"example.com": 2, "bbc.com": 2})
     clear_domain_cache()
     ok, details = domains_previously_used(site, [
         "https://example.com/a", "http://bbc.com/news"
@@ -89,7 +96,7 @@ def test_multiple_all_trusted_approved():
 
 
 def test_multiple_mixed_rejected():
-    site = FakeSite(exturlusage_map={"example.com": True})
+    site = FakeSite(exturlusage_map={"example.com": 2})
     clear_domain_cache()
     ok, details = domains_previously_used(site, [
         "https://example.com/article", "https://suspicious-site.com/stuff"
@@ -103,7 +110,7 @@ def test_multiple_mixed_rejected():
 
 
 def test_various_url_formats_and_normalization():
-    site = FakeSite(exturlusage_map={"example.com": True, "sub.example.co.uk": True})
+    site = FakeSite(exturlusage_map={"example.com": 2, "sub.example.co.uk": 2})
     clear_domain_cache()
     ok, details = domains_previously_used(site, [
         "https://www.example.com/some",  # normalizes to example.com

@@ -3,9 +3,8 @@ from __future__ import annotations
 from datetime import timedelta
 from unittest import mock
 
-from django.utils import timezone
-
 from django.test import TestCase
+from django.utils import timezone
 
 from reviews.models import EditorProfile, PendingPage, PendingRevision, Wiki
 from reviews.services import WikiClient, parse_categories

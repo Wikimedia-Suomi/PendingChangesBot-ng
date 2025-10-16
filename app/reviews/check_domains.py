@@ -18,12 +18,13 @@ Notes:
 - Caches domain results in-memory using functools.lru_cache().
 """
 
-from typing import Iterable, List, Optional, Dict, Any, Tuple, TYPE_CHECKING
-from urllib.parse import urlparse
-from functools import lru_cache
-import weakref
 import re
 import time
+import weakref
+from collections.abc import Iterable
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, Optional
+from urllib.parse import urlparse
 
 # Make pywikibot import optional so unit tests and static tools can run without it.
 if TYPE_CHECKING:
@@ -70,15 +71,23 @@ def _cache_bucket(ttl_seconds: Optional[float]) -> Optional[int]:
 
 
 @lru_cache(maxsize=4096)
-def _cached_domain_usage(site_key: int, domain: str, bucket: Optional[int]) -> Tuple[bool, Optional[Exception]]:
+def _cached_domain_usage(
+    site_key: int,
+    domain: str,
+    bucket: Optional[int]
+) -> tuple[bool, Optional[Exception]]:
     site = _SITE_REGISTRY.get(site_key)
     if site is None:
         raise RuntimeError("Site reference expired; cache needs refresh")
 
     try:
-        results = site.exturlusage(domain, total=1, namespaces=[0])
+        # Request two results so we can ignore the freshly added link in the current revision.
+        results = site.exturlusage(domain, total=2, namespaces=[0])
+        match_count = 0
         for _ in results:
-            return True, None
+            match_count += 1
+            if match_count >= 2:
+                return True, None
         return False, None
     except Exception as exc:  # pragma: no cover - network failure fallback
         return False, exc
@@ -125,17 +134,22 @@ def extract_domain(raw_url: str) -> Optional[str]:
     if url.startswith('<') and url.endswith('>'):
         url = url[1:-1].strip()
 
-    # If it starts with '//' which is protocol-relative, prepend http:
+    # If there's no scheme but it looks like a host
+    # (www. or has a dot before a slash),
     if url.startswith('//'):
         url = 'http:' + url
 
-    # If there's no scheme but it has typical host-like form (www. or contains a dot before a slash),
+    # If there's no scheme but it looks like a host (www. or has a dot before a slash),
     # prepend http:// to make urlparse give us a netloc.
     if '://' not in url:
         # heuristics: starts with 'www.' or contains '.' before first '/'
         first_slash = url.find('/')
         head = url if first_slash == -1 else url[:first_slash]
-        if head.startswith('www.') or ('.' in head and not head.startswith('mailto:') and not head.startswith('urn:')):
+        if head.startswith('www.') or (
+            '.' in head
+            and not head.startswith('mailto:')
+            and not head.startswith('urn:')
+        ):
             url = 'http://' + url
 
     try:
@@ -207,7 +221,7 @@ def _check_domain_used_with_site(
     domain: str,
     *,
     cache_ttl_seconds: Optional[float] = None,
-) -> Tuple[bool, Optional[Exception]]:
+) -> tuple[bool, Optional[Exception]]:
     """Return (used, error) for namespace=0 domain usage on the given site."""
 
     effective_ttl = _effective_ttl_seconds(cache_ttl_seconds)
@@ -226,14 +240,16 @@ def _check_domain_used_with_site(
 def domains_previously_used(site: Any,
                             urls: Iterable[str],
                             raise_on_error: bool = False
-                            ) -> Tuple[bool, Dict[str, Dict]]:
+                            ) -> tuple[bool, dict[str, dict]]:
     """
     Main check function.
 
     Parameters
     - site: pywikibot.Site instance
     - urls: iterable of URL strings newly added in an edit
-    - raise_on_error: if True, re-raise API exceptions; otherwise, swallow and return (False, details)
+    - raise_on_error: if True, re-raise API exceptions; otherwise,
+      swallow and return (False, details)
+
 
     Returns:
     - (all_domains_previously_used, details)
@@ -245,12 +261,15 @@ def domains_previously_used(site: Any,
         }
 
     Rules applied:
-    - If any domain is not previously used (used == False) -> overall result is False (manual review).
-    - If any domain check results in an API error -> overall result is False (manual review) and error recorded.
-    - If no domains were extractable (e.g., all links are protocol types without host) -> conservative behavior: require manual review (returns False).
+    - If any domain is not previously used (used == False) ->
+      overall result is False (manual review).
+    - If any domain check results in an API error ->
+      overall result is False (manual review) and error recorded.
+    - If no domains were extractable (e.g., all links are protocol
+      types without host) -> conservative behavior: require manual review.
     """
     # Build mapping domain -> list of sample urls
-    domain_to_urls: Dict[str, List[str]] = {}
+    domain_to_urls: dict[str, list[str]] = {}
     for u in urls:
         dom = extract_domain(u)
         if dom:
@@ -259,7 +278,7 @@ def domains_previously_used(site: Any,
             # track None domains under a special key
             domain_to_urls.setdefault('__malformed__', []).append(u)
 
-    details: Dict[str, Dict] = {}
+    details: dict[str, dict] = {}
     overall_ok = True
 
     # If any malformed URLs (no domain), conservative: require manual review
