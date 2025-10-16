@@ -12,9 +12,18 @@ from reviews.models import FlaggedRevsStatistics, ReviewActivity, Wiki
 
 logger = logging.getLogger(__name__)
 
+"""
+USAGE:
+    python manage.py load_statistics                    # Incremental update (recommended)
+    python manage.py load_statistics --wiki fi          # Update specific wiki only
+    python manage.py load_statistics --full-refresh     # Delete and reload all data
+    python manage.py load_statistics --clear            # Clear all data without loading
+
+"""
+
 
 class Command(BaseCommand):
-    help = "Load FlaggedRevs statistics from Superset database"
+    help = "Load FlaggedRevs statistics from Superset"
 
     def add_arguments(self, parser):
         parser.add_argument(
