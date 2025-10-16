@@ -5,6 +5,7 @@ import os
 from datetime import timedelta
 
 import pywikibot
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -57,6 +58,34 @@ class WikiConfiguration(models.Model):
             "have similarity below this threshold in the current stable version, "
             "the revision is considered superseded and can be auto-approved."
         ),
+    )
+    ores_damaging_threshold = models.FloatField(
+        null=True,
+        blank=True,
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text=("Edits with damaging probability above this will not be auto-approved. "),
+    )
+    ores_goodfaith_threshold = models.FloatField(
+        null=True,
+        blank=True,
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text=("Edits with goodfaith probability below this will not be auto-approved. "),
+    )
+    ores_damaging_threshold_living = models.FloatField(
+        null=True,
+        blank=True,
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text=("ORES damaging threshold for living person biographies (stricter). "),
+    )
+    ores_goodfaith_threshold_living = models.FloatField(
+        null=True,
+        blank=True,
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text=("ORES goodfaith threshold for living person biographies (stricter). "),
     )
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -169,6 +198,36 @@ class PendingRevision(models.Model):
                 if content is not None:
                     return str(content)
         return ""
+
+
+class ModelScores(models.Model):
+    """Caches ORES scores for revisions to avoid repeated API calls."""
+
+    revision = models.OneToOneField(
+        PendingRevision, on_delete=models.CASCADE, related_name="model_scores"
+    )
+    ores_damaging_score = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text="ORES damaging probability (0.0-1.0, higher = more likely damaging)",
+    )
+    ores_goodfaith_score = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text="ORES goodfaith probability (0.0-1.0, higher = more likely good faith)",
+    )
+    ores_fetched_at = models.DateTimeField(
+        auto_now_add=True, help_text="When ORES scores were fetched from the API"
+    )
+
+    class Meta:
+        verbose_name = "Model Scores"
+        verbose_name_plural = "Model Scores"
+
+    def __str__(self) -> str:  # pragma: no cover - debug helper
+        return f"Scores for {self.revision}"
 
 
 class EditorProfile(models.Model):
