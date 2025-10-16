@@ -330,3 +330,163 @@ class LoadStatisticsCommandTests(TestCase):
         call_command("load_statistics", "--clear", stdout=StringIO(), stderr=StringIO())
 
         self.assertEqual(FlaggedRevsStatistics.objects.count(), 0)
+
+
+class AddSampleStatisticsCommandTests(TestCase):
+    """Tests for add_sample_statistics management command."""
+
+    def setUp(self):
+        """Set up test wikis."""
+        self.wiki1 = Wiki.objects.create(
+            name="Finnish Wikipedia",
+            code="fi",
+            api_endpoint="https://fi.wikipedia.org/w/api.php",
+        )
+        self.wiki2 = Wiki.objects.create(
+            name="German Wikipedia",
+            code="de",
+            api_endpoint="https://de.wikipedia.org/w/api.php",
+        )
+
+    def test_add_sample_statistics_creates_data(self):
+        """Test that add_sample_statistics creates sample data."""
+        out = StringIO()
+        call_command("add_sample_statistics", stdout=out, stderr=StringIO())
+
+        # Check that statistics data was created
+        stats_count = FlaggedRevsStatistics.objects.count()
+        self.assertGreater(stats_count, 0)
+
+        # Check that review activity data was created
+        activity_count = ReviewActivity.objects.count()
+        self.assertGreater(activity_count, 0)
+
+    def test_add_sample_statistics_creates_data_for_all_wikis(self):
+        """Test that sample data is created for all wikis."""
+        call_command("add_sample_statistics", stdout=StringIO(), stderr=StringIO())
+
+        # Check that data exists for both wikis
+        fi_stats = FlaggedRevsStatistics.objects.filter(wiki=self.wiki1)
+        de_stats = FlaggedRevsStatistics.objects.filter(wiki=self.wiki2)
+
+        self.assertGreater(fi_stats.count(), 0)
+        self.assertGreater(de_stats.count(), 0)
+
+    def test_add_sample_statistics_with_existing_data(self):
+        """Test that add_sample_statistics works with existing data."""
+        # First, create some data
+        FlaggedRevsStatistics.objects.create(
+            wiki=self.wiki1,
+            date=date(2024, 1, 1),
+            total_pages_ns0=1000,
+        )
+
+        # Run command again - should add more data
+        call_command("add_sample_statistics", stdout=StringIO(), stderr=StringIO())
+
+        # Check that data was added
+        stats_count = FlaggedRevsStatistics.objects.count()
+        self.assertGreater(stats_count, 1)
+
+
+class StatisticsAPIIntegrationTests(TestCase):
+    """Integration tests for statistics API endpoints."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.wiki1 = Wiki.objects.create(
+            name="Finnish Wikipedia",
+            code="fi",
+            api_endpoint="https://fi.wikipedia.org/w/api.php",
+        )
+        self.wiki2 = Wiki.objects.create(
+            name="German Wikipedia",
+            code="de",
+            api_endpoint="https://de.wikipedia.org/w/api.php",
+        )
+
+        # Create statistics data
+        FlaggedRevsStatistics.objects.create(
+            wiki=self.wiki1,
+            date=date(2024, 1, 1),
+            total_pages_ns0=1000,
+            synced_pages_ns0=800,
+            reviewed_pages_ns0=900,
+            pending_lag_average=2.5,
+        )
+        FlaggedRevsStatistics.objects.create(
+            wiki=self.wiki2,
+            date=date(2024, 1, 1),
+            total_pages_ns0=2000,
+            synced_pages_ns0=1800,
+            reviewed_pages_ns0=1900,
+            pending_lag_average=1.5,
+        )
+
+        # Create review activity data
+        ReviewActivity.objects.create(
+            wiki=self.wiki1,
+            date=date(2024, 1, 1),
+            number_of_reviewers=10,
+            number_of_reviews=50,
+            number_of_pages=45,
+        )
+        ReviewActivity.objects.create(
+            wiki=self.wiki2,
+            date=date(2024, 1, 1),
+            number_of_reviewers=15,
+            number_of_reviews=75,
+            number_of_pages=70,
+        )
+
+    def test_api_statistics_with_specific_wiki(self):
+        """Test API filters by specific wiki code."""
+        response = self.client.get(reverse("api_statistics"), {"wiki": "fi"})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+
+        self.assertEqual(len(data["data"]), 1)
+        self.assertEqual(data["data"][0]["wiki"], "fi")
+        self.assertEqual(data["data"][0]["totalPages_ns0"], 1000)
+
+    def test_api_statistics_month_filtering(self):
+        """Test API filtering by month (YYYYMM format)."""
+        response = self.client.get(reverse("api_statistics"), {"month": "202401"})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+
+        # Should return data for the specific month
+        self.assertEqual(len(data["data"]), 2)
+
+        # All data should be from January 2024
+        for item in data["data"]:
+            self.assertEqual(item["date"], "2024-01-01")
+
+    def test_api_review_activity_with_specific_wiki(self):
+        """Test review activity API with specific wiki code."""
+        response = self.client.get(reverse("api_review_activity"), {"wiki": "fi"})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+
+        self.assertEqual(len(data["data"]), 1)
+        self.assertEqual(data["data"][0]["wiki"], "fi")
+        self.assertEqual(data["data"][0]["number_of_reviewers"], 10)
+
+    def test_data_consistency_across_apis(self):
+        """Test that data is consistent between statistics and review activity APIs."""
+        # Get statistics data
+        stats_response = self.client.get(reverse("api_statistics"))
+        stats_data = stats_response.json()["data"]
+
+        # Get review activity data
+        activity_response = self.client.get(reverse("api_review_activity"))
+        activity_data = activity_response.json()["data"]
+
+        # Both should have the same wikis
+        stats_wikis = set(item["wiki"] for item in stats_data)
+        activity_wikis = set(item["wiki"] for item in activity_data)
+
+        self.assertEqual(stats_wikis, activity_wikis)
