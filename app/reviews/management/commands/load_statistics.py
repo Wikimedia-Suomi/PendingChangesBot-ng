@@ -74,15 +74,24 @@ class Command(BaseCommand):
         self.stdout.write(f"Loading statistics for {wiki.code}...")
 
         try:
-            # Superset queries run on meta.wikimedia.org, not individual wikis
-            meta_site = pywikibot.Site("meta", "meta")
-            superset = SupersetQuery(site=meta_site)
+            # Create site for the target wiki to query its Superset database
+            wiki_site = pywikibot.Site(code=wiki.code, fam=wiki.family)
+            superset = SupersetQuery(site=wiki_site)
 
-            # Load FlaggedRevs statistics
+            # Load FlaggedRevs statistics (required)
             self._load_flaggedrevs_statistics(wiki, superset, full_refresh)
 
-            # Load review activity
-            self._load_review_activity(wiki, superset, full_refresh)
+            # Load review activity (optional - may timeout on large wikis)
+            try:
+                self._load_review_activity(wiki, superset, full_refresh)
+            except Exception as e:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  ⚠ Review activity loading skipped (Superset timeout/error): "
+                        f"{str(e)[:100]}"
+                    )
+                )
+                logger.warning(f"Review activity loading failed for {wiki.code}: {e}")
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Failed to load statistics for {wiki.code}: {e}"))
@@ -147,11 +156,23 @@ ORDER BY total_ns0.d
             if full_refresh:
                 FlaggedRevsStatistics.objects.filter(wiki=wiki).delete()
 
+            saved_count = 0
+            skipped_count = 0
+
             with transaction.atomic():
                 for entry in payload:
-                    # Parse date from YYYYMM format
-                    date_str = str(entry.get("d", ""))
+                    # Parse date - can be float (20111201.0) or string ("201112")
+                    raw_date = entry.get("d", "")
+
+                    # Convert to string and remove decimal point if present
+                    date_str = str(int(float(raw_date))) if raw_date else ""
+
+                    # Extract YYYYMM from YYYYMMDD or YYYYMM format
+                    if len(date_str) >= 6:
+                        date_str = date_str[:6]  # Take first 6 chars (YYYYMM)
+
                     if not date_str or len(date_str) != 6:
+                        skipped_count += 1
                         continue
 
                     try:
@@ -160,10 +181,11 @@ ORDER BY total_ns0.d
                         date = datetime(year, month, 1).date()
                     except (ValueError, TypeError):
                         logger.warning(f"Invalid date format: {date_str}")
+                        skipped_count += 1
                         continue
 
                     # Update or create statistics record
-                    FlaggedRevsStatistics.objects.update_or_create(
+                    obj, created = FlaggedRevsStatistics.objects.update_or_create(
                         wiki=wiki,
                         date=date,
                         defaults={
@@ -175,10 +197,15 @@ ORDER BY total_ns0.d
                             ),
                         },
                     )
+                    saved_count += 1
 
             self.stdout.write(
-                self.style.SUCCESS(f"  ✓ Loaded {len(payload)} months of FlaggedRevs statistics")
+                self.style.SUCCESS(f"  ✓ Saved {saved_count} records (skipped {skipped_count})")
             )
+
+            # Verify data was actually saved
+            actual_count = FlaggedRevsStatistics.objects.filter(wiki=wiki).count()
+            self.stdout.write(f"  Database now has {actual_count} total records for {wiki.code}")
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"  Failed to load FlaggedRevs statistics: {e}"))
@@ -187,17 +214,22 @@ ORDER BY total_ns0.d
     def _load_review_activity(self, wiki: Wiki, superset: SupersetQuery, full_refresh: bool):
         """Load review activity data from flaggedrevs table."""
 
+        # NOTE: The flaggedrevs table is extremely large (7.8+ million rows).
+        # Aggregation queries timeout on Superset. We limit to most recent reviews only.
+
+        self.stdout.write("  Querying review activity (last 10 years from 2014)...")
+
         sql_query = """
 SELECT
     FLOOR(fr_timestamp/1000000) AS d,
     COUNT(DISTINCT(fr_user)) AS number_of_reviewers,
-    SUM(1) AS number_of_reviews,
-    COUNT(DISTINCT(fr_page)) AS number_of_pages
-FROM
-    flaggedrevs
-WHERE
-    fr_flags NOT LIKE "%auto%"
+    COUNT(*) AS number_of_reviews,
+    COUNT(DISTINCT(fr_page_id)) AS number_of_pages
+FROM flaggedrevs
+WHERE fr_flags NOT LIKE "%auto%"
+    AND fr_timestamp >= 20140101000000
 GROUP BY d
+ORDER BY d
 """
 
         try:
@@ -209,8 +241,16 @@ GROUP BY d
 
             with transaction.atomic():
                 for entry in payload:
-                    # Parse date from YYYYMM format
-                    date_str = str(entry.get("d", ""))
+                    # Parse date - can be float (20111201.0) or string ("201112")
+                    raw_date = entry.get("d", "")
+
+                    # Convert to string and remove decimal point if present
+                    date_str = str(int(float(raw_date))) if raw_date else ""
+
+                    # Extract YYYYMM from YYYYMMDD or YYYYMM format
+                    if len(date_str) >= 6:
+                        date_str = date_str[:6]  # Take first 6 chars (YYYYMM)
+
                     if not date_str or len(date_str) != 6:
                         continue
 
@@ -239,9 +279,9 @@ GROUP BY d
                 self.style.SUCCESS(f"  ✓ Loaded {len(payload)} months of review activity data")
             )
 
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"  Failed to load review activity: {e}"))
-            logger.exception("Failed to load review activity")
+        except Exception:
+            # Re-raise to be caught by the outer try-catch for cleaner error handling
+            raise
 
     def _parse_int(self, value) -> int | None:
         """Parse integer value from Superset response."""
