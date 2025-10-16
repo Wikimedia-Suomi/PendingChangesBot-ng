@@ -6,12 +6,13 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 
 import mwparserfromhell
 import pywikibot
-from pywikibot.data.superset import SupersetQuery
 from django.db import transaction
 from django.utils import timezone as dj_timezone
+from pywikibot.data.superset import SupersetQuery
 
 from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 
@@ -40,6 +41,90 @@ class WikiClient:
     def __init__(self, wiki: Wiki):
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
+
+    def has_manual_unapproval(self, page_title: str, revid: int) -> bool:
+        """Check if the most recent review action for a revision is an un-approval."""
+        try:
+            request = self.site.simple_request(
+                action="query",
+                list="logevents",
+                letype="review",
+                letitle=page_title,
+                lelimit=50,
+                leprop="ids|type|details|timestamp|user",
+                formatversion=2,
+            )
+            response = request.submit()
+            log_events = response.get("query", {}).get("logevents", [])
+
+            for event in log_events:
+                params = event.get("params", {})
+                event_revid = params.get("0")
+
+                if event_revid == revid:
+                    action = event.get("action")
+                    if action in ("unapprove", "unapprove2"):
+                        logger.info(
+                            "Revision %s was manually un-approved (action: %s) at %s",
+                            revid,
+                            action,
+                            event.get("timestamp"),
+                        )
+                        return True
+                    else:
+                        logger.info(
+                            "Revision %s has review action '%s' at %s (not un-approved)",
+                            revid,
+                            action,
+                            event.get("timestamp"),
+                        )
+                        return False
+
+            return False
+        except Exception:  # pragma: no cover - network failure fallback
+            logger.exception(
+                "Failed to check review log for page %s, revision %s",
+                page_title,
+                revid,
+            )
+            return False
+
+    def is_user_blocked_after_edit(self, username: str, edit_timestamp: datetime) -> bool:
+        """Check if user was blocked after making an edit."""
+        # Extract year from timestamp for cache efficiency
+        year = edit_timestamp.year
+        return was_user_blocked_after(self.wiki.code, self.wiki.family, username, year)
+
+    def get_rendered_html(self, revid: int) -> str:
+        """Fetch the rendered HTML for a specific revision."""
+        if not revid:
+            return ""
+
+        try:
+            revision = PendingRevision.objects.get(page__wiki=self.wiki, revid=revid)
+            if revision.rendered_html:
+                return revision.rendered_html
+        except PendingRevision.DoesNotExist:
+            revision = None
+        except Exception:
+            revision = None
+
+        request = self.site.simple_request(
+            action="parse",
+            oldid=revid,
+            prop="text",
+            formatversion=2,
+        )
+        try:
+            response = request.submit()
+            html = response.get("parse", {}).get("text", "")
+            html_content = html if isinstance(html, str) else ""
+            if revision and html_content:
+                revision.rendered_html = html_content
+                revision.save(update_fields=["rendered_html"])
+            return html_content
+        except Exception:
+            return ""
 
     def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
         """Fetch the pending pages using Superset and cache them in the database."""
@@ -70,16 +155,20 @@ SELECT
    group_concat(DISTINCT(ufg_group)) AS user_former_groups,
    group_concat(DISTINCT(cl_to)) AS page_categories,
    rc_bot,
-   rc_patrolled
+   rc_patrolled,
+   pp_value as wikibase_item
 FROM
-   (SELECT * FROM flaggedpages ORDER BY fp_pending_since DESC LIMIT {limit}) AS fp,
+   (SELECT fp.* FROM page,flaggedpages as fp
+   WHERE fp_page_id=page_id AND page_namespace=0 AND fp_pending_since IS NOT NULL
+   ORDER BY fp_pending_since DESC LIMIT {limit}) AS fp,
    revision AS r
        LEFT JOIN change_tag ON r.rev_id=ct_rev_id
        LEFT JOIN change_tag_def ON ct_tag_id = ctd_id
        LEFT JOIN recentchanges ON rc_this_oldid = r.rev_id AND rc_source="mw.edit"
    ,
    page AS p
-       LEFT JOIN categorylinks ON cl_from = page_id,
+       LEFT JOIN categorylinks ON cl_from = page_id
+       LEFT JOIN page_props ON pp_page = page_id AND pp_propname="wikibase_item",
    comment_revision,
    actor_revision AS a
    LEFT JOIN user_groups ON a.actor_user=ug_user
@@ -114,9 +203,7 @@ ORDER BY fp_pending_since, rev_id DESC
 
                 page = pages_by_id.get(pageid_int)
                 if page is None:
-                    pending_since = parse_superset_timestamp(
-                        entry.get("fp_pending_since")
-                    )
+                    pending_since = parse_superset_timestamp(entry.get("fp_pending_since"))
                     page = PendingPage.objects.create(
                         wiki=self.wiki,
                         pageid=pageid_int,
@@ -124,6 +211,7 @@ ORDER BY fp_pending_since, rev_id DESC
                         stable_revid=int(entry.get("fp_stable") or 0),
                         pending_since=pending_since,
                         categories=page_categories,
+                        wikidata_id=entry.get("wikibase_item", ""),
                     )
                     pages_by_id[pageid_int] = page
                     pages.append(page)
@@ -137,9 +225,7 @@ ORDER BY fp_pending_since, rev_id DESC
                 except (TypeError, ValueError):
                     continue
 
-                superset_revision_timestamp = parse_superset_timestamp(
-                    entry.get("rev_timestamp")
-                )
+                superset_revision_timestamp = parse_superset_timestamp(entry.get("rev_timestamp"))
                 if superset_revision_timestamp is None:
                     superset_revision_timestamp = dj_timezone.now()
 
@@ -158,13 +244,9 @@ ORDER BY fp_pending_since, rev_id DESC
 
         return pages
 
-    def _save_revision(
-        self, page: PendingPage, payload: RevisionPayload
-    ) -> PendingRevision | None:
+    def _save_revision(self, page: PendingPage, payload: RevisionPayload) -> PendingRevision | None:
         existing_page = (
-            PendingPage.objects.filter(pk=page.pk).only("id").first()
-            if page.pk
-            else None
+            PendingPage.objects.filter(pk=page.pk).only("id").first() if page.pk else None
         )
         if existing_page is None:
             logger.warning(
@@ -206,6 +288,7 @@ ORDER BY fp_pending_since, rev_id DESC
                 "usergroups": [],
                 "is_blocked": False,
                 "is_bot": False,
+                "is_former_bot": False,
                 "is_autopatrolled": False,
                 "is_autoreviewed": False,
             },
@@ -215,8 +298,11 @@ ORDER BY fp_pending_since, rev_id DESC
 
         autoreviewed_groups = {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
         groups = sorted(superset_data.get("user_groups") or [])
+        former_groups = sorted(superset_data.get("user_former_groups") or [])
+
         profile.usergroups = groups
         profile.is_bot = "bot" in groups or bool(superset_data.get("rc_bot"))
+        profile.is_former_bot = "bot" in former_groups
         profile.is_autopatrolled = "autopatrolled" in groups
         profile.is_autoreviewed = bool(autoreviewed_groups & set(groups))
         profile.is_blocked = bool(superset_data.get("user_blocked", False))
@@ -225,6 +311,7 @@ ORDER BY fp_pending_since, rev_id DESC
                 "usergroups",
                 "is_blocked",
                 "is_bot",
+                "is_former_bot",
                 "is_autopatrolled",
                 "is_autoreviewed",
                 "fetched_at",
@@ -322,3 +409,51 @@ def _parse_superset_bool(value) -> bool | None:
         if normalized in {"0", "false", "f", "no", "n"}:
             return False
     return bool(value)
+
+
+# Simple in-memory cache using Python's built-in LRU cache
+@lru_cache(maxsize=1000)
+def was_user_blocked_after(code: str, family: str, username: str, year: int) -> bool:
+    """
+    Check if user was blocked after a specific year.
+    Uses @lru_cache for automatic caching.
+
+    Timestamp precision is reduced to year to improve cache hit rate,
+    since exact accuracy isn't required for this check.
+
+    Args:
+        code: Wiki code (e.g., "fi")
+        family: Wiki family (e.g., "wikipedia")
+        username: Username to check
+        year: Year to check blocks after
+
+    Returns:
+        True if user was blocked after the given year
+    """
+    try:
+        site = pywikibot.Site(code, family)
+        # Create timestamp for start of year
+        timestamp = pywikibot.Timestamp(year, 1, 1, 0, 0, 0)
+
+        # Get block events after the timestamp
+        # reverse=True means enumerate forward from start timestamp
+        block_events = site.logevents(
+            logtype="block",
+            page=f"User:{username}",
+            start=timestamp,
+            reverse=True,
+            total=1,  # Only need to find one block event
+        )
+
+        # Check if any 'block' action exists
+        for event in block_events:
+            if event.action() == "block":
+                return True
+
+        return False
+
+    except Exception as e:
+        logger.error(f"Error checking blocks for {username}: {e}")
+        # Fail safe: assume NOT blocked if we can't verify
+        # This prevents breaking existing functionality when the API is unavailable
+        return False

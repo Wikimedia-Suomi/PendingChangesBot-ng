@@ -4,6 +4,8 @@ import json
 import logging
 from http import HTTPStatus
 
+import requests
+from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import csrf_exempt
@@ -14,6 +16,7 @@ from .models import EditorProfile, PendingPage, Wiki, WikiConfiguration
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
+CACHE_TTL = 60 * 60 * 1
 
 
 def index(request: HttpRequest) -> HttpResponse:
@@ -21,7 +24,44 @@ def index(request: HttpRequest) -> HttpResponse:
 
     wikis = Wiki.objects.all().order_by("code")
     if not wikis.exists():
+        # All Wikipedias using FlaggedRevisions extension
+        # Source: https://noc.wikimedia.org/conf/highlight.php?file=flaggedrevs.php
         default_wikis = (
+            {
+                "name": "Alemannic Wikipedia",
+                "code": "als",
+                "api_endpoint": "https://als.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Arabic Wikipedia",
+                "code": "ar",
+                "api_endpoint": "https://ar.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Belarusian Wikipedia",
+                "code": "be",
+                "api_endpoint": "https://be.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Bengali Wikipedia",
+                "code": "bn",
+                "api_endpoint": "https://bn.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Bosnian Wikipedia",
+                "code": "bs",
+                "api_endpoint": "https://bs.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Chechen Wikipedia",
+                "code": "ce",
+                "api_endpoint": "https://ce.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Central Kurdish Wikipedia",
+                "code": "ckb",
+                "api_endpoint": "https://ckb.wikipedia.org/w/api.php",
+            },
             {
                 "name": "German Wikipedia",
                 "code": "de",
@@ -33,14 +73,79 @@ def index(request: HttpRequest) -> HttpResponse:
                 "api_endpoint": "https://en.wikipedia.org/w/api.php",
             },
             {
-                "name": "Polish Wikipedia",
-                "code": "pl",
-                "api_endpoint": "https://pl.wikipedia.org/w/api.php",
+                "name": "Esperanto Wikipedia",
+                "code": "eo",
+                "api_endpoint": "https://eo.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Persian Wikipedia",
+                "code": "fa",
+                "api_endpoint": "https://fa.wikipedia.org/w/api.php",
             },
             {
                 "name": "Finnish Wikipedia",
                 "code": "fi",
                 "api_endpoint": "https://fi.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Hindi Wikipedia",
+                "code": "hi",
+                "api_endpoint": "https://hi.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Hungarian Wikipedia",
+                "code": "hu",
+                "api_endpoint": "https://hu.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Interlingua Wikipedia",
+                "code": "ia",
+                "api_endpoint": "https://ia.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Indonesian Wikipedia",
+                "code": "id",
+                "api_endpoint": "https://id.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Georgian Wikipedia",
+                "code": "ka",
+                "api_endpoint": "https://ka.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Polish Wikipedia",
+                "code": "pl",
+                "api_endpoint": "https://pl.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Portuguese Wikipedia",
+                "code": "pt",
+                "api_endpoint": "https://pt.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Russian Wikipedia",
+                "code": "ru",
+                "api_endpoint": "https://ru.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Albanian Wikipedia",
+                "code": "sq",
+                "api_endpoint": "https://sq.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Turkish Wikipedia",
+                "code": "tr",
+                "api_endpoint": "https://tr.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Ukrainian Wikipedia",
+                "code": "uk",
+                "api_endpoint": "https://uk.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Venetian Wikipedia",
+                "code": "vec",
+                "api_endpoint": "https://vec.wikipedia.org/w/api.php",
             },
         )
         for defaults in default_wikis:
@@ -65,6 +170,10 @@ def index(request: HttpRequest) -> HttpResponse:
                 "configuration": {
                     "blocking_categories": configuration.blocking_categories,
                     "auto_approved_groups": configuration.auto_approved_groups,
+                    "ores_damaging_threshold": configuration.ores_damaging_threshold,
+                    "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
+                    "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
+                    "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,  # noqa E501
                 },
             }
         )
@@ -95,6 +204,18 @@ def api_wikis(request: HttpRequest) -> JsonResponse:
                     "auto_approved_groups": (
                         configuration.auto_approved_groups if configuration else []
                     ),
+                    "ores_damaging_threshold": (
+                        configuration.ores_damaging_threshold if configuration else 0.0
+                    ),
+                    "ores_goodfaith_threshold": (
+                        configuration.ores_goodfaith_threshold if configuration else 0.0
+                    ),
+                    "ores_damaging_threshold_living": (
+                        configuration.ores_damaging_threshold_living if configuration else 0.0
+                    ),
+                    "ores_goodfaith_threshold_living": (
+                        configuration.ores_goodfaith_threshold_living if configuration else 0.0
+                    ),
                 },
             }
         )
@@ -124,16 +245,10 @@ def api_refresh(request: HttpRequest, pk: int) -> JsonResponse:
 
 
 def _build_revision_payload(revisions, wiki):
-    usernames: set[str] = {
-        revision.user_name
-        for revision in revisions
-        if revision.user_name
-    }
+    usernames: set[str] = {revision.user_name for revision in revisions if revision.user_name}
     profiles = {
         profile.username: profile
-        for profile in EditorProfile.objects.filter(
-            wiki=wiki, username__in=usernames
-        )
+        for profile in EditorProfile.objects.filter(wiki=wiki, username__in=usernames)
     }
 
     payload: list[dict] = []
@@ -156,9 +271,7 @@ def _build_revision_payload(revisions, wiki):
             else:
                 superset_categories = superset_data.get("page_categories") or []
                 if isinstance(superset_categories, list):
-                    categories = [
-                        str(category) for category in superset_categories if category
-                    ]
+                    categories = [str(category) for category in superset_categories if category]
                 else:
                     categories = []
 
@@ -188,15 +301,15 @@ def _build_revision_payload(revisions, wiki):
                         else ("bot" in group_set or bool(superset_data.get("rc_bot")))
                     ),
                     "is_autopatrolled": (
-                        profile.is_autopatrolled
-                        if profile
-                        else ("autopatrolled" in group_set)
+                        profile.is_autopatrolled if profile else ("autopatrolled" in group_set)
                     ),
                     "is_autoreviewed": (
                         profile.is_autoreviewed
                         if profile
-                        else bool(group_set & {"autoreview", "autoreviewer", "editor",
-                                               "reviewer", "sysop", "bot"})
+                        else bool(
+                            group_set
+                            & {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
+                        )
                     ),
                 },
             }
@@ -277,20 +390,111 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             payload = json.loads(request.body.decode("utf-8")) if request.body else {}
         else:
             payload = request.POST.dict()
+
         blocking_categories = payload.get("blocking_categories", [])
         auto_groups = payload.get("auto_approved_groups", [])
         if isinstance(blocking_categories, str):
             blocking_categories = [blocking_categories]
         if isinstance(auto_groups, str):
             auto_groups = [auto_groups]
+
+        ores_damaging_threshold = payload.get("ores_damaging_threshold")
+        ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
+        ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
+        ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
+
+        def validate_threshold(value, name):
+            if value is not None:
+                try:
+                    float_value = float(value)
+                    if not (0.0 <= float_value <= 1.0):
+                        return JsonResponse(
+                            {"error": f"{name} must be between 0.0 and 1.0"},
+                            status=400,
+                        )
+                    return float_value
+                except (ValueError, TypeError):
+                    return JsonResponse(
+                        {"error": f"{name} must be a valid number"},
+                        status=400,
+                    )
+            return None
+
+        validated_damaging = validate_threshold(ores_damaging_threshold, "ores_damaging_threshold")
+        if isinstance(validated_damaging, JsonResponse):
+            return validated_damaging
+
+        validated_goodfaith = validate_threshold(
+            ores_goodfaith_threshold, "ores_goodfaith_threshold"
+        )
+        if isinstance(validated_goodfaith, JsonResponse):
+            return validated_goodfaith
+
+        validated_damaging_living = validate_threshold(
+            ores_damaging_threshold_living, "ores_damaging_threshold_living"
+        )
+        if isinstance(validated_damaging_living, JsonResponse):
+            return validated_damaging_living
+
+        validated_goodfaith_living = validate_threshold(
+            ores_goodfaith_threshold_living, "ores_goodfaith_threshold_living"
+        )
+        if isinstance(validated_goodfaith_living, JsonResponse):
+            return validated_goodfaith_living
+
         configuration.blocking_categories = blocking_categories
         configuration.auto_approved_groups = auto_groups
-        configuration.save(
-            update_fields=["blocking_categories", "auto_approved_groups", "updated_at"]
-        )
+        update_fields = ["blocking_categories", "auto_approved_groups", "updated_at"]
+
+        if validated_damaging is not None:
+            configuration.ores_damaging_threshold = validated_damaging
+            update_fields.append("ores_damaging_threshold")
+        if validated_goodfaith is not None:
+            configuration.ores_goodfaith_threshold = validated_goodfaith
+            update_fields.append("ores_goodfaith_threshold")
+        if validated_damaging_living is not None:
+            configuration.ores_damaging_threshold_living = validated_damaging_living
+            update_fields.append("ores_damaging_threshold_living")
+        if validated_goodfaith_living is not None:
+            configuration.ores_goodfaith_threshold_living = validated_goodfaith_living
+            update_fields.append("ores_goodfaith_threshold_living")
+
+        configuration.save(update_fields=update_fields)
+
     return JsonResponse(
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
+            "ores_damaging_threshold": configuration.ores_damaging_threshold,
+            "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
+            "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
+            "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,
         }
     )
+
+
+def fetch_diff(request):
+    url = request.GET.get("url")
+    if not url:
+        return JsonResponse({"error": "Missing 'url' parameter"}, status=400)
+
+    cached_html = cache.get(url)
+    if cached_html:
+        return HttpResponse(cached_html, content_type="text/html")
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; DiffFetcher/1.0; +https://yourdomain.com)",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        html_content = response.text
+
+        cache.set(url, html_content, CACHE_TTL)
+
+        return HttpResponse(html_content, content_type="text/html")
+    except requests.RequestException as e:
+        return JsonResponse({"error": str(e)}, status=500)

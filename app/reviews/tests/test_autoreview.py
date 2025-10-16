@@ -1,313 +1,1103 @@
-"""Tests for autoreview logic, especially broken wikicode detection."""
-
 from __future__ import annotations
 
-from datetime import timedelta
-from unittest import mock
+import json
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, Mock, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
+from reviews import autoreview
 from reviews.autoreview import (
-    check_broken_wikicode,
-    detect_broken_wikicode_indicators,
-    get_localized_media_keywords,
-    is_math_article,
+    _check_ores_scores,
+    _find_invalid_isbns,
+    _validate_isbn_10,
+    _validate_isbn_13,
 )
-from reviews.models import PendingPage, PendingRevision, Wiki, WikiConfiguration
+from reviews.services import was_user_blocked_after
 
 
-class BrokenWikicodeDetectionTests(TestCase):
-    """Test the broken wikicode indicator detection functions."""
+class ISBNValidationTests(TestCase):
+    """Test ISBN-10 and ISBN-13 checksum validation."""
 
-    def test_detect_template_syntax(self):
-        """Test detection of broken template syntax {{ }}."""
-        html = "Some text {{Template}} and more {{Another}}"
-        indicators = detect_broken_wikicode_indicators(html)
-        self.assertEqual(indicators["{{"], 2)
-        self.assertEqual(indicators["}}"], 2)
+    def test_valid_isbn_10_with_numeric_check_digit(self):
+        """Valid ISBN-10 with numeric check digit should pass."""
+        self.assertTrue(_validate_isbn_10("0306406152"))
 
-    def test_detect_internal_link_syntax(self):
-        """Test detection of broken internal link syntax [[ ]]."""
-        html = "Link to [[Page]] and [[Another Page]]"
-        indicators = detect_broken_wikicode_indicators(html)
-        self.assertEqual(indicators["[["], 2)
-        self.assertEqual(indicators["]]"], 2)
+    def test_valid_isbn_10_with_x_check_digit(self):
+        """Valid ISBN-10 with 'X' check digit should pass."""
+        self.assertTrue(_validate_isbn_10("043942089X"))
+        self.assertTrue(_validate_isbn_10("043942089x"))  # lowercase x
 
-    def test_detect_reference_tags(self):
-        """Test detection of broken reference tags."""
-        html = "Text with <ref>citation</ref> and <REF>another</REF>"
-        indicators = detect_broken_wikicode_indicators(html)
-        self.assertEqual(indicators["<ref"], 2)
-        self.assertEqual(indicators["</ref"], 2)
+    def test_invalid_isbn_10_wrong_checksum(self):
+        """ISBN-10 with wrong checksum should fail."""
+        self.assertFalse(_validate_isbn_10("0306406153"))  # Last digit wrong
 
-    def test_detect_div_tags(self):
-        """Test detection of broken div tags."""
-        html = "Content <div>section</div> and <DIV>another</DIV>"
-        indicators = detect_broken_wikicode_indicators(html)
-        self.assertEqual(indicators["<div"], 2)
-        self.assertEqual(indicators["</div"], 2)
+    def test_invalid_isbn_10_too_short(self):
+        """ISBN-10 with fewer than 10 digits should fail."""
+        self.assertFalse(_validate_isbn_10("030640615"))
 
-    def test_detect_span_tags(self):
-        """Test detection of broken span tags."""
-        html = "Text <span>inline</span> and <SPAN>more</SPAN>"
-        indicators = detect_broken_wikicode_indicators(html)
-        self.assertEqual(indicators["<span"], 2)
-        self.assertEqual(indicators["</span"], 2)
+    def test_invalid_isbn_10_too_long(self):
+        """ISBN-10 with more than 10 digits should fail."""
+        self.assertFalse(_validate_isbn_10("03064061521"))
 
-    def test_detect_file_syntax_english(self):
-        """Test detection of broken File/Image syntax in English."""
-        html = "Image [File:Example.jpg] and [Image:Another.png]"
-        indicators = detect_broken_wikicode_indicators(html, "en")
-        self.assertEqual(indicators["[File:"], 1)
-        self.assertEqual(indicators["[Image:"], 1)
+    def test_invalid_isbn_10_with_letters(self):
+        """ISBN-10 with invalid characters should fail."""
+        self.assertFalse(_validate_isbn_10("030640A152"))
 
-    def test_detect_category_syntax_english(self):
-        """Test detection of broken Category syntax in English."""
-        html = "Category [Category:Example] visible"
-        indicators = detect_broken_wikicode_indicators(html, "en")
-        self.assertEqual(indicators["[Category:"], 1)
+    def test_valid_isbn_13_starting_with_978(self):
+        """Valid ISBN-13 starting with 978 should pass."""
+        self.assertTrue(_validate_isbn_13("9780306406157"))
 
-    def test_detect_section_headers_non_math(self):
-        """Test detection of == in non-math articles."""
-        html = "Section == heading == visible"
-        indicators = detect_broken_wikicode_indicators(html)
-        self.assertGreater(indicators["=="], 0)
+    def test_valid_isbn_13_starting_with_979(self):
+        """Valid ISBN-13 starting with 979 should pass."""
+        self.assertTrue(_validate_isbn_13("9791234567896"))
 
-    def test_skip_section_headers_in_math_articles(self):
-        """Test that == is not counted in math articles."""
-        html = '<math>x == y</math> and more == stuff'
-        indicators = detect_broken_wikicode_indicators(html)
-        self.assertEqual(indicators.get("==", 0), 0)  # Should be skipped
+    def test_invalid_isbn_13_wrong_checksum(self):
+        """ISBN-13 with wrong checksum should fail."""
+        self.assertFalse(_validate_isbn_13("9780306406158"))  # Last digit wrong
 
-    def test_empty_html_returns_empty_counter(self):
-        """Test that empty HTML returns empty Counter."""
-        indicators = detect_broken_wikicode_indicators("")
-        self.assertEqual(len(indicators), 0)
+    def test_invalid_isbn_13_wrong_prefix(self):
+        """ISBN-13 not starting with 978 or 979 should fail."""
+        self.assertFalse(_validate_isbn_13("9771234567890"))
 
-    def test_clean_html_returns_mostly_zeros(self):
-        """Test that clean HTML has no/minimal indicators."""
-        html = "<p>This is clean HTML content without broken wikicode.</p>"
-        indicators = detect_broken_wikicode_indicators(html)
-        # Should have minimal or no indicators
-        total = sum(indicators.values())
-        self.assertEqual(total, 0)
+    def test_invalid_isbn_13_too_short(self):
+        """ISBN-13 with fewer than 13 digits should fail."""
+        self.assertFalse(_validate_isbn_13("978030640615"))
+
+    def test_invalid_isbn_13_too_long(self):
+        """ISBN-13 with more than 13 digits should fail."""
+        self.assertFalse(_validate_isbn_13("97803064061571"))
+
+    def test_invalid_isbn_13_with_letters(self):
+        """ISBN-13 with non-digit characters should fail."""
+        self.assertFalse(_validate_isbn_13("978030640615X"))
 
 
-class LocalizationTests(TestCase):
-    """Test localized media keyword detection."""
+class ISBNDetectionTests(TestCase):
+    """Test ISBN detection in wikitext."""
 
-    def test_get_english_keywords(self):
-        """Test that English keywords are always included."""
-        keywords = get_localized_media_keywords("en")
-        self.assertIn("File", keywords)
-        self.assertIn("Image", keywords)
-        self.assertIn("Category", keywords)
+    def test_no_isbns_in_text(self):
+        """Text without ISBNs should return empty list."""
+        text = "This is just normal text without any ISBNs."
+        self.assertEqual(_find_invalid_isbns(text), [])
 
-    def test_get_finnish_localized_keywords(self):
-        """Test Finnish localized keywords."""
-        keywords = get_localized_media_keywords("fi")
-        self.assertIn("Tiedosto", keywords)
-        self.assertIn("Kuva", keywords)
-        self.assertIn("Luokka", keywords)
-        # English should also be present
-        self.assertIn("File", keywords)
+    def test_valid_isbn_10_with_hyphens(self):
+        """Valid ISBN-10 with hyphens should not be flagged."""
+        text = "isbn: 0-306-40615-2"
+        self.assertEqual(_find_invalid_isbns(text), [])
 
-    def test_get_german_localized_keywords(self):
-        """Test German localized keywords."""
-        keywords = get_localized_media_keywords("de")
-        self.assertIn("Datei", keywords)
-        self.assertIn("Bild", keywords)
-        self.assertIn("Kategorie", keywords)
+    def test_valid_isbn_10_with_spaces(self):
+        """Valid ISBN-10 with spaces should not be flagged."""
+        text = "isbn 0 306 40615 2"
+        self.assertEqual(_find_invalid_isbns(text), [])
 
-    def test_detect_localized_file_syntax_finnish(self):
-        """Test detection of Finnish file syntax."""
-        html = "Image [Tiedosto:Esimerkki.jpg] visible"
-        indicators = detect_broken_wikicode_indicators(html, "fi")
-        self.assertEqual(indicators["[Tiedosto:"], 1)
+    def test_valid_isbn_10_no_separators(self):
+        """Valid ISBN-10 without separators should not be flagged."""
+        text = "ISBN:0306406152"
+        self.assertEqual(_find_invalid_isbns(text), [])
 
-    def test_detect_localized_category_syntax_finnish(self):
-        """Test detection of Finnish category syntax."""
-        html = "Category [Luokka:Esimerkki] visible"
-        indicators = detect_broken_wikicode_indicators(html, "fi")
-        self.assertEqual(indicators["[Luokka:"], 1)
+    def test_valid_isbn_13_various_formats(self):
+        """Valid ISBN-13 in various formats should not be flagged."""
+        text1 = "ISBN: 978-0-306-40615-7"
+        text2 = "isbn = 978 0 306 40615 7"
+        text3 = "Isbn:9780306406157"
+        self.assertEqual(_find_invalid_isbns(text1), [])
+        self.assertEqual(_find_invalid_isbns(text2), [])
+        self.assertEqual(_find_invalid_isbns(text3), [])
+
+    def test_invalid_isbn_10_detected(self):
+        """Invalid ISBN-10 should be detected."""
+        text = "isbn: 0-306-40615-3"  # Wrong check digit
+        invalid = _find_invalid_isbns(text)
+        self.assertEqual(len(invalid), 1)
+        self.assertIn("0-306-40615-3", invalid[0])
+
+    def test_invalid_isbn_13_detected(self):
+        """Invalid ISBN-13 should be detected."""
+        text = "ISBN: 978-0-306-40615-8"  # Wrong check digit
+        invalid = _find_invalid_isbns(text)
+        self.assertEqual(len(invalid), 1)
+
+    def test_isbn_too_short_detected(self):
+        """ISBN with fewer than 10 digits should be detected as invalid."""
+        text = "isbn: 123-456"
+        invalid = _find_invalid_isbns(text)
+        self.assertEqual(len(invalid), 1)
+
+    def test_isbn_too_long_detected(self):
+        """ISBN with more than 13 digits should be detected as invalid."""
+        text = "isbn: 12345678901234"
+        invalid = _find_invalid_isbns(text)
+        self.assertEqual(len(invalid), 1)
+
+    def test_multiple_valid_isbns(self):
+        """Multiple valid ISBNs should not be flagged."""
+        text = """
+        First book: ISBN: 0-306-40615-2
+        Second book: ISBN: 978-0-306-40615-7
+        """
+        self.assertEqual(_find_invalid_isbns(text), [])
+
+    def test_multiple_isbns_with_one_invalid(self):
+        """Text with one invalid ISBN among valid ones should flag the invalid one."""
+        text = """
+        Valid: ISBN: 0-306-40615-2
+        Invalid: ISBN: 978-0-306-40615-8
+        """
+        invalid = _find_invalid_isbns(text)
+        self.assertEqual(len(invalid), 1)
+
+    def test_multiple_invalid_isbns(self):
+        """Text with multiple invalid ISBNs should flag all of them."""
+        text = """
+        Invalid 1: ISBN: 0-306-40615-3
+        Invalid 2: ISBN: 978-0-306-40615-8
+        """
+        invalid = _find_invalid_isbns(text)
+        self.assertEqual(len(invalid), 2)
+
+    def test_case_insensitive_isbn_detection(self):
+        """ISBN detection should be case-insensitive."""
+        text1 = "ISBN: 0-306-40615-2"
+        text2 = "isbn: 0-306-40615-2"
+        text3 = "Isbn: 0-306-40615-2"
+        self.assertEqual(_find_invalid_isbns(text1), [])
+        self.assertEqual(_find_invalid_isbns(text2), [])
+        self.assertEqual(_find_invalid_isbns(text3), [])
+
+    def test_isbn_with_equals_sign(self):
+        """ISBN with = separator should be detected."""
+        text = "isbn = 0-306-40615-2"
+        self.assertEqual(_find_invalid_isbns(text), [])
+
+    def test_isbn_with_colon(self):
+        """ISBN with : separator should be detected."""
+        text = "isbn: 0-306-40615-2"
+        self.assertEqual(_find_invalid_isbns(text), [])
+
+    def test_isbn_no_separator(self):
+        """ISBN without separator should be detected."""
+        text = "isbn 0-306-40615-2"
+        self.assertEqual(_find_invalid_isbns(text), [])
+
+    def test_real_world_wikipedia_citation(self):
+        """Test with realistic Wikipedia citation format."""
+        text = """
+        {{cite book |last=Smith |first=John |title=Example Book
+        |publisher=Example Press |year=2020 |isbn=978-0-306-40615-7}}
+        """
+        self.assertEqual(_find_invalid_isbns(text), [])
+
+    def test_invalid_isbn_in_wikipedia_citation(self):
+        """Test invalid ISBN in Wikipedia citation format."""
+        text = """
+        {{cite book |last=Smith |first=John |title=Fake Book
+        |publisher=Fake Press |year=2020 |isbn=978-0-306-40615-8}}
+        """
+        invalid = _find_invalid_isbns(text)
+        self.assertEqual(len(invalid), 1)
+
+    def test_isbn_with_trailing_year(self):
+        """Test that trailing years are not captured as part of ISBN."""
+        text = "isbn: 978 0 306 40615 7 2020"
+        invalid = _find_invalid_isbns(text)
+        # Should recognize valid ISBN and not capture the year
+        self.assertEqual(len(invalid), 0)
+
+    def test_isbn_with_spaces_around_hyphens(self):
+        """Test that ISBNs with spaces around hyphens are fully captured."""
+        text = "isbn: 978 - 0 - 306 - 40615 - 7"
+        invalid = _find_invalid_isbns(text)
+        # Should recognize valid ISBN with spaces around hyphens
+        self.assertEqual(len(invalid), 0)
+
+    def test_isbn_followed_by_punctuation(self):
+        """Test that ISBNs followed by punctuation are correctly detected."""
+        # ISBN followed by comma
+        text1 = "isbn: 9780306406157, 2020"
+        self.assertEqual(_find_invalid_isbns(text1), [])
+
+        # ISBN followed by period
+        text2 = "isbn: 0-306-40615-2."
+        self.assertEqual(_find_invalid_isbns(text2), [])
+
+        # ISBN followed by semicolon
+        text3 = "isbn: 978-0-306-40615-7; another book"
+        self.assertEqual(_find_invalid_isbns(text3), [])
+
+        # Invalid ISBN followed by comma
+        text4 = "isbn: 9780306406158, 2020"
+        invalid = _find_invalid_isbns(text4)
+        self.assertEqual(len(invalid), 1)
 
 
-class MathArticleDetectionTests(TestCase):
-    """Test math article detection heuristics."""
-
-    def test_detect_math_tag(self):
-        """Test detection of <math> tags."""
-        html = '<p>Formula: <math>x^2 + y^2 = z^2</math></p>'
-        self.assertTrue(is_math_article(html))
-
-    def test_detect_math_tag_case_insensitive(self):
-        """Test detection of <MATH> tags (case insensitive)."""
-        html = '<p>Formula: <MATH>x = y</MATH></p>'
-        self.assertTrue(is_math_article(html))
-
-    def test_detect_latex_style_math(self):
-        """Test detection of LaTeX-style math $...$."""
-        html = '<p>Inline math $x + y = z$ in text</p>'
-        self.assertTrue(is_math_article(html))
-
-    def test_detect_mathematical_symbols(self):
-        """Test detection of mathematical symbols."""
-        html = '<p>Sum ∑ and integral ∫</p>'
-        self.assertTrue(is_math_article(html))
-
-    def test_non_math_article(self):
-        """Test that regular articles are not marked as math."""
-        html = '<p>This is a regular article about history.</p>'
-        self.assertFalse(is_math_article(html))
-
-
-class BrokenWikicodeCheckTests(TestCase):
-    """Test the integrated broken wikicode check."""
-
+class AutoreviewBlockedUserTests(TestCase):
     def setUp(self):
-        """Set up test wiki and pages."""
-        self.wiki = Wiki.objects.create(
+        """Clear the LRU cache before each test."""
+        was_user_blocked_after.cache_clear()
+
+    @patch("reviews.services.pywikibot.Site")
+    @patch("reviews.autoreview._is_bot_user")
+    def test_blocked_user_not_auto_approved(self, mock_is_bot, mock_site):
+        """Test that a user blocked after making an edit is NOT auto-approved."""
+        mock_is_bot.return_value = False  # User is NOT a bot
+
+        # Mock the pywikibot.Site and logevents to return a block event
+        mock_site_instance = MagicMock()
+        mock_site.return_value = mock_site_instance
+
+        # Create a mock block event
+        mock_block_event = MagicMock()
+        mock_block_event.action.return_value = "block"
+        mock_site_instance.logevents.return_value = [mock_block_event]
+
+        profile = MagicMock()
+        profile.usergroups = []
+        profile.is_bot = False
+
+        mock_wiki = MagicMock()
+        mock_wiki.code = "fi"
+        mock_wiki.family = "wikipedia"
+
+        revision = MagicMock()
+        revision.user_name = "BlockedUser"
+        revision.timestamp = datetime.fromisoformat("2024-01-15T10:00:00")
+        revision.page.categories = []
+        revision.page.wiki = mock_wiki
+
+        # Create a mock WikiClient - but we need the real is_user_blocked_after_edit method
+        from reviews.services import WikiClient
+
+        mock_client = WikiClient(mock_wiki)
+
+        # Call with correct signature: revision, client, profile, **kwargs
+        result = autoreview._evaluate_revision(
+            revision,
+            mock_client,
+            profile,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases={},
+        )
+
+        # Assert
+        self.assertEqual(result["decision"].status, "blocked")
+        self.assertTrue(any(t["id"] == "blocked-user" for t in result["tests"]))
+
+        # Verify pywikibot.Site was called (will be called twice:
+        # once in WikiClient.__init__, once in was_user_blocked_after)
+        self.assertGreaterEqual(mock_site.call_count, 1)
+
+        # Verify logevents was called with correct parameters
+        mock_site_instance.logevents.assert_called_once()
+
+
+class OresScoreTests(TestCase):
+    """Test ORES damaging and goodfaith score checks."""
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_damaging_score_exceeds_threshold(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test that high damaging score blocks auto-approval."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        # Mock ORES API response with high damaging score
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "damaging": {
+                                "score": {
+                                    "prediction": True,
+                                    "probability": {"true": 0.85, "false": 0.15},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        # Create mock revision
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        # Check with threshold of 0.7
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.0)
+
+        self.assertTrue(result["should_block"])
+        self.assertEqual(result["test"]["status"], "fail")
+        self.assertIn("0.850", result["test"]["message"])
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_goodfaith_score_below_threshold(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test that low goodfaith score blocks auto-approval."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        # Mock ORES API response with low goodfaith score
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "goodfaith": {
+                                "score": {
+                                    "prediction": False,
+                                    "probability": {"true": 0.3, "false": 0.7},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        # Create mock revision
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        # Check with threshold of 0.5
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.5)
+
+        self.assertTrue(result["should_block"])
+        self.assertEqual(result["test"]["status"], "fail")
+        self.assertIn("0.300", result["test"]["message"])
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_scores_within_thresholds(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test that good scores pass the check."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        # Mock ORES API response with good scores
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "damaging": {
+                                "score": {
+                                    "prediction": False,
+                                    "probability": {"true": 0.02, "false": 0.98},
+                                }
+                            },
+                            "goodfaith": {
+                                "score": {
+                                    "prediction": True,
+                                    "probability": {"true": 0.999, "false": 0.001},
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        # Create mock revision
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        # Check with reasonable thresholds
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
+
+        self.assertFalse(result["should_block"])
+        self.assertEqual(result["test"]["status"], "ok")
+        self.assertIn("damaging: 0.020", result["test"]["message"])
+        self.assertIn("goodfaith: 0.999", result["test"]["message"])
+
+    def test_ores_checks_disabled_when_thresholds_zero(self):
+        """Test that ORES checks are skipped when thresholds are 0.0."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.0)
+
+        self.assertFalse(result["should_block"])
+        self.assertEqual(result["test"]["status"], "skip")
+        self.assertIn("disabled", result["test"]["message"])
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    @patch("reviews.autoreview.logger")  # Mock logger to suppress error logs
+    def test_ores_api_error_blocks_approval(
+        self, mock_logger, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test that ORES API errors block auto-approval (safe default)."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        # Mock API error
+        mock_fetch.side_effect = Exception("API connection failed")
+
+        # Create mock revision
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
+
+        self.assertTrue(result["should_block"])
+        self.assertEqual(result["test"]["status"], "fail")
+        self.assertIn("Could not verify", result["test"]["message"])
+
+        # Verify logger.error was called
+        mock_logger.error.assert_called_once()
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_only_damaging_check_enabled(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test checking only damaging score when goodfaith threshold is 0."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "damaging": {
+                                "score": {
+                                    "prediction": False,
+                                    "probability": {"true": 0.05, "false": 0.95},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.0)
+
+        self.assertFalse(result["should_block"])
+        self.assertEqual(result["test"]["status"], "ok")
+        self.assertIn("damaging: 0.050", result["test"]["message"])
+        self.assertNotIn("goodfaith", result["test"]["message"])
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_only_goodfaith_check_enabled(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test checking only goodfaith score when damaging threshold is 0."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "goodfaith": {
+                                "score": {
+                                    "prediction": True,
+                                    "probability": {"true": 0.95, "false": 0.05},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.5)
+
+        self.assertFalse(result["should_block"])
+        self.assertEqual(result["test"]["status"], "ok")
+        self.assertIn("goodfaith: 0.950", result["test"]["message"])
+        self.assertNotIn("damaging", result["test"]["message"])
+
+    @override_settings(ORES_DAMAGING_THRESHOLD=0.7, ORES_GOODFAITH_THRESHOLD=0.5)
+    @patch("reviews.services.pywikibot.Site")
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    @patch("reviews.autoreview._is_bot_user")
+    @patch("reviews.autoreview.logger")
+    @patch("reviews.autoreview._get_parent_wikitext")
+    @patch("reviews.autoreview.PendingRevision.objects.filter")
+    @patch("reviews.autoreview.is_living_person")
+    def test_ores_integration_in_evaluate_revision(
+        self,
+        mock_is_living,
+        mock_filter,
+        mock_get_parent,
+        mock_logger,
+        mock_is_bot,
+        mock_fetch,
+        mock_model_scores_get,
+        mock_model_scores_create,
+        mock_site,
+    ):
+        """Test ORES check integration in _evaluate_revision."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        mock_is_bot.return_value = False
+        mock_is_living.return_value = False  # Not a living person article
+        mock_get_parent.return_value = ""  # No parent wikitext
+
+        # Mock PendingRevision.objects.filter to return empty queryset
+        mock_queryset = MagicMock()
+        mock_queryset.order_by.return_value.first.return_value = None
+        mock_filter.return_value = mock_queryset
+
+        # Mock pywikibot.Site for WikiClient
+        mock_site_instance = MagicMock()
+        mock_site.return_value = mock_site_instance
+        mock_site_instance.logevents.return_value = []
+
+        # Mock ORES API response with high damaging score
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "damaging": {
+                                "score": {
+                                    "prediction": True,
+                                    "probability": {"true": 0.85, "false": 0.15},
+                                }
+                            },
+                            "goodfaith": {
+                                "score": {
+                                    "prediction": False,
+                                    "probability": {"true": 0.2, "false": 0.8},
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        # Create mock objects
+        mock_wiki = MagicMock()
+        mock_wiki.code = "fi"
+        mock_wiki.family = "wikipedia"
+        mock_wiki.configuration.ores_damaging_threshold = 0.7
+        mock_wiki.configuration.ores_goodfaith_threshold = 0.5
+
+        mock_page = MagicMock()
+        mock_page.wiki = mock_wiki
+        mock_page.title = "Test Page"
+        mock_page.categories = []
+
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.id = 12345  # Add id attribute to fix Field 'id' error
+        mock_revision.page = mock_page
+        mock_revision.user_name = "TestUser"
+        mock_revision.timestamp = datetime.fromisoformat("2024-01-15T10:00:00")
+        mock_revision.get_wikitext.return_value = "Test content"
+        mock_revision.get_categories.return_value = []
+        mock_revision.superset_data = {}
+        mock_revision.parentid = None
+        mock_revision.render_error_count = 0
+
+        from reviews.services import WikiClient
+
+        mock_client = MagicMock(spec=WikiClient)
+        mock_client.has_manual_unapproval.return_value = False
+        mock_client.is_user_blocked_after_edit.return_value = False
+        mock_client.get_rendered_html.return_value = "<html></html>"
+
+        # Call _evaluate_revision
+        result = autoreview._evaluate_revision(
+            mock_revision,
+            mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+        )
+
+        # Should be blocked due to high damaging score
+        self.assertEqual(result["decision"].status, "blocked")
+        self.assertTrue(any(t["id"] == "ores-scores" for t in result["tests"]))
+
+        # Verify no error logs were produced (logger.error should not be called)
+        mock_logger.error.assert_not_called()
+
+    def test_ores_scores_are_cached(self):
+        """Test that ORES scores are cached in the database after fetching."""
+        from reviews.models import ModelScores, PendingPage, PendingRevision, Wiki
+
+        # Create real test objects
+        wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",
-            api_endpoint="https://test.example/api.php",
-        )
-        WikiConfiguration.objects.create(wiki=self.wiki)
-
-        self.page = PendingPage.objects.create(
-            wiki=self.wiki,
-            pageid=123,
-            title="Test Page",
-            stable_revid=1000,
+            family="wikipedia",
+            api_endpoint="https://test.wikipedia.org/w/api.php",
         )
 
-    @mock.patch.object(PendingRevision, "get_rendered_html")
-    def test_no_broken_wikicode(self, mock_html):
-        """Test revision with no broken wikicode."""
-        mock_html.return_value = "<p>Clean HTML content</p>"
+        page = PendingPage.objects.create(
+            wiki=wiki, pageid=123, title="Test Page", stable_revid=999
+        )
 
         revision = PendingRevision.objects.create(
-            page=self.page,
-            revid=1001,
-            timestamp="2025-01-01T00:00:00Z",
-            wikitext="Test",
+            page=page,
+            revid=12345,
+            timestamp=datetime.fromisoformat("2024-01-15T10:00:00"),
+            age_at_fetch=timedelta(hours=1),
             sha1="abc123",
-            age_at_fetch=timedelta(minutes=5),
+            wikitext="Test content",
         )
 
-        result = check_broken_wikicode(revision, None)
-        self.assertEqual(result["id"], "broken-wikicode")
-        self.assertEqual(result["status"], "ok")
-        self.assertIn("No broken wikicode", result["message"])
+        # Mock the ORES API response
+        with patch("reviews.autoreview.http.fetch") as mock_fetch:
+            mock_response = Mock()
+            mock_response.text = json.dumps(
+                {
+                    "testwiki": {
+                        "scores": {
+                            "12345": {
+                                "damaging": {
+                                    "score": {"probability": {"true": 0.15, "false": 0.85}}
+                                },
+                                "goodfaith": {
+                                    "score": {"probability": {"true": 0.92, "false": 0.08}}
+                                },
+                            }
+                        }
+                    }
+                }
+            )
+            mock_fetch.return_value = mock_response
 
-    @mock.patch.object(PendingRevision, "get_rendered_html")
-    def test_new_broken_wikicode_detected(self, mock_html):
-        """Test detection of newly introduced broken wikicode."""
-        # Parent has no indicators
-        parent = PendingRevision.objects.create(
-            page=self.page,
-            revid=1000,
-            timestamp="2025-01-01T00:00:00Z",
-            wikitext="Clean",
-            sha1="abc123",
-            age_at_fetch=timedelta(minutes=5),
+            # First call - should fetch from API
+            result1 = _check_ores_scores(revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
+
+            # Verify the API was called
+            mock_fetch.assert_called_once()
+
+            # Verify result
+            self.assertFalse(result1["should_block"])
+            self.assertEqual(result1["test"]["status"], "ok")
+
+            # Verify scores are cached in database
+            model_scores = ModelScores.objects.get(revision=revision)
+            self.assertIsNotNone(model_scores.ores_damaging_score)
+            self.assertIsNotNone(model_scores.ores_goodfaith_score)
+            self.assertEqual(model_scores.ores_damaging_score, 0.15)
+            self.assertEqual(model_scores.ores_goodfaith_score, 0.92)
+            self.assertIsNotNone(model_scores.ores_fetched_at)
+
+            # Second call - should use cached scores
+            result2 = _check_ores_scores(revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
+
+            # Verify the API was NOT called again (still once from before)
+            mock_fetch.assert_called_once()
+
+            # Verify result is the same
+            self.assertFalse(result2["should_block"])
+            self.assertEqual(result2["test"]["status"], "ok")
+            self.assertIn("0.150", result2["test"]["message"])
+            self.assertIn("0.920", result2["test"]["message"])
+
+
+class SupersededAdditionsTests(TestCase):
+    """Test suite for superseded additions detection."""
+
+    def test_normalize_wikitext(self):
+        """Test that wikitext normalization removes markup correctly."""
+        text = "Some text with [[link|display]] and {{template}} and <ref>citation</ref>"
+        normalized = autoreview._normalize_wikitext(text)
+        self.assertEqual(normalized, "Some text with display and and")
+
+    def test_normalize_wikitext_with_categories(self):
+        """Test that category links are removed."""
+        text = "Article text [[Category:Test]] more text"
+        normalized = autoreview._normalize_wikitext(text)
+        self.assertEqual(normalized, "Article text more text")
+
+    def test_extract_additions_simple(self):
+        """Test extracting additions from simple text change."""
+        parent = "Original text."
+        pending = "Original text. New addition."
+        additions = autoreview._extract_additions(parent, pending)
+        self.assertEqual(len(additions), 1)
+        self.assertIn("New addition.", additions[0])
+
+    def test_extract_additions_no_parent(self):
+        """Test extraction when there is no parent revision."""
+        parent = ""
+        pending = "New article text."
+        additions = autoreview._extract_additions(parent, pending)
+        self.assertEqual(additions, ["New article text."])
+
+    def test_extract_additions_multiple(self):
+        """Test extracting multiple separate additions."""
+        parent = "First paragraph. Third paragraph."
+        pending = "First paragraph. Second paragraph. Third paragraph. Fourth paragraph."
+        additions = autoreview._extract_additions(parent, pending)
+        self.assertGreaterEqual(len(additions), 2)
+
+    def test_is_addition_superseded_fully_removed(self):
+        """Test case 1: Addition was fully removed in current stable."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = 100
+        mock_revision.get_wikitext.return_value = (
+            "Article intro. User added this content about topic X. More text."
+        )
+        mock_revision.page = MagicMock()
+
+        # Mock the latest revision (which is different from the one being checked)
+        mock_latest = MagicMock()
+        mock_latest.revid = 125  # Different from 123
+        mock_latest.get_wikitext.return_value = "Article intro. More text."
+
+        # Mock parent revision
+        with (
+            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
+            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
+        ):
+            mock_parent.return_value = "Article intro. More text."
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
+
+            # Current stable has the addition removed
+            current_stable = "Article intro. More text."
+            threshold = 0.2
+
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            self.assertTrue(result)
+
+    def test_is_addition_superseded_partially_removed(self):
+        """Test case 2: Addition was partially removed (majority removed)."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = 100
+        mock_revision.get_wikitext.return_value = (
+            "Article text. User added a very long detailed sentence about "
+            "topic X with lots of information and details here. More text."
+        )
+        mock_revision.page = MagicMock()
+
+        # Mock the latest revision
+        mock_latest = MagicMock()
+        mock_latest.revid = 125
+        mock_latest.get_wikitext.return_value = "Article text. User added info. More text."
+
+        with (
+            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
+            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
+        ):
+            mock_parent.return_value = "Article text. More text."
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
+
+            # Current stable only kept a small part (~15% of the addition)
+            current_stable = "Article text. User added info. More text."
+            threshold = 0.2
+
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            # Should be considered superseded as significant content was removed
+            self.assertTrue(result)
+
+    def test_is_addition_superseded_moved_text(self):
+        """Test case 3: Addition was moved to different location."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = 100
+        mock_revision.get_wikitext.return_value = (
+            "Section 1. User added this important content. Section 2."
+        )
+        mock_revision.page = MagicMock()
+
+        # Mock the latest revision
+        mock_latest = MagicMock()
+        mock_latest.revid = 125
+        mock_latest.get_wikitext.return_value = (
+            "Section 1. Section 2. User added this important content."
         )
 
-        # Current revision has broken wikicode
-        current = PendingRevision.objects.create(
-            page=self.page,
-            revid=1001,
-            timestamp="2025-01-01T00:01:00Z",
-            wikitext="Broken {{Template",
-            sha1="def456",
-            age_at_fetch=timedelta(minutes=5),
+        with (
+            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
+            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
+        ):
+            mock_parent.return_value = "Section 1. Section 2."
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
+
+            # Current stable has the content moved to Section 2
+            current_stable = "Section 1. Section 2. User added this important content."
+            threshold = 0.2
+
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            # Should NOT be superseded as content is still present
+            self.assertFalse(result)
+
+    def test_is_addition_superseded_rephrased(self):
+        """Test case 4: Addition was rephrased/reworded."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = 100
+        mock_revision.get_wikitext.return_value = (
+            "Article text. The quick brown fox jumps over the lazy dog. More text."
+        )
+        mock_revision.page = MagicMock()
+
+        # Mock the latest revision
+        mock_latest = MagicMock()
+        mock_latest.revid = 125
+        mock_latest.get_wikitext.return_value = (
+            "Article text. A fast brown fox leaps over a sleepy canine. More text."
         )
 
-        # Mock HTML responses
-        def html_side_effect():
-            # This is called twice - first for current, then for parent
-            # We need to differentiate which one is being called
-            # The mock is called as a bound method, so we check call count
-            call_count = mock_html.call_count
-            if call_count == 1:  # First call is for current revision
-                return "<p>Broken {{Template content</p>"
-            else:  # Second call is for parent revision
-                return "<p>Clean content</p>"
+        with (
+            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
+            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
+        ):
+            mock_parent.return_value = "Article text. More text."
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
 
-        mock_html.side_effect = html_side_effect
+            # Current stable has similar but rephrased content
+            current_stable = "Article text. A fast brown fox leaps over a sleepy canine. More text."
+            threshold = 0.2
 
-        result = check_broken_wikicode(current, parent)
-        self.assertEqual(result["id"], "broken-wikicode")
-        self.assertEqual(result["status"], "fail")
-        self.assertIn("New broken wikicode detected", result["message"])
-        self.assertIn("{{", result["message"])
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            # Should NOT be superseded due to similarity (even if rephrased)
+            self.assertFalse(result)
 
-    @mock.patch.object(PendingRevision, "get_rendered_html")
-    def test_existing_broken_wikicode_not_increased(self, mock_html):
-        """Test that existing broken wikicode (not increased) is reported as OK."""
-        parent = PendingRevision.objects.create(
-            page=self.page,
-            revid=1000,
-            timestamp="2025-01-01T00:00:00Z",
-            wikitext="{{Template",
-            sha1="abc123",
-            age_at_fetch=timedelta(minutes=5),
+    def test_is_addition_superseded_with_new_text(self):
+        """Test case 5: Addition is present but surrounded by new content."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = 100
+        mock_revision.get_wikitext.return_value = (
+            "Article text. User added this sentence. More text."
+        )
+        mock_revision.page = MagicMock()
+
+        # Mock the latest revision
+        mock_latest = MagicMock()
+        mock_latest.revid = 125
+        mock_latest.get_wikitext.return_value = (
+            "Article text. New intro. User added this sentence. New conclusion. More text."
         )
 
-        current = PendingRevision.objects.create(
-            page=self.page,
-            revid=1001,
-            timestamp="2025-01-01T00:01:00Z",
-            wikitext="{{Template",  # Same broken wikicode
-            sha1="def456",
-            age_at_fetch=timedelta(minutes=5),
+        with (
+            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
+            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
+        ):
+            mock_parent.return_value = "Article text. More text."
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
+
+            # Current stable has the addition plus extra content
+            current_stable = (
+                "Article text. New intro. User added this sentence. New conclusion. More text."
+            )
+            threshold = 0.2
+
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            # Should NOT be superseded as the addition is still present
+            self.assertFalse(result)
+
+    def test_is_addition_superseded_unchanged(self):
+        """Test case 6: Addition remains unchanged."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = 100
+        mock_revision.get_wikitext.return_value = (
+            "Article text. User added this content. More text."
         )
+        mock_revision.page = MagicMock()
 
-        # Both have same broken wikicode
-        mock_html.return_value = "<p>{{Template content</p>"
+        # Mock the latest revision
+        mock_latest = MagicMock()
+        mock_latest.revid = 125
+        mock_latest.get_wikitext.return_value = "Article text. User added this content. More text."
 
-        result = check_broken_wikicode(current, parent)
-        self.assertEqual(result["id"], "broken-wikicode")
-        self.assertEqual(result["status"], "ok")
-        self.assertIn("no new ones introduced", result["message"])
+        with (
+            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
+            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
+        ):
+            mock_parent.return_value = "Article text. More text."
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
 
-    @mock.patch.object(PendingRevision, "get_rendered_html")
-    def test_no_parent_with_indicators_shows_warning(self, mock_html):
-        """Test that indicators without parent show warning."""
-        mock_html.return_value = "<p>Broken {{Template content</p>"
+            # Current stable has the exact same addition
+            current_stable = "Article text. User added this content. More text."
+            threshold = 0.2
 
-        revision = PendingRevision.objects.create(
-            page=self.page,
-            revid=1001,
-            timestamp="2025-01-01T00:00:00Z",
-            wikitext="{{Template",
-            sha1="abc123",
-            age_at_fetch=timedelta(minutes=5),
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            # Should NOT be superseded
+            self.assertFalse(result)
+
+    def test_is_addition_superseded_short_addition(self):
+        """Test that very short additions are ignored."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = 100
+        mock_revision.get_wikitext.return_value = "Article text. Yes. More text."
+        mock_revision.page = MagicMock()
+
+        # Mock the latest revision
+        mock_latest = MagicMock()
+        mock_latest.revid = 125
+        mock_latest.get_wikitext.return_value = "Article text. More text."
+
+        with (
+            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
+            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
+        ):
+            mock_parent.return_value = "Article text. More text."
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
+
+            # Current stable doesn't have the short addition
+            current_stable = "Article text. More text."
+            threshold = 0.2
+
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            # Should NOT be considered superseded (too short to matter)
+            self.assertFalse(result)
+
+    def test_is_addition_superseded_no_parent(self):
+        """Test behavior when there's no parent revision."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = None
+        mock_revision.get_wikitext.return_value = "New article content."
+        mock_revision.page = MagicMock()
+
+        # Mock the latest revision
+        mock_latest = MagicMock()
+        mock_latest.revid = 125
+        mock_latest.get_wikitext.return_value = "Different content."
+
+        with patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter:
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
+
+            current_stable = "Different content."
+            threshold = 0.2
+
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            # Should NOT be superseded (first revision)
+            self.assertFalse(result)
+
+    def test_is_addition_superseded_empty_stable(self):
+        """Test behavior when current stable is empty."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = 100
+        mock_revision.get_wikitext.return_value = "New content added."
+        mock_revision.page = MagicMock()
+
+        # Mock the latest revision
+        mock_latest = MagicMock()
+        mock_latest.revid = 125
+        mock_latest.get_wikitext.return_value = ""
+
+        with (
+            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
+            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
+        ):
+            mock_parent.return_value = ""
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
+
+            current_stable = ""
+            threshold = 0.2
+
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            # Should return False (can't compare against empty)
+            self.assertFalse(result)
+
+    def test_is_addition_superseded_is_latest_revision(self):
+        """Test that if revision is the latest, it cannot be superseded."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 123
+        mock_revision.parentid = 100
+        mock_revision.get_wikitext.return_value = (
+            "Article text. User added this content. More text."
         )
+        mock_revision.page = MagicMock()
 
-        result = check_broken_wikicode(revision, None)
-        self.assertEqual(result["id"], "broken-wikicode")
-        self.assertEqual(result["status"], "warning")
-        self.assertIn("no parent revision to compare", result["message"])
+        # Mock the latest revision to be the same as the revision being checked
+        mock_latest = MagicMock()
+        mock_latest.revid = 123  # Same as mock_revision.revid
+        mock_latest.get_wikitext.return_value = "Article text. User added this content. More text."
 
+        with patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter:
+            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
 
-class RealWorldExamplesTests(TestCase):
-    """Test with real-world broken wikicode examples from the issue."""
+            current_stable = "Article text. More text."
+            threshold = 0.2
 
-    def test_finnish_wikipedia_riihimaki_example(self):
-        """Test detection based on the Riihimäki example."""
-        # From: https://fi.wikipedia.org/w/index.php?title=Riihimäki&oldid=23392595
-        html = '''
-        <p>Riihimäki {{cite web|url=http://example.com}} is a town</p>
-        '''
-        indicators = detect_broken_wikicode_indicators(html, "fi")
-        self.assertGreater(indicators["{{"], 0)
-        self.assertGreater(indicators["}}"], 0)
-
-    def test_finnish_wikipedia_bracket_example(self):
-        """Test detection based on the bracket example."""
-        # From: https://fi.wikipedia.org/wiki/Luettelo_valtionpäämiesten_virkasyytteistä
-        html = '''
-        <p>Some content ]] visible in the text</p>
-        '''
-        indicators = detect_broken_wikicode_indicators(html, "fi")
-        self.assertGreater(indicators["]]"], 0)
+            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
+            # Should return False because this IS the latest revision
+            self.assertFalse(result)

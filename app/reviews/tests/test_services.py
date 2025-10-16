@@ -22,6 +22,10 @@ class FakeSite:
         self.users_data: dict[str, dict] = {}
         self.requests: list[dict] = []
 
+    def logevents(self, **kwargs):
+        """Mock logevents for block checking."""
+        return []
+
     def simple_request(self, **kwargs):
         self.requests.append(kwargs)
         return FakeRequest(self.response)
@@ -60,8 +64,7 @@ class WikiClientTests(TestCase):
 
     def test_parse_categories_extracts_unique_names(self):
         wikitext = (
-            "Some text [[Category:Example]] and [[category:Second|label]] "
-            "and [[Category:Example]]"
+            "Some text [[Category:Example]] and [[category:Second|label]] and [[Category:Example]]"
         )
         categories = parse_categories(wikitext)
         self.assertEqual(categories, ["Example", "Second"])
@@ -142,9 +145,7 @@ class WikiClientTests(TestCase):
         client.fetch_pending_pages(limit=2)
 
         page = PendingPage.objects.get(pageid=555)
-        revisions = list(
-            PendingRevision.objects.filter(page=page).order_by("revid")
-        )
+        revisions = list(PendingRevision.objects.filter(page=page).order_by("revid"))
         self.assertEqual([30, 31], [revision.revid for revision in revisions])
         self.assertEqual(page.stable_revid, 30)
 
@@ -197,9 +198,7 @@ class RefreshWorkflowTests(TestCase):
 
     @mock.patch("reviews.services.SupersetQuery")
     @mock.patch("reviews.services.pywikibot.Site")
-    def test_refresh_does_not_call_pywikibot_requests(
-        self, mock_site, mock_superset
-    ):
+    def test_refresh_does_not_call_pywikibot_requests(self, mock_site, mock_superset):
         wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",
@@ -229,3 +228,66 @@ class RefreshWorkflowTests(TestCase):
         client.refresh()
         self.assertEqual(fake_site.requests, [])
         self.assertEqual(PendingRevision.objects.count(), 1)
+
+
+class FormerBotTests(TestCase):
+    """Test cases for former bot detection and handling."""
+
+    def test_ensure_editor_profile_with_former_bot_group(self):
+        """Test that former bot group is properly detected."""
+        wiki = Wiki.objects.create(code="fi", family="wikipedia")
+        client = WikiClient(wiki)
+
+        superset_data = {
+            "user_groups": ["autoconfirmed"],
+            "user_former_groups": ["bot"],
+            "rc_bot": False,
+        }
+
+        profile = client.ensure_editor_profile("FormerBotUser", superset_data)
+
+        self.assertFalse(profile.is_bot)
+        self.assertTrue(profile.is_former_bot)
+        self.assertEqual(profile.username, "FormerBotUser")
+
+    def test_ensure_editor_profile_with_current_and_former_bot(self):
+        """Test user who is both current and former bot (edge case)."""
+        wiki = Wiki.objects.create(code="fi", family="wikipedia")
+        client = WikiClient(wiki)
+
+        superset_data = {
+            "user_groups": ["bot", "autoconfirmed"],
+            "user_former_groups": ["bot"],  # Can happen if removed and re-added
+            "rc_bot": True,
+        }
+
+        profile = client.ensure_editor_profile("ReinstatedBot", superset_data)
+
+        self.assertTrue(profile.is_bot)
+        self.assertTrue(profile.is_former_bot)
+
+    def test_ensure_editor_profile_without_former_groups(self):
+        """Test that missing former groups doesn't cause issues."""
+        wiki = Wiki.objects.create(code="fi", family="wikipedia")
+        client = WikiClient(wiki)
+
+        superset_data = {
+            "user_groups": ["autoconfirmed"],
+            "user_former_groups": [],
+            "rc_bot": False,
+        }
+
+        profile = client.ensure_editor_profile("RegularUser", superset_data)
+
+        self.assertFalse(profile.is_bot)
+        self.assertFalse(profile.is_former_bot)
+
+    def test_ensure_editor_profile_former_bot_no_superset_data(self):
+        """Test that profile defaults work when no superset data provided."""
+        wiki = Wiki.objects.create(code="fi", family="wikipedia")
+        client = WikiClient(wiki)
+
+        profile = client.ensure_editor_profile("SomeUser", None)
+
+        self.assertFalse(profile.is_bot)
+        self.assertFalse(profile.is_former_bot)
