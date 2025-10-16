@@ -287,7 +287,6 @@ createApp({
         state.chart = null;
       }
 
-      // Don't initialize chart here - it will be created below
 
       // Make a simple copy of data to avoid reactivity issues
       const data = JSON.parse(JSON.stringify(state.tableData));

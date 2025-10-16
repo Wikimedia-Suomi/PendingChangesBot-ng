@@ -7,6 +7,7 @@
     <title>FlaggedRevs Statistics</title>
     <link rel="stylesheet" href="{% static 'css/bulma.0.9.4.min.css' %}" />
     <link rel="stylesheet" href="{% static 'css/main.css' %}" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   </head>
@@ -298,6 +299,21 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Loading Indicator -->
+      <section class="section" v-if="state.loading">
+        <div class="notification is-info">
+          <div class="is-flex is-align-items-center">
+            <span class="icon is-large mr-3">
+              <i class="fas fa-spinner fa-pulse fa-2x"></i>
+            </span>
+            <div>
+              <p class="is-size-5"><strong>Loading statistics data...</strong></p>
+              <p>Fetching data from the database. This may take a moment.</p>
+            </div>
           </div>
         </div>
       </section>
