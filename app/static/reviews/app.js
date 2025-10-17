@@ -659,6 +659,10 @@ createApp({
             scales: {
               y: {
                 beginAtZero: true,
+                title: {
+                  display: true,
+                  text: "Days",
+                },
               },
             },
           },
@@ -710,6 +714,10 @@ createApp({
             scales: {
               y: {
                 beginAtZero: true,
+                title: {
+                  display: true,
+                  text: "Days",
+                },
               },
             },
           },
@@ -756,6 +764,16 @@ createApp({
       const normalized = pageTitle.replace(/ /g, "_");
       const encoded = encodeURIComponent(normalized);
       return `${origin}/wiki/${encoded}`;
+    }
+
+    function buildPageDiffUrl(pageTitle, revisionId) {
+      const origin = getWikiOrigin();
+      if (!origin || !pageTitle || !revisionId) {
+        return "";
+      }
+      const normalized = pageTitle.replace(/ /g, "_");
+      const encoded = encodeURIComponent(normalized);
+      return `${origin}/w/index.php?title=${encoded}&diff=prev&oldid=${revisionId}`;
     }
 
     async function runAutoreview(page, showDiffs=true) {
@@ -956,6 +974,10 @@ createApp({
     watch(currentWiki, () => {
       syncForms();
       loadPending();
+      // Reload statistics if statistics panel is open
+      if (state.statisticsOpen) {
+        loadStatistics();
+      }
     }, { immediate: true });
 
     onMounted(() => {
@@ -987,6 +1009,7 @@ createApp({
       buildUserContributionsUrl,
       buildUserPageUrl,
       buildPageUrl,
+      buildPageDiffUrl,
       buildFlaggedRevsUrl,
       runAutoreview,
       runAutoreviewAllVisible,

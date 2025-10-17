@@ -339,7 +339,16 @@
                           {{ formatTitle(record.page_title) }}
                         </a>
                       </td>
-                      <td>{{ formatDateTime(record.reviewed_timestamp) }}</td>
+                      <td>
+                        <a
+                          :href="buildPageDiffUrl(record.page_title, record.reviewed_revision_id)"
+                          class="has-text-link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {{ formatDateTime(record.reviewed_timestamp) }}
+                        </a>
+                      </td>
                       <td>{{ record.review_delay_days }}</td>
                     </tr>
                   </tbody>

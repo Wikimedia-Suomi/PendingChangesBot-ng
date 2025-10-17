@@ -54,6 +54,37 @@ def get_time_filter_cutoff(time_filter: str) -> datetime | None:
     return None
 
 
+def statistics_page(request: HttpRequest) -> HttpResponse:
+    """Render the standalone statistics page."""
+    wikis = Wiki.objects.all().order_by("code")
+    if not wikis.exists():
+        # If no wikis, redirect to main page to populate them
+        return index(request)
+
+    payload = []
+    for wiki in wikis:
+        configuration, _ = WikiConfiguration.objects.get_or_create(wiki=wiki)
+        payload.append(
+            {
+                "id": wiki.id,
+                "name": wiki.name,
+                "code": wiki.code,
+                "api_endpoint": wiki.api_endpoint,
+                "configuration": {
+                    "blocking_categories": configuration.blocking_categories,
+                    "auto_approved_groups": configuration.auto_approved_groups,
+                },
+            }
+        )
+    return render(
+        request,
+        "reviews/statistics.html",
+        {
+            "initial_wikis": json.dumps(payload),
+        },
+    )
+
+
 def index(request: HttpRequest) -> HttpResponse:
     """Render the Vue.js application shell."""
 
