@@ -81,7 +81,7 @@ class Command(BaseCommand):
             # Load FlaggedRevs statistics (required)
             self._load_flaggedrevs_statistics(wiki, superset, full_refresh)
 
-            # Load review activity (optional - may timeout on large wikis)
+            # Load review activity
             try:
                 self._load_review_activity(wiki, superset, full_refresh)
             except Exception as e:
@@ -214,22 +214,25 @@ ORDER BY total_ns0.d
     def _load_review_activity(self, wiki: Wiki, superset: SupersetQuery, full_refresh: bool):
         """Load review activity data from flaggedrevs table."""
 
-        # NOTE: The flaggedrevs table is extremely large (7.8+ million rows).
-        # Aggregation queries timeout on Superset. We limit to most recent reviews only.
-
-        self.stdout.write("  Querying review activity (last 10 years from 2014)...")
+        self.stdout.write("  Querying review activity (from 2016 onwards, max 50,000 samples)...")
 
         sql_query = """
 SELECT
-    FLOOR(fr_timestamp/1000000) AS d,
+    d,
     COUNT(DISTINCT(fr_user)) AS number_of_reviewers,
     COUNT(*) AS number_of_reviews,
     COUNT(DISTINCT(fr_page_id)) AS number_of_pages
-FROM flaggedrevs
-WHERE fr_flags NOT LIKE "%auto%"
-    AND fr_timestamp >= 20140101000000
+FROM (
+    SELECT
+        FLOOR(fr_timestamp/1000000) AS d,
+        fr_user,
+        fr_page_id
+    FROM flaggedrevs
+    WHERE fr_flags NOT LIKE "%auto%"
+        AND fr_timestamp >= 20160101000000
+    LIMIT 50000
+) AS recent_sample
 GROUP BY d
-ORDER BY d
 """
 
         try:
@@ -280,7 +283,6 @@ ORDER BY d
             )
 
         except Exception:
-            # Re-raise to be caught by the outer try-catch for cleaner error handling
             raise
 
     def _parse_int(self, value) -> int | None:
