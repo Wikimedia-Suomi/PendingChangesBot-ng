@@ -461,6 +461,11 @@ createApp({
               scales: {
                 x: {
                   type: 'category',
+                  border: {
+                    display: true,
+                    color: '#000',
+                    width: 2,
+                  },
                   grid: {
                     display: true,
                     color: 'rgba(0, 0, 0, 0.05)',
@@ -492,6 +497,11 @@ createApp({
                 },
                 y: {
                   beginAtZero: true,
+                  border: {
+                    display: true,
+                    color: '#000',
+                    width: 2,
+                  },
                   grid: {
                     display: true,
                     color: 'rgba(0, 0, 0, 0.05)',

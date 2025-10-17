@@ -150,13 +150,15 @@
 
       <!-- FRS Key Mode: Single Chart Display -->
       <section class="section" v-show="state.filterMode === 'frs_key'">
-        <canvas id="singleFrsKeyChart" style="width: 80%; height: 400px; margin: 0;"></canvas>
+        <div style="width: 60%; height: 550px; margin: 0; border: 2px solid #000; display: inline-block;">
+          <canvas id="singleFrsKeyChart" style="width: 100%; height: 100%;"></canvas>
+        </div>
       </section>
 
       <!-- Wiki Mode Charts Display -->
       <section class="section" v-show="state.filterMode === 'wiki'">
         <div v-for="(series, key) in enabledSeries" :key="key" class="mb-4">
-          <div style="width: 80%; height: 400px; margin: 0;">
+          <div style="width: 60%; height: 550px; margin: 0;">
             <canvas :id="`chart-${series.key}`" style="width: 100%; height: 100%;"></canvas>
           </div>
         </div>
