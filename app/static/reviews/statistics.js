@@ -75,7 +75,7 @@ createApp({
         { key: "reviews_per_reviewer", label: "Reviews Per Reviewer" },
       ];
 
-      // Always show all series - filtering is now done by wiki selection
+      // Always show all series
       return seriesConfig;
     });
 
@@ -265,7 +265,9 @@ createApp({
     }
 
     function updateChart() {
+      console.log('=== CHART UPDATE DEBUG ===');
       console.log('updateChart called, filterMode:', state.filterMode);
+      console.log('selectedWikis:', state.selectedWikis);
       console.log('tableData length:', state.tableData.length);
 
       if (state.tableData.length === 0) {
@@ -313,7 +315,11 @@ createApp({
 
       // Create separate charts for each data series when in Wiki mode
       if (state.filterMode === 'wiki') {
+        console.log('=== WIKI MODE CHART CREATION DEBUG ===');
         console.log('Creating separate charts for Wiki mode');
+        console.log('enabledSeries:', enabledSeries.value);
+        console.log('selectedWikis:', state.selectedWikis);
+        console.log('tableData length:', state.tableData.length);
         seriesConfig.forEach((series, seriesIndex) => {
           const canvasId = `chart-${series.key}`;
           const ctx = document.getElementById(canvasId);
@@ -346,7 +352,7 @@ createApp({
                 data: seriesData,
                 borderColor: colors[colorIndex % colors.length],
                 backgroundColor: colors[colorIndex % colors.length] + "20",
-                tension: 0.1,
+                tension: 0.4,
                 pointRadius: 0,
                 fill: false,
               });
@@ -363,10 +369,10 @@ createApp({
               datasets: datasets,
             },
             options: {
-              responsive: false,
+              responsive: true,
               maintainAspectRatio: false,
               animation: {
-                duration: 0
+                duration: 750
               },
               interaction: {
                 intersect: false,
@@ -595,7 +601,10 @@ createApp({
 
     // Update the single FRS Key chart based on selected metric
     function updateFrsKeyChart() {
+      console.log('=== FRS KEY CHART UPDATE DEBUG ===');
       console.log('updateFrsKeyChart called, selectedFrsKey:', state.selectedFrsKey);
+      console.log('selectedWikis:', state.selectedWikis);
+      console.log('tableData length:', state.tableData.length);
 
       if (state.tableData.length === 0) {
         console.log('No table data, returning');
@@ -1012,7 +1021,9 @@ createApp({
 
     // Watchers
     watch(() => state.selectedWikis, async () => {
+      console.log('=== SELECTED WIKIS WATCHER DEBUG ===');
       console.log('selectedWikis changed:', state.selectedWikis);
+      console.log('filterMode:', state.filterMode);
       updateUrl();
 
       // Call the appropriate chart update function based on filter mode
@@ -1035,7 +1046,7 @@ createApp({
       }, 100);
     });
 
-    // Removed series watcher - now filtering is done by wiki selection only
+    // Removed series watcher
 
     watch(() => state.filterMode, async () => {
       updateUrl();
