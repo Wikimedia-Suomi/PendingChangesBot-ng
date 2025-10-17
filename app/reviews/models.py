@@ -132,6 +132,7 @@ class PendingRevision(models.Model):
     render_error_count = models.IntegerField(null=True, blank=True)
     categories = models.JSONField(default=list, blank=True)
     superset_data = models.JSONField(default=dict, blank=True)
+    is_revert_to_reviewed = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("page", "revid")

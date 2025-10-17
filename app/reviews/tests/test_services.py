@@ -3,9 +3,10 @@ from __future__ import annotations
 from unittest import mock
 
 from django.test import TestCase
+from django.utils import timezone as dj_timezone
 
 from reviews.models import EditorProfile, PendingPage, PendingRevision, Wiki
-from reviews.services import WikiClient, parse_categories
+from reviews.services import WikiClient, parse_categories, RevisionPayload
 
 
 class FakeRequest:
@@ -177,6 +178,41 @@ class WikiClientTests(TestCase):
         self.assertTrue(profile.is_bot)
         self.assertTrue(profile.is_autoreviewed)
         self.assertFalse(profile.is_autopatrolled)
+
+    def test_revert_detection(self):
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=123,
+            title="Test Page",
+            stable_revid=50,
+            pending_since=dj_timezone.now()
+        )
+        client = WikiClient(self.wiki)
+
+        old_rev_payload = RevisionPayload(
+            revid=100,
+            sha1="abc123",
+            user="TestUser",
+            userid=1,
+            timestamp=dj_timezone.now(),
+            comment="Original edit",
+            parentid=50,
+            tags=[],
+            superset_data=None
+        )
+        client._save_revision(page, old_rev_payload)
+        new_rev_payload = RevisionPayload(
+            revid=200,
+            sha1="abc123",
+            tags=["mw-manual-revert"],
+            user="TestUser",
+            userid=1,
+            timestamp=dj_timezone.now(),
+            comment="Revert edit",
+            parentid=100
+        )
+        result = client._is_revert_to_reviewed_content(page, new_rev_payload)
+        self.assertTrue(result)
 
 
 class RefreshWorkflowTests(TestCase):
