@@ -271,7 +271,16 @@ createApp({
       console.log('tableData length:', state.tableData.length);
 
       if (state.tableData.length === 0) {
-        console.log('No table data, returning');
+        console.log('No table data - destroying existing charts');
+        // Destroy existing charts when no data
+        if (state.charts) {
+          Object.values(state.charts).forEach(chart => {
+            if (chart) {
+              chart.destroy();
+            }
+          });
+          state.charts = {};
+        }
         return;
       }
 
@@ -320,6 +329,15 @@ createApp({
         console.log('enabledSeries:', enabledSeries.value);
         console.log('selectedWikis:', state.selectedWikis);
         console.log('tableData length:', state.tableData.length);
+
+        // Hide any existing no-data message
+        const wikiChartsSection = document.querySelector('section[v-show="state.filterMode === \'wiki\'"]');
+        if (wikiChartsSection) {
+          const existingMessage = wikiChartsSection.querySelector('.wiki-no-data-message');
+          if (existingMessage) {
+            existingMessage.remove();
+          }
+        }
         seriesConfig.forEach((series, seriesIndex) => {
           const canvasId = `chart-${series.key}`;
           const ctx = document.getElementById(canvasId);
@@ -362,6 +380,58 @@ createApp({
 
           if (!state.charts) state.charts = {};
           console.log(`Creating chart for ${series.label} with ${datasets.length} datasets`);
+          console.log('selectedWikis for this chart:', selectedWikis);
+
+          // If no datasets available, show a message instead of creating an empty chart
+          if (datasets.length === 0) {
+            console.log(`No datasets available for ${series.label} - showing no data message`);
+            // Clear any existing chart
+            if (state.charts[series.key]) {
+              state.charts[series.key].destroy();
+              state.charts[series.key] = null;
+            }
+
+            // Show a message in the canvas area
+            ctx.style.display = 'none';
+
+            // Create a message element if it doesn't exist
+            let messageEl = ctx.parentElement.querySelector('.no-data-message');
+            if (!messageEl) {
+              messageEl = document.createElement('div');
+              messageEl.className = 'no-data-message';
+              messageEl.style.cssText = `
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 300px;
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                color: #6c757d;
+                font-size: 16px;
+                text-align: center;
+                padding: 20px;
+              `;
+              messageEl.innerHTML = `
+                <div>
+                  <strong>No data available</strong><br>
+                  The selected wikis (${selectedWikis.map(w => `${w}wiki_p`).join(', ')})
+                  have no data for "${series.label}".
+                </div>
+              `;
+              ctx.parentElement.appendChild(messageEl);
+            }
+            messageEl.style.display = 'flex';
+            return;
+          }
+
+          // Hide any existing no-data message
+          const messageEl = ctx.parentElement.querySelector('.no-data-message');
+          if (messageEl) {
+            messageEl.style.display = 'none';
+          }
+          ctx.style.display = 'block';
+
           state.charts[series.key] = new Chart(ctx, {
             type: 'line',
             data: {
@@ -1023,6 +1093,7 @@ createApp({
     watch(() => state.selectedWikis, async () => {
       console.log('=== SELECTED WIKIS WATCHER DEBUG ===');
       console.log('selectedWikis changed:', state.selectedWikis);
+      console.log('selectedWikis length:', state.selectedWikis.length);
       console.log('filterMode:', state.filterMode);
       updateUrl();
 
