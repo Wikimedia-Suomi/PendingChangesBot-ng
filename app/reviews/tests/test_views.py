@@ -410,8 +410,9 @@ class ViewTests(TestCase):
         self.assertEqual(result["decision"]["status"], "approve")
         self.assertEqual(len(result["tests"]), 5)
 
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.models.pywikibot.Site")
-    def test_api_autoreview_blocks_on_blocking_categories(self, mock_site):
+    def test_api_autoreview_blocks_on_blocking_categories(self, mock_site, mock_html):
         config = self.wiki.configuration
         config.blocking_categories = ["Secret"]
         config.save(update_fields=["blocking_categories"])

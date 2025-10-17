@@ -56,10 +56,14 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     results = []
     for revision in revisions:
         profile = profiles.get(revision.user_name or "")
+        # Get parent revision (either previous in list or stable revision)
+        parent_revision = revisions[i - 1] if i > 0 else stable_revision
+
         revision_result = _evaluate_revision(
             revision,
             client,
             profile,
+            parent_revision=parent_revision,
             auto_groups=auto_groups,
             blocking_categories=blocking_categories,
             redirect_aliases=redirect_aliases,
@@ -84,6 +88,7 @@ def _evaluate_revision(
     client: WikiClient,
     profile: EditorProfile | None,
     *,
+    parent_revision: PendingRevision | None = None,
     auto_groups: dict[str, str],
     blocking_categories: dict[str, str],
     redirect_aliases: list[str],
