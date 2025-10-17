@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>LiftWing Model Visualization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+        }
+
+        .form-section {
+            margin-bottom: 1.5rem;
+        }
+
+        input,
+        select,
+        button {
+            padding: 0.5rem;
+            font-size: 1rem;
+        }
+    </style>
+    <script>
+        async function validateArticle() {
+            const wiki = document.getElementById("wiki").value;
+            const article = document.getElementById("article").value;
+
+            const resp = await fetch("/api/visualization/validate/", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": getCookie('csrftoken')
+                },
+                body: JSON.stringify({ wiki, article })
+            });
+
+            const data = await resp.json();
+            const result = document.getElementById("result");
+            if (data.valid) {
+                result.innerText = "✅ Article found!";
+                result.style.color = "green";
+            } else {
+                result.innerText = "❌ Article not found";
+                result.style.color = "red";
+            }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>
+</head>
+
+<body>
+    <h1>LiftWing Model Visualization</h1>
+
+    <div class="form-section">
+        <label for="wiki">Select Wiki:</label>
+        <select id="wiki">
+            <option value="en">English</option>
+            <option value="fi">Finnish</option>
+            <option value="fr">French</option>
+        </select>
+    </div>
+
+    <div class="form-section">
+        <label for="article">Article Title:</label>
+        <input type="text" id="article" placeholder="e.g., Albert Einstein">
+        <button onclick="validateArticle()">Validate</button>
+        <div id="result" style="margin-top: 0.5rem;"></div>
+    </div>
+</body>
+
+</html>

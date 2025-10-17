@@ -498,3 +498,39 @@ def fetch_diff(request):
         return HttpResponse(html_content, content_type="text/html")
     except requests.RequestException as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+
+def liftwing_page(request):
+    return render(request, "reviews/lift.html")
+
+def validate_article(request):
+    if request.method == "POST":
+        import json
+        data = json.loads(request.body)
+        wiki = data.get("wiki")
+        article = data.get("article")
+        # TODO: Implement actual validation (API call to MediaWiki)
+        if article and len(article.strip()) > 2:
+            return JsonResponse({"valid": True})
+        else:
+            return JsonResponse({"valid": False})
+    return JsonResponse({"error": "Invalid method"}, status=405)
+
+@require_GET
+def liftwing_models(request, wiki_code):
+    """Return available LiftWing models for the given wiki."""
+    # For now, return a static list of available models
+    models = [
+        {
+            "name": "articlequality",
+            "version": "1.0.0",
+            "description": "Predicts the quality class of Wikipedia articles"
+        },
+        {
+            "name": "draftquality",
+            "version": "1.0.0", 
+            "description": "Predicts the quality of new article drafts"
+        }
+    ]
+    return JsonResponse({"models": models})
