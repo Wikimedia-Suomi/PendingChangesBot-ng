@@ -6,7 +6,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pending Changes Review</title>
-  <link rel="stylesheet" href="static/css/bulma.0.9.4.min.css" />
+  <link rel="stylesheet" href="{% static 'css/bulma.0.9.4.min.css' %}" />
+  <link rel="stylesheet" href="{% static 'css/main.css' %}" />
+  <link rel="stylesheet" href="https://fi.wikipedia.org/w/load.php?modules=mediawiki.diff.styles&only=styles" />
 </head>
 
 <body>
@@ -28,43 +30,6 @@
                       {{ wiki.name }} ({{ wiki.code }})
                     </option>
                   </select>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pending Changes Review</title>
-    <link rel="stylesheet" href="static/css/bulma.0.9.4.min.css" />
-    <link rel="stylesheet" href="static/css/main.css" />
-    <link
-      rel="stylesheet"
-      href="https://fi.wikipedia.org/w/load.php?modules=mediawiki.diff.styles&only=styles"
-    />
-  </head>
-  <body>
-    {% verbatim %}
-    <div id="app" class="container is-fluid py-4">
-      <section class="hero is-light">
-        <div class="hero-body">
-          <div class="columns is-vcentered">
-            <div class="column is-4">
-              <h1 class="title is-4">Pending Changes Review</h1>
-            </div>
-            <div class="column">
-              <div class="field has-addons">
-                <div class="control is-expanded">
-                  <div class="select is-fullwidth">
-                    <select v-model.number="state.selectedWikiId" @change="loadPending">
-                      <option disabled value="">Select wiki…</option>
-                      <option v-for="wiki in state.wikis" :key="wiki.id" :value="wiki.id">
-                        {{ wiki.name }} ({{ wiki.code }})
-                      </option>
-                    </select>
-                  </div>
-                </div>
-                <div class="control">
-                  <button class="button is-info" @click="refresh">Refresh</button>
-                </div>
-                <div class="control">
-                  <button class="button is-warning" @click="clearCache">Clear cache</button>
                 </div>
               </div>
               <div class="control">
@@ -72,19 +37,17 @@
               </div>
               <div class="control">
                 <button class="button is-warning" @click="clearCache">Clear cache</button>
-              <div class="field mt-3" v-if="currentWiki">
-                <label class="label is-small">FlaggedRevs Quick Links:</label>
-                <div class="buttons">
-                  <a :href="buildFlaggedRevsUrl('ValidationStatistics')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
-                    Validation Statistics
-                  </a>
-                  <a :href="buildFlaggedRevsUrl('PendingChanges')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
-                    Pending Changes
-                  </a>
-                  <a :href="buildFlaggedRevsUrl('Log/Review')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
-                    Review Log
-                  </a>
-                </div>
+              </div>
+            </div>
+            <div class="field mt-3" v-if="currentWiki">
+              <label class="label is-small">FlaggedRevs Quick Links:</label>
+              <div class="buttons">
+                <a :href="buildFlaggedRevsUrl('ValidationStatistics')" class="button is-small is-link is-light"
+                  target="_blank" rel="noopener noreferrer">Validation Statistics</a>
+                <a :href="buildFlaggedRevsUrl('PendingChanges')" class="button is-small is-link is-light"
+                  target="_blank" rel="noopener noreferrer">Pending Changes</a>
+                <a :href="buildFlaggedRevsUrl('Log/Review')" class="button is-small is-link is-light" target="_blank"
+                  rel="noopener noreferrer">Review Log</a>
               </div>
             </div>
           </div>
@@ -102,9 +65,8 @@
           </div>
           <div class="level-right">
             <div class="level-item">
-              <button class="button is-small is-text" @click="toggleConfiguration">
-                {{ state.configurationOpen ? 'Hide' : 'Show' }}
-              </button>
+              <button class="button is-small is-text" @click="toggleConfiguration">{{ state.configurationOpen ? 'Hide' :
+                'Show' }}</button>
             </div>
           </div>
         </div>
@@ -123,335 +85,59 @@
           </div>
           <div class="columns">
             <div class="column is-half">
-              <label class="label">
-                Revert Risk Threshold
-                <span class="help">Set threshold (0.0-1.0) to block high-risk edits. Leave empty to disable.</span>
-              </label>
+              <label class="label">Revert Risk Threshold <span class="help">Set threshold (0.0-1.0) to block high-risk
+                  edits. Leave empty to disable.</span></label>
               <input class="input" type="number" step="0.01" min="0" max="1" v-model="forms.revertriskThreshold"
                 placeholder="e.g., 0.80 (leave empty to disable)" />
-              <p class="help" v-if="forms.revertriskThreshold">
-                Edits with {{ (parseFloat(forms.revertriskThreshold) * 100).toFixed(0) }}% or higher revert probability
-                will be blocked
-              </p>
-            <div class="content mt-4">
-              <h3 class="title is-6">ORES Edit Quality Thresholds</h3>
-              <p class="help">Set to 0 to disable checks. Values range from 0.0 to 1.0.</p>
+              <p class="help" v-if="forms.revertriskThreshold">Edits with {{ (parseFloat(forms.revertriskThreshold) *
+                100).toFixed(0) }}% or higher revert probability will be blocked</p>
             </div>
-            <div class="columns">
-              <div class="column">
-                <div class="field">
-                  <label class="label">Damaging threshold</label>
-                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresDamagingThreshold" placeholder="0.7">
-                  <p class="help">Edits with damaging probability above this will be blocked</p>
-                </div>
-                <div class="field mt-3">
-                  <label class="label">Goodfaith threshold</label>
-                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresGoodfaithThreshold" placeholder="0.5">
-                  <p class="help">Edits with goodfaith probability below this will be blocked</p>
-                </div>
+          </div>
+          <div class="content mt-4">
+            <h3 class="title is-6">ORES Edit Quality Thresholds</h3>
+            <p class="help">Set to 0 to disable checks. Values range from 0.0 to 1.0.</p>
+          </div>
+          <div class="columns">
+            <div class="column">
+              <div class="field">
+                <label class="label">Damaging threshold</label>
+                <input class="input" type="number" step="0.01" min="0" max="1"
+                  v-model.number="forms.oresDamagingThreshold" placeholder="0.7">
+                <p class="help">Edits with damaging probability above this will be blocked</p>
               </div>
-              <div class="column">
-                <div class="field">
-                  <label class="label">Damaging threshold (Living persons)</label>
-                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresDamagingThresholdLiving" placeholder="0.5">
-                  <p class="help">Stricter threshold for biographies of living persons</p>
-                </div>
-                <div class="field mt-3">
-                  <label class="label">Goodfaith threshold (Living persons)</label>
-                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresGoodfaithThresholdLiving" placeholder="0.7">
-                  <p class="help">Stricter threshold for biographies of living persons</p>
-                </div>
+              <div class="field mt-3">
+                <label class="label">Goodfaith threshold</label>
+                <input class="input" type="number" step="0.01" min="0" max="1"
+                  v-model.number="forms.oresGoodfaithThreshold" placeholder="0.5">
+                <p class="help">Edits with goodfaith probability below this will be blocked</p>
               </div>
             </div>
-            <div class="buttons">
-              <button class="button is-primary" @click="saveConfiguration">Save configuration</button>
+            <div class="column">
+              <div class="field">
+                <label class="label">Damaging threshold (Living persons)</label>
+                <input class="input" type="number" step="0.01" min="0" max="1"
+                  v-model.number="forms.oresDamagingThresholdLiving" placeholder="0.5">
+                <p class="help">Stricter threshold for biographies of living persons</p>
+              </div>
+              <div class="field mt-3">
+                <label class="label">Goodfaith threshold (Living persons)</label>
+                <input class="input" type="number" step="0.01" min="0" max="1"
+                  v-model.number="forms.oresGoodfaithThresholdLiving" placeholder="0.7">
+                <p class="help">Stricter threshold for biographies of living persons</p>
+              </div>
             </div>
           </div>
           <div class="buttons">
             <button class="button is-primary" @click="saveConfiguration">Save configuration</button>
           </div>
         </div>
-
-      </div>
-      <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
-      <div class="notification is-info" v-if="state.loading">Loading data…</div>
-
-        <div v-if="state.pages.length">
-          <div class="content">
-            <h2 class="title is-4">Pending pages</h2>
-              <div class="field mt-3">
-                <label class="label">Search</label>
-                <div class="control">
-                  <input
-                    class="input"
-                    type="text"
-                    v-model="state.searchQuery"
-                    placeholder="Filter by page title, timestamp, user name, comment, or tags..."
-                  />
-                </div>
-                <p class="help">Search is case-insensitive and matches across page titles, timestamps, user names, comments, and tags.</p>
-              </div>
-              <div class="field is-grouped is-align-items-center mt-3">
-                <label class="label mr-2 mb-0">Sort by</label>
-                <div class="control">
-                  <div class="select">
-                    <select v-model="state.sortOrder">
-                      <option value="newest">Newest pending page first</option>
-                      <option value="oldest">Oldest pending page first</option>
-                      <option value="random">Random order</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-      <div v-if="state.pages.length">
-        <div class="content">
-          <h2 class="title is-4">Pending pages</h2>
-          <div class="field is-grouped is-align-items-center mt-3">
-            <label class="label mr-2 mb-0">Sort by</label>
-            <div class="control">
-              <div class="select">
-                <select v-model="state.sortOrder">
-                  <option value="newest">Newest pending page first</option>
-                  <option value="oldest">Oldest pending page first</option>
-                  <option value="random">Random order</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <p class="help" v-if="hasMorePages">
-            Showing the first {{ pageDisplayLimit }} of {{ state.pages.length }} pending pages.
-          </p>
-          <div class="buttons mt-3">
-            <button class="button is-primary" @click="runAutoreviewAllVisible"
-              :class="{ 'is-loading': state.runningBulkReview }"
-              :disabled="!visiblePages.length || state.runningBulkReview">
-              Autoreview all listed pages
-            </button>
-          </div>
-          <article v-for="page in visiblePages" :key="page.pageid" class="card mb-5">
-            <header class="card-header">
-              <p class="card-header-title is-size-5 is-flex is-align-items-center">
-                <span>
-                  <a :href="buildLatestRevisionUrl(page)" class="has-text-link" target="_blank"
-                    rel="noreferrer noopener">
-                    {{ formatTitle(page.title) }}
-                  </a>
-                </span>
-                <span class="is-size-6 has-text-grey ml-3" v-if="page.pending_since">
-                  Pending since {{ formatDate(page.pending_since) }}
-                </span>
-              </p>
-            </header>
-            <div class="card-content">
-              <div class="is-flex is-justify-content-flex-end mb-3">
-                <button class="button is-primary is-light" :class="{ 'is-loading': isAutoreviewRunning(page) }"
-                  @click="runAutoreview(page)" :disabled="isAutoreviewRunning(page) || state.runningBulkReview">
-                  Autoreview edits
-                </button>
-              </div>
-              <div class="table-container">
-                <table class="table is-fullwidth is-striped">
-                  <thead>
-                    <tr>
-                      <th>Timestamp</th>
-                      <th>User</th>
-                      <th>Comment</th>
-                      <th>Tags</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <template v-for="revision in page.revisions" :key="revision.revid">
-            <p class="help" v-if="hasMorePages">
-              Showing the first {{ pageDisplayLimit }} of {{ state.pages.length }} pending pages.
-            </p>
-            <div class="buttons mt-3">
-              <button
-                class="button is-primary"
-                @click="runAutoreviewAllVisible"
-                :class="{ 'is-loading': state.runningBulkReview }"
-                :disabled="!visiblePages.length || state.runningBulkReview"
-              >
-                Autoreview all listed pages
-              </button>
-              <div class="show-diff-checkbox">
-                <input
-                  class="large-checkbox"
-                  type="checkbox"
-                  id="showdiff"
-                  name="showdiff"
-                  v-model="state.diffs.showDiffs"
-                  @change="saveDiffsToLocalStorage"
-                >
-                <label for="showdiff">Show Diffs</label>
-              </div>
-            </div>
-            <article v-for="page in visiblePages" :key="page.pageid" class="card mb-5">
-              <header class="card-header">
-                <p class="card-header-title is-size-5 is-flex is-align-items-center">
-                  <span>
-                    <a
-                      :href="buildLatestRevisionUrl(page)"
-                      class="has-text-link"
-                      target="_blank"
-                      rel="noreferrer noopener"
-                    >
-                      {{ formatTitle(page.title) }}
-                    </a>
-                  </span>
-                  <span
-                    class="is-size-6 has-text-grey ml-3"
-                    v-if="page.pending_since"
-                  >
-                    Pending since {{ formatDate(page.pending_since) }}
-                  </span>
-                </p>
-              </header>
-              <div class="card-content">
-                <div class="is-flex is-justify-content-flex-end mb-3">
-                  <div class="show-diff-checkbox">
-                    <input
-                      class="large-checkbox"
-                      type="checkbox"
-                      id="showPagediff"
-                      name="showPagediff"
-                      v-model="state.diffs.showDiffsByPage[page.pageid]"
-                    >
-                    <label for="showPagediff">Show Diffs</label>
-                  </div>
-                  <button
-                    class="button is-primary is-light"
-                    :class="{ 'is-loading': isAutoreviewRunning(page) }"
-                    @click="runAutoreview(page)"
-                    :disabled="isAutoreviewRunning(page) || state.runningBulkReview"
-                  >
-                    Autoreview edits
-                  </button>
-                </div>
-                <div class="table-container">
-                  <table class="table is-fullwidth is-striped">
-                    <thead>
-                      <tr>
-                        <td>
-                          <a v-if="buildRevisionDiffUrl(page, revision)" :href="buildRevisionDiffUrl(page, revision)"
-                            class="has-text-link" target="_blank" rel="noreferrer noopener">
-                            {{ formatDate(revision.timestamp) }}
-                          </a>
-                          <span v-else>{{ formatDate(revision.timestamp) }}</span>
-                        </td>
-                        <td>
-                          <template v-if="buildUserContributionsUrl(revision)">
-                            <a :href="buildUserContributionsUrl(revision)" class="has-text-link" target="_blank"
-                              rel="noreferrer noopener">
-                              {{ revision.user_name }}
-                            </a>
-                          </template>
-                          <template v-else>
-                            {{ revision.user_name || 'Unknown' }}
-                          </template>
-                          <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
-                          <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
-                          <span class="tag is-success is-light"
-                            v-if="revision.editor_profile.is_autopatrolled">Autopatrolled</span>
-                          <span class="tag is-success is-light"
-                            v-if="revision.editor_profile.is_autoreviewed">Autoreviewed</span>
-                        </td>
-                        <td>{{ revision.comment }}</td>
-                        <td>
-                          <span class="tag" v-for="tag in revision.change_tags" :key="tag">{{ tag }}</span>
-                        </td>
-                      </tr>
-                      <tr v-if="getRevisionReview(page, revision)">
-                        <td colspan="4" class="has-background-light">
-                          <div class="content mb-0">
-                            <p class="has-text-weight-semibold">Autoreview test results</p>
-                            <ul class="mb-2">
-                              <li v-for="test in getRevisionReview(page, revision).tests" :key="test.id" class="mb-1">
-                                <span class="tag" :class="statusTagClass(test.status)">{{ formatTestStatus(test.status)
-                                  }}</span>
-                                <span class="ml-2 has-text-weight-semibold">{{ test.title }}</span>
-                                <span class="ml-2">{{ test.message }}</span>
-                              </li>
-                            </ul>
-                            <p class="has-text-weight-semibold">{{ formatDecision(getRevisionReview(page,
-                              revision).decision) }}</p>
-                          </div>
-                        </td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </article>
-                            <span v-else>{{ formatDate(revision.timestamp) }}</span>
-                          </td>
-                          <td>
-                            <template v-if="buildUserContributionsUrl(revision)">
-                              <a
-                                :href="buildUserContributionsUrl(revision)"
-                                class="has-text-link"
-                                target="_blank"
-                                rel="noreferrer noopener"
-                              >
-                                {{ revision.user_name }}
-                              </a>
-                            </template>
-                            <template v-else>
-                              {{ revision.user_name || 'Unknown' }}
-                            </template>
-                            <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
-                            <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
-                            <span class="tag is-success is-light" v-if="revision.editor_profile.is_autopatrolled">Autopatrolled</span>
-                            <span class="tag is-success is-light" v-if="revision.editor_profile.is_autoreviewed">Autoreviewed</span>
-                          </td>
-                          <td>{{ revision.comment }}</td>
-                          <td>
-                            <span class="tag" v-for="tag in revision.change_tags" :key="tag">{{ tag }}</span>
-                          </td>
-                        </tr>
-                        <tr v-if="getRevisionReview(page, revision)">
-                          <td colspan="4" class="has-background-light">
-                            <div v-if="state.diffs.showDiffsByPage[page.pageid]" :id="'diff-container-' + revision.revid">
-                              <p v-if="state.diffs.loadingDiff[revision.revid]">Loading diff…</p>
-                              <div v-else v-html="state.diffs.diffHtml[revision.revid]"></div>
-                            </div>
-                            <div class="content mb-0">
-                              <p class="has-text-weight-semibold">Autoreview test results</p>
-                              <ul class="mb-2">
-                                <li v-for="test in getRevisionReview(page, revision).tests" :key="test.id" class="mb-1">
-                                  <span class="tag" :class="statusTagClass(test.status)">{{ formatTestStatus(test.status) }}</span>
-                                  <span class="ml-2 has-text-weight-semibold">{{ test.title }}</span>
-                                  <span class="ml-2">{{ test.message }}</span>
-                                </li>
-                              </ul>
-                              <p class="has-text-weight-semibold">{{ formatDecision(getRevisionReview(page, revision).decision) }}</p>
-                            </div>
-                          </td>
-                        </tr>
-                      </template>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </article>
-            </div>
-            <div class="notification is-info" v-if="state.pages.length && !visiblePages.length">
-              No pages match your search criteria. Try a different search term.
-            </div>
-          </div>
-        <div class="notification is-warning" v-else>
-          No pending revisions cached. Use the refresh button to fetch data.
-        </div>
-      </div>
-      <div class="notification is-warning" v-else>
-        No pending revisions cached. Use the refresh button to fetch data.
       </div>
     </section>
 
     <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
     <div class="notification is-info" v-if="state.loading">Loading data…</div>
+
+    <!-- The rest of the app markup (pages list, revisions, diffs etc.) is rendered by Vue in app.js -->
   </div>
   {% endverbatim %}
 
@@ -459,8 +145,5 @@
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="{% static 'reviews/app.js' %}"></script>
 </body>
-      </section>
-    </div>
-    {% endverbatim %}
 
 </html>
