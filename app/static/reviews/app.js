@@ -496,6 +496,16 @@ createApp({
       return `${base} (dry-run)`;
     }
 
+    function formatDuration(ms) {
+      if (typeof ms !== 'number' || ms < 0) {
+        return '';
+      }
+      if (ms < 1000) {
+        return `${Math.round(ms)}ms`;
+      }
+      return `${(ms / 1000).toFixed(2)}s`;
+    }
+
     watch(
       () => state.configurationOpen,
       (newValue) => {
@@ -556,6 +566,7 @@ createApp({
       formatTestStatus,
       statusTagClass,
       formatDecision,
+      formatDuration,
     };
   },
 }).mount("#app");
