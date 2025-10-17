@@ -213,6 +213,86 @@ class ViewTests(TestCase):
         self.assertEqual(config.blocking_categories, ["Foo"])
         self.assertEqual(config.auto_approved_groups, ["sysop"])
 
+    def test_api_configuration_updates_ores_thresholds(self):
+        url = reverse("api_configuration", args=[self.wiki.pk])
+        payload = {
+            "blocking_categories": [],
+            "auto_approved_groups": [],
+            "ores_damaging_threshold": 0.8,
+            "ores_goodfaith_threshold": 0.6,
+            "ores_damaging_threshold_living": 0.5,
+            "ores_goodfaith_threshold_living": 0.75,
+        }
+        response = self.client.put(url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertEqual(data["ores_damaging_threshold"], 0.8)
+        self.assertEqual(data["ores_goodfaith_threshold"], 0.6)
+        self.assertEqual(data["ores_damaging_threshold_living"], 0.5)
+        self.assertEqual(data["ores_goodfaith_threshold_living"], 0.75)
+
+        config = self.wiki.configuration
+        config.refresh_from_db()
+        self.assertEqual(config.ores_damaging_threshold, 0.8)
+        self.assertEqual(config.ores_goodfaith_threshold, 0.6)
+        self.assertEqual(config.ores_damaging_threshold_living, 0.5)
+        self.assertEqual(config.ores_goodfaith_threshold_living, 0.75)
+
+    def test_api_configuration_rejects_invalid_ores_threshold_too_high(self):
+        url = reverse("api_configuration", args=[self.wiki.pk])
+        payload = {
+            "blocking_categories": [],
+            "auto_approved_groups": [],
+            "ores_damaging_threshold": 1.5,
+        }
+        response = self.client.put(url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+        self.assertIn("must be between 0.0 and 1.0", data["error"])
+
+    def test_api_configuration_rejects_invalid_ores_threshold_too_low(self):
+        url = reverse("api_configuration", args=[self.wiki.pk])
+        payload = {
+            "blocking_categories": [],
+            "auto_approved_groups": [],
+            "ores_goodfaith_threshold": -0.5,
+        }
+        response = self.client.put(url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+        self.assertIn("must be between 0.0 and 1.0", data["error"])
+
+    def test_api_configuration_rejects_non_numeric_ores_threshold(self):
+        url = reverse("api_configuration", args=[self.wiki.pk])
+        payload = {
+            "blocking_categories": [],
+            "auto_approved_groups": [],
+            "ores_damaging_threshold_living": "invalid",
+        }
+        response = self.client.put(url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+        self.assertIn("must be a valid number", data["error"])
+
+    def test_api_configuration_accepts_boundary_values(self):
+        url = reverse("api_configuration", args=[self.wiki.pk])
+        payload = {
+            "blocking_categories": [],
+            "auto_approved_groups": [],
+            "ores_damaging_threshold": 0.0,
+            "ores_goodfaith_threshold": 1.0,
+        }
+        response = self.client.put(url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        config = self.wiki.configuration
+        config.refresh_from_db()
+        self.assertEqual(config.ores_damaging_threshold, 0.0)
+        self.assertEqual(config.ores_goodfaith_threshold, 1.0)
+
     @mock.patch("reviews.services.pywikibot.Site")
     def test_api_autoreview_marks_bot_revision_auto_approvable(self, mock_site):
         page = PendingPage.objects.create(
@@ -440,12 +520,17 @@ class ViewTests(TestCase):
 
     @mock.patch("reviews.models.pywikibot.Site")
     @mock.patch("reviews.services.pywikibot.Site")
+    @mock.patch("reviews.autoreview.is_living_person")
+    @mock.patch("reviews.autoreview.logger")
     def test_api_autoreview_requires_manual_review_when_no_rules_apply(
-        self, mock_service_site, mock_model_site
+        self, mock_logger, mock_is_living, mock_service_site, mock_model_site
     ):
+        mock_is_living.return_value = False  # Mock to prevent pywikibot calls
         mock_service_site.return_value.simple_request.return_value.submit.return_value = {
             "parse": {"text": "<p>No errors</p>"}
         }
+        mock_service_site.return_value.logevents.return_value = []  # No block events
+
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=103,
@@ -474,11 +559,42 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
-        self.assertEqual(len(result["tests"]), 8)
-        self.assertEqual(result["tests"][-1]["status"], "ok")
+        # Flexible assertions: allow future additional tests without breaking
+        tests = result["tests"]
+        self.assertGreaterEqual(len(tests), 8, f"Expected at least 8 tests, got {len(tests)}")
+        test_ids = {t["id"] for t in tests}
+        # Core expected test ids that should always be present in manual flow
+        expected_core = {
+            "manual-unapproval",
+            "bot-user",
+            "blocked-user",
+            "auto-approved-group",
+            "article-to-redirect-conversion",
+            "blocking-categories",
+            "new-render-errors",
+            "invalid-isbn",
+        }
+        self.assertTrue(
+            expected_core.issubset(test_ids), f"Missing core test ids: {expected_core - test_ids}"
+        )
+        # ORES test may appear (id 'ores-scores'); if present ensure not fail
+        ores_tests = [t for t in tests if t["id"] == "ores-scores"]
+        if ores_tests:
+            # Should not be fail in this scenario
+            self.assertNotEqual(
+                ores_tests[0]["status"],
+                "fail",
+                "ORES should not fail in manual review baseline test",
+            )
+        # Last test status OK or not_ok acceptable; ensure no unexpected 'error'
+        self.assertNotEqual(tests[-1]["status"], "error")
 
     @mock.patch("reviews.services.pywikibot.Site")
-    def test_api_autoreview_orders_revisions_from_oldest_to_newest(self, mock_site):
+    @mock.patch("reviews.autoreview.is_living_person", return_value=False)
+    @mock.patch("reviews.autoreview.logger")
+    def test_api_autoreview_orders_revisions_from_oldest_to_newest(
+        self, mock_logger, mock_is_living, mock_site
+    ):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=104,

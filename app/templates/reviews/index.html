@@ -133,6 +133,38 @@
                 Edits with {{ (parseFloat(forms.revertriskThreshold) * 100).toFixed(0) }}% or higher revert probability
                 will be blocked
               </p>
+            <div class="content mt-4">
+              <h3 class="title is-6">ORES Edit Quality Thresholds</h3>
+              <p class="help">Set to 0 to disable checks. Values range from 0.0 to 1.0.</p>
+            </div>
+            <div class="columns">
+              <div class="column">
+                <div class="field">
+                  <label class="label">Damaging threshold</label>
+                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresDamagingThreshold" placeholder="0.7">
+                  <p class="help">Edits with damaging probability above this will be blocked</p>
+                </div>
+                <div class="field mt-3">
+                  <label class="label">Goodfaith threshold</label>
+                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresGoodfaithThreshold" placeholder="0.5">
+                  <p class="help">Edits with goodfaith probability below this will be blocked</p>
+                </div>
+              </div>
+              <div class="column">
+                <div class="field">
+                  <label class="label">Damaging threshold (Living persons)</label>
+                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresDamagingThresholdLiving" placeholder="0.5">
+                  <p class="help">Stricter threshold for biographies of living persons</p>
+                </div>
+                <div class="field mt-3">
+                  <label class="label">Goodfaith threshold (Living persons)</label>
+                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresGoodfaithThresholdLiving" placeholder="0.7">
+                  <p class="help">Stricter threshold for biographies of living persons</p>
+                </div>
+              </div>
+            </div>
+            <div class="buttons">
+              <button class="button is-primary" @click="saveConfiguration">Save configuration</button>
             </div>
           </div>
           <div class="buttons">
@@ -246,9 +278,9 @@
               <div class="show-diff-checkbox">
                 <input
                   class="large-checkbox"
-                  type="checkbox" 
-                  id="showdiff" 
-                  name="showdiff" 
+                  type="checkbox"
+                  id="showdiff"
+                  name="showdiff"
                   v-model="state.diffs.showDiffs"
                   @change="saveDiffsToLocalStorage"
                 >
@@ -281,9 +313,9 @@
                   <div class="show-diff-checkbox">
                     <input
                       class="large-checkbox"
-                      type="checkbox" 
-                      id="showPagediff" 
-                      name="showPagediff" 
+                      type="checkbox"
+                      id="showPagediff"
+                      name="showPagediff"
                       v-model="state.diffs.showDiffsByPage[page.pageid]"
                     >
                     <label for="showPagediff">Show Diffs</label>

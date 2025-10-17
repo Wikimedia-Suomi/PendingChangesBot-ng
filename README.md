@@ -81,6 +81,13 @@ the steps below once per user account that will run PendingChangesBot:
 
 3. **Log in with Pywikibot**
 
+   - Using management command
+
+   ```bash
+   python manage.py auth_with_username_and_password
+   ```
+   
+
    - On **Windows**:
 
    ```bash
