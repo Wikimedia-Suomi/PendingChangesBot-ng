@@ -383,20 +383,51 @@ def api_clear_cache(request: HttpRequest, pk: int) -> JsonResponse:
 @csrf_exempt
 @require_http_methods(["GET", "PUT"])
 def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
+    """Get or update wiki configuration including revertrisk threshold."""
     wiki = _get_wiki(pk)
     configuration = wiki.configuration
+    
     if request.method == "PUT":
         if request.content_type == "application/json":
             payload = json.loads(request.body.decode("utf-8")) if request.body else {}
         else:
             payload = request.POST.dict()
-
+        
         blocking_categories = payload.get("blocking_categories", [])
         auto_groups = payload.get("auto_approved_groups", [])
+        
         if isinstance(blocking_categories, str):
             blocking_categories = [blocking_categories]
         if isinstance(auto_groups, str):
             auto_groups = [auto_groups]
+        
+        # Handle revertrisk_threshold: empty string or null becomes None
+        revertrisk_threshold = payload.get("revertrisk_threshold")
+        if revertrisk_threshold is not None:
+            if revertrisk_threshold == "" or revertrisk_threshold == "null":
+                revertrisk_threshold = None
+            else:
+                try:
+                    revertrisk_threshold = float(revertrisk_threshold)
+                    if not (0.0 <= revertrisk_threshold <= 1.0):
+                        return JsonResponse(
+                            {"error": "revertrisk_threshold must be between 0.0 and 1.0"},
+                            status=400
+                        )
+                except (ValueError, TypeError):
+                    return JsonResponse(
+                        {"error": "revertrisk_threshold must be a valid number or null"},
+                        status=400
+                    )
+        
+        configuration.blocking_categories = blocking_categories
+        configuration.auto_approved_groups = auto_groups
+        configuration.revertrisk_threshold = revertrisk_threshold
+        configuration.save(
+            update_fields=["blocking_categories", "auto_approved_groups", 
+                          "revertrisk_threshold", "updated_at"]
+        )
+    
 
         ores_damaging_threshold = payload.get("ores_damaging_threshold")
         ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
@@ -465,6 +496,7 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
+            "revertrisk_threshold": configuration.revertrisk_threshold,
             "ores_damaging_threshold": configuration.ores_damaging_threshold,
             "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
             "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,

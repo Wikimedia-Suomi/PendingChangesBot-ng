@@ -160,6 +160,7 @@ createApp({
     const forms = reactive({
       blockingCategories: "",
       autoApprovedGroups: "",
+      revertriskThreshold: "",
       oresDamagingThreshold: 0.0,
       oresGoodfaithThreshold: 0.0,
       oresDamagingThresholdLiving: 0.0,
@@ -241,6 +242,7 @@ createApp({
       if (!currentWiki.value) {
         forms.blockingCategories = "";
         forms.autoApprovedGroups = "";
+        forms.revertriskThreshold = "";
         forms.oresDamagingThreshold = 0.0;
         forms.oresGoodfaithThreshold = 0.0;
         forms.oresDamagingThresholdLiving = 0.0;
@@ -249,6 +251,9 @@ createApp({
       }
       forms.blockingCategories = (currentWiki.value.configuration.blocking_categories || []).join("\n");
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
+      forms.revertriskThreshold = currentWiki.value.configuration.revertrisk_threshold !== null
+        ? String(currentWiki.value.configuration.revertrisk_threshold)
+        : "";
       forms.oresDamagingThreshold = currentWiki.value.configuration.ores_damaging_threshold || 0.0;
       forms.oresGoodfaithThreshold = currentWiki.value.configuration.ores_goodfaith_threshold || 0.0;
       forms.oresDamagingThresholdLiving = currentWiki.value.configuration.ores_damaging_threshold_living || 0.0;
@@ -382,6 +387,13 @@ createApp({
         return;
       }
 
+      let revertriskValue = null;
+      if (forms.revertriskThreshold && forms.revertriskThreshold.trim() !== "") {
+        revertriskValue = parseFloat(forms.revertriskThreshold);
+        if (isNaN(revertriskValue)) {
+          state.error = "Revertrisk threshold must be a valid number";
+          return;
+        }
       const validationErrors = [];
       const damagingError = validateOresThreshold(forms.oresDamagingThreshold, "Damaging threshold");
       if (damagingError) validationErrors.push(damagingError);
@@ -403,6 +415,7 @@ createApp({
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
+        revertrisk_threshold: revertriskValue,
         ores_damaging_threshold: forms.oresDamagingThreshold,
         ores_goodfaith_threshold: forms.oresGoodfaithThreshold,
         ores_damaging_threshold_living: forms.oresDamagingThresholdLiving,
