@@ -619,6 +619,14 @@ createApp({
       return `${base} (dry-run)`;
     }
 
+    function formatDuration(ms) {
+      if (typeof ms !== 'number' || ms < 0) {
+        return '';
+      }
+      if (ms < 1000) {
+        return `${Math.round(ms)}ms`;
+      }
+      return `${(ms / 1000).toFixed(2)}s`;
 
     /**
      * This functions gets Html to render for each revision
@@ -737,6 +745,7 @@ createApp({
       formatTestStatus,
       statusTagClass,
       formatDecision,
+      formatDuration,
       saveDiffsToLocalStorage,
     };
   },

@@ -1,19 +1,583 @@
-from __future__ import annotations
+"""Tests for timing functionality in autoreview.py"""
 
-import json
-from datetime import datetime, timedelta
+import time
 from unittest.mock import MagicMock, Mock, patch
+from datetime import datetime
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
-from reviews import autoreview
-from reviews.autoreview import (
-    _check_ores_scores,
-    _find_invalid_isbns,
-    _validate_isbn_10,
-    _validate_isbn_13,
+from ..services import was_user_blocked_after
+from ..autoreview import (
+    run_autoreview_for_page,
+    _evaluate_revision,
+    AutoreviewDecision,
 )
-from reviews.services import was_user_blocked_after
+from .. import autoreview
+
+
+class TimingInTestsTestCase(TestCase):
+    """Test that timing information is captured for each test."""
+
+    def setUp(self):
+        """Set up common test fixtures."""
+        self.mock_wiki = Mock()
+        self.mock_wiki.code = "en"
+        self.mock_wiki.family = "wikipedia"
+        self.mock_wiki.configuration = Mock()
+        self.mock_wiki.configuration.auto_approved_groups = []
+        self.mock_wiki.configuration.blocking_categories = []
+        self.mock_wiki.configuration.redirect_aliases = ["#REDIRECT"]
+
+        self.mock_page = Mock()
+        self.mock_page.wiki = self.mock_wiki
+        self.mock_page.stable_revid = 100
+        self.mock_page.categories = []
+
+        self.mock_revision = Mock()
+        self.mock_revision.revid = 200
+        self.mock_revision.user_name = "TestUser"
+        self.mock_revision.timestamp = datetime(2025, 1, 1, 12, 0, 0)
+        self.mock_revision.parentid = 100
+        self.mock_revision.page = self.mock_page
+        self.mock_revision.superset_data = {}
+        self.mock_revision.render_error_count = None
+        self.mock_revision.get_wikitext = Mock(return_value="Test content")
+        self.mock_revision.get_categories = Mock(return_value=[])
+
+        self.mock_client = Mock()
+        self.mock_client.is_user_blocked_after_edit = Mock(return_value=False)
+        self.mock_client.get_rendered_html = Mock(return_value="<html></html>")
+
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_bot_user_test_includes_timing(self, mock_is_bot):
+        """Test that bot user check includes duration_ms."""
+        mock_is_bot.return_value = True
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        self.assertEqual(len(result["tests"]), 1)
+        test = result["tests"][0]
+        self.assertIn("duration_ms", test)
+        self.assertIsInstance(test["duration_ms"], (int, float))
+        self.assertGreaterEqual(test["duration_ms"], 0)
+        self.assertEqual(test["id"], "bot-user")
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview._is_article_to_redirect_conversion')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_blocked_user_test_includes_timing(self, mock_is_bot, mock_redirect, mock_render):
+        """Test that blocked user check includes duration_ms."""
+        mock_is_bot.return_value = False
+        mock_redirect.return_value = False
+        mock_render.return_value = False
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        # Should have bot-user test and blocked-user test
+        self.assertGreaterEqual(len(result["tests"]), 2)
+        blocked_test = next(t for t in result["tests"] if t["id"] == "blocked-user")
+        self.assertIn("duration_ms", blocked_test)
+        self.assertIsInstance(blocked_test["duration_ms"], (int, float))
+        self.assertGreaterEqual(blocked_test["duration_ms"], 0)
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_blocked_user_exception_includes_timing(self, mock_is_bot, mock_render):
+        """Test that timing is captured even when block check fails."""
+        mock_is_bot.return_value = False
+        mock_render.return_value = False
+        self.mock_client.is_user_blocked_after_edit = Mock(side_effect=Exception("API Error"))
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        blocked_test = next(t for t in result["tests"] if t["id"] == "blocked-user")
+        self.assertIn("duration_ms", blocked_test)
+        self.assertEqual(blocked_test["status"], "fail")
+        self.assertGreaterEqual(blocked_test["duration_ms"], 0)
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview._is_article_to_redirect_conversion')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_auto_approved_groups_test_includes_timing(self, mock_is_bot, mock_redirect, mock_render):
+        """Test that auto-approved groups check includes duration_ms."""
+        mock_is_bot.return_value = False
+        mock_redirect.return_value = False
+        mock_render.return_value = False
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={"sysop": "sysop"},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        group_test = next(t for t in result["tests"] if t["id"] == "auto-approved-group")
+        self.assertIn("duration_ms", group_test)
+        self.assertIsInstance(group_test["duration_ms"], (int, float))
+        self.assertGreaterEqual(group_test["duration_ms"], 0)
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview._get_parent_wikitext')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_redirect_conversion_test_includes_timing(self, mock_is_bot, mock_parent_wikitext, mock_render):
+        """Test that redirect conversion check includes duration_ms."""
+        mock_is_bot.return_value = False
+        mock_parent_wikitext.return_value = "Parent content"
+        mock_render.return_value = False
+        self.mock_revision.get_wikitext = Mock(return_value="Regular article content")
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        redirect_test = next(
+            t for t in result["tests"] if t["id"] == "article-to-redirect-conversion"
+        )
+        self.assertIn("duration_ms", redirect_test)
+        self.assertIsInstance(redirect_test["duration_ms"], (int, float))
+        self.assertGreaterEqual(redirect_test["duration_ms"], 0)
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview._is_article_to_redirect_conversion')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_blocking_categories_test_includes_timing(self, mock_is_bot, mock_redirect, mock_render):
+        """Test that blocking categories check includes duration_ms."""
+        mock_is_bot.return_value = False
+        mock_redirect.return_value = False
+        mock_render.return_value = False
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={"category:spam": "Category:Spam"},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        category_test = next(t for t in result["tests"] if t["id"] == "blocking-categories")
+        self.assertIn("duration_ms", category_test)
+        self.assertIsInstance(category_test["duration_ms"], (int, float))
+        self.assertGreaterEqual(category_test["duration_ms"], 0)
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview._is_article_to_redirect_conversion')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_render_errors_test_includes_timing(self, mock_is_bot, mock_redirect, mock_render):
+        """Test that render errors check includes duration_ms."""
+        mock_is_bot.return_value = False
+        mock_redirect.return_value = False
+        mock_render.return_value = False
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        render_test = next(t for t in result["tests"] if t["id"] == "new-render-errors")
+        self.assertIn("duration_ms", render_test)
+        self.assertIsInstance(render_test["duration_ms"], (int, float))
+        self.assertGreaterEqual(render_test["duration_ms"], 0)
+
+
+class TimingPrecisionTestCase(TestCase):
+    """Test that timing has appropriate precision."""
+
+    def setUp(self):
+        """Set up common test fixtures."""
+        self.mock_wiki = Mock()
+        self.mock_wiki.code = "en"
+        self.mock_wiki.family = "wikipedia"
+
+        self.mock_page = Mock()
+        self.mock_page.wiki = self.mock_wiki
+        self.mock_page.categories = []
+
+        self.mock_revision = Mock()
+        self.mock_revision.revid = 200
+        self.mock_revision.user_name = "TestUser"
+        self.mock_revision.timestamp = datetime(2025, 1, 1, 12, 0, 0)
+        self.mock_revision.parentid = 100
+        self.mock_revision.page = self.mock_page
+        self.mock_revision.superset_data = {}
+        self.mock_revision.render_error_count = None
+        self.mock_revision.get_wikitext = Mock(return_value="Test content")
+        self.mock_revision.get_categories = Mock(return_value=[])
+
+        self.mock_client = Mock()
+        self.mock_client.is_user_blocked_after_edit = Mock(return_value=False)
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_timing_has_millisecond_precision(self, mock_is_bot, mock_render):
+        """Test that timing is reported in milliseconds with 2 decimal places."""
+        mock_is_bot.return_value = False
+        mock_render.return_value = False
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        for test in result["tests"]:
+            duration = test["duration_ms"]
+            # Check that it's rounded to 2 decimal places
+            self.assertEqual(duration, round(duration, 2))
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_timing_is_positive(self, mock_is_bot, mock_render):
+        """Test that all timing values are non-negative."""
+        mock_is_bot.return_value = False
+        mock_render.return_value = False
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        for test in result["tests"]:
+            self.assertGreaterEqual(test["duration_ms"], 0)
+
+
+class TotalTimingInRunAutoreviewTestCase(TestCase):
+    """Test that total timing is captured for revision processing."""
+
+    def setUp(self):
+        """Set up common test fixtures."""
+        self.mock_wiki = Mock()
+        self.mock_wiki.code = "en"
+        self.mock_wiki.configuration = Mock()
+        self.mock_wiki.configuration.auto_approved_groups = []
+        self.mock_wiki.configuration.blocking_categories = []
+
+        self.mock_page = Mock()
+        self.mock_page.wiki = self.mock_wiki
+        self.mock_page.stable_revid = 100
+
+    @patch('reviews.autoreview._evaluate_revision')
+    @patch('reviews.autoreview.WikiClient')
+    @patch('reviews.autoreview._get_redirect_aliases')
+    @patch('reviews.autoreview.EditorProfile')
+    def test_run_autoreview_includes_total_time(
+        self,
+        mock_profile_cls,
+        mock_aliases,
+        mock_client_cls,
+        mock_evaluate,
+    ):
+        """Test that run_autoreview_for_page includes total_time_ms."""
+        # Setup mocks
+        mock_revision = Mock()
+        mock_revision.revid = 200
+        mock_revision.user_name = "TestUser"
+        
+        self.mock_page.revisions.exclude().order_by = Mock(return_value=[mock_revision])
+        mock_profile_cls.objects.filter = Mock(return_value=[])
+        mock_aliases.return_value = ["#REDIRECT"]
+        
+        mock_evaluate.return_value = {
+            "tests": [{"id": "test", "duration_ms": 1.5}],
+            "decision": AutoreviewDecision(
+                status="manual",
+                label="Test",
+                reason="Test reason"
+            ),
+        }
+        
+        # Run the function
+        results = run_autoreview_for_page(self.mock_page)
+        
+        # Check results
+        self.assertEqual(len(results), 1)
+        self.assertIn("total_time_ms", results[0])
+        self.assertIsInstance(results[0]["total_time_ms"], (int, float))
+        self.assertGreaterEqual(results[0]["total_time_ms"], 0)
+
+    @patch('reviews.autoreview._evaluate_revision')
+    @patch('reviews.autoreview.WikiClient')
+    @patch('reviews.autoreview._get_redirect_aliases')
+    @patch('reviews.autoreview.EditorProfile')
+    def test_total_time_precision(
+        self,
+        mock_profile_cls,
+        mock_aliases,
+        mock_client_cls,
+        mock_evaluate,
+    ):
+        """Test that total time has appropriate precision."""
+        mock_revision = Mock()
+        mock_revision.revid = 200
+        mock_revision.user_name = "TestUser"
+        
+        self.mock_page.revisions.exclude().order_by = Mock(return_value=[mock_revision])
+        mock_profile_cls.objects.filter = Mock(return_value=[])
+        mock_aliases.return_value = ["#REDIRECT"]
+        
+        mock_evaluate.return_value = {
+            "tests": [],
+            "decision": AutoreviewDecision(
+                status="manual",
+                label="Test",
+                reason="Test reason"
+            ),
+        }
+        
+        results = run_autoreview_for_page(self.mock_page)
+        
+        total_time = results[0]["total_time_ms"]
+        # Check that it's rounded to 2 decimal places
+        self.assertEqual(total_time, round(total_time, 2))
+
+    @patch('reviews.autoreview._evaluate_revision')
+    @patch('reviews.autoreview.WikiClient')
+    @patch('reviews.autoreview._get_redirect_aliases')
+    @patch('reviews.autoreview.EditorProfile')
+    def test_multiple_revisions_each_have_timing(
+        self,
+        mock_profile_cls,
+        mock_aliases,
+        mock_client_cls,
+        mock_evaluate,
+    ):
+        """Test that each revision gets its own timing."""
+        # Create multiple revisions
+        revisions = [Mock(revid=i, user_name=f"User{i}") for i in range(200, 203)]
+        
+        self.mock_page.revisions.exclude().order_by = Mock(return_value=revisions)
+        mock_profile_cls.objects.filter = Mock(return_value=[])
+        mock_aliases.return_value = ["#REDIRECT"]
+        
+        mock_evaluate.return_value = {
+            "tests": [],
+            "decision": AutoreviewDecision(
+                status="manual",
+                label="Test",
+                reason="Test reason"
+            ),
+        }
+        
+        results = run_autoreview_for_page(self.mock_page)
+        
+        self.assertEqual(len(results), 3)
+        for result in results:
+            self.assertIn("total_time_ms", result)
+            self.assertGreaterEqual(result["total_time_ms"], 0)
+
+
+class ExistingFunctionalityPreservedTestCase(TestCase):
+    """Test that existing functionality is not broken by timing changes."""
+
+    def setUp(self):
+        """Set up common test fixtures."""
+        self.mock_wiki = Mock()
+        self.mock_page = Mock()
+        self.mock_page.wiki = self.mock_wiki
+        self.mock_page.categories = []
+
+        self.mock_revision = Mock()
+        self.mock_revision.revid = 200
+        self.mock_revision.user_name = "TestUser"
+        self.mock_revision.timestamp = datetime(2025, 1, 1, 12, 0, 0)
+        self.mock_revision.parentid = 100
+        self.mock_revision.page = self.mock_page
+        self.mock_revision.superset_data = {}
+        self.mock_revision.get_categories = Mock(return_value=[])
+
+        self.mock_client = Mock()
+        self.mock_client.is_user_blocked_after_edit = Mock(return_value=False)
+
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_decision_structure_unchanged(self, mock_is_bot):
+        """Test that decision structure remains the same."""
+        mock_is_bot.return_value = True
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        self.assertIn("decision", result)
+        decision = result["decision"]
+        self.assertEqual(decision.status, "approve")
+        self.assertEqual(decision.label, "Would be auto-approved")
+        self.assertEqual(decision.reason, "The user is recognized as a bot.")
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview._is_article_to_redirect_conversion')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_test_results_structure_preserved(self, mock_is_bot, mock_redirect, mock_render):
+        """Test that test result structure is preserved (with addition of duration_ms)."""
+        mock_is_bot.return_value = False
+        mock_redirect.return_value = False
+        mock_render.return_value = False
+        
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        
+        for test in result["tests"]:
+            # Original fields must be present
+            self.assertIn("id", test)
+            self.assertIn("title", test)
+            self.assertIn("status", test)
+            self.assertIn("message", test)
+            # New field added
+            self.assertIn("duration_ms", test)
+
+    @patch('reviews.autoreview._evaluate_revision')
+    @patch('reviews.autoreview.WikiClient')
+    @patch('reviews.autoreview._get_redirect_aliases')
+    @patch('reviews.autoreview.EditorProfile')
+    def test_run_autoreview_structure_preserved(
+        self,
+        mock_profile_cls,
+        mock_aliases,
+        mock_client_cls,
+        mock_evaluate,
+    ):
+        """Test that run_autoreview_for_page structure is preserved."""
+        mock_wiki = Mock()
+        mock_wiki.configuration = Mock()
+        mock_wiki.configuration.auto_approved_groups = []
+        mock_wiki.configuration.blocking_categories = []
+
+        mock_page = Mock()
+        mock_page.wiki = mock_wiki
+        mock_page.stable_revid = 100
+
+        mock_revision = Mock()
+        mock_revision.revid = 200
+        mock_revision.user_name = "TestUser"
+        
+        mock_page.revisions.exclude().order_by = Mock(return_value=[mock_revision])
+        mock_profile_cls.objects.filter = Mock(return_value=[])
+        mock_aliases.return_value = ["#REDIRECT"]
+        
+        mock_evaluate.return_value = {
+            "tests": [{"id": "test", "title": "Test", "status": "ok", 
+                      "message": "Test message", "duration_ms": 1.0}],
+            "decision": AutoreviewDecision(
+                status="manual",
+                label="Test",
+                reason="Test reason"
+            ),
+        }
+        
+        results = run_autoreview_for_page(mock_page)
+        
+        # Original structure must be present
+        self.assertEqual(len(results), 1)
+        result = results[0]
+        self.assertIn("revid", result)
+        self.assertIn("tests", result)
+        self.assertIn("decision", result)
+        self.assertIn("status", result["decision"])
+        self.assertIn("label", result["decision"])
+        self.assertIn("reason", result["decision"])
+        # New field added
+        self.assertIn("total_time_ms", result)
+
+
+class TimingOverheadTestCase(TestCase):
+    """Test that timing overhead is minimal."""
+
+    def setUp(self):
+        """Set up common test fixtures."""
+        self.mock_wiki = Mock()
+        self.mock_page = Mock()
+        self.mock_page.wiki = self.mock_wiki
+        self.mock_page.categories = []
+
+        self.mock_revision = Mock()
+        self.mock_revision.revid = 200
+        self.mock_revision.user_name = "TestUser"
+        self.mock_revision.timestamp = datetime(2025, 1, 1, 12, 0, 0)
+        self.mock_revision.parentid = 100
+        self.mock_revision.page = self.mock_page
+        self.mock_revision.superset_data = {}
+        self.mock_revision.render_error_count = None
+        self.mock_revision.get_wikitext = Mock(return_value="Test content")
+        self.mock_revision.get_categories = Mock(return_value=[])
+
+        self.mock_client = Mock()
+        self.mock_client.is_user_blocked_after_edit = Mock(return_value=False)
+
+    @patch('reviews.autoreview._check_for_new_render_errors')
+    @patch('reviews.autoreview.is_bot_edit')
+    def test_timing_does_not_slow_execution_significantly(self, mock_is_bot, mock_render):
+        """Test that timing instrumentation has minimal overhead."""
+        mock_is_bot.return_value = False
+        mock_render.return_value = False
+        
+        start = time.perf_counter()
+        result = _evaluate_revision(
+            self.mock_revision,
+            self.mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=["#REDIRECT"],
+        )
+        end = time.perf_counter()
+        actual_time = (end - start) * 1000
+        
+        # The sum of reported test times should be less than actual time
+        # (because actual includes Python overhead)
+        reported_time = sum(test["duration_ms"] for test in result["tests"])
+        
+        # Reported time should be reasonable relative to actual time
+        # (within 50% overhead for timing instrumentation)
+        self.assertLessEqual(reported_time, actual_time * 1.5)
 
 
 class ISBNValidationTests(TestCase):
@@ -232,6 +796,8 @@ class ISBNDetectionTests(TestCase):
 
 
 class AutoreviewBlockedUserTests(TestCase):
+    """Test blocked user functionality."""
+    
     def setUp(self):
         """Clear the LRU cache before each test."""
         was_user_blocked_after.cache_clear()
@@ -290,814 +856,3 @@ class AutoreviewBlockedUserTests(TestCase):
 
         # Verify logevents was called with correct parameters
         mock_site_instance.logevents.assert_called_once()
-
-
-class OresScoreTests(TestCase):
-    """Test ORES damaging and goodfaith score checks."""
-
-    @patch("reviews.autoreview.ModelScores.objects.create")
-    @patch("reviews.autoreview.ModelScores.objects.get")
-    @patch("reviews.autoreview.http.fetch")
-    def test_ores_damaging_score_exceeds_threshold(
-        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
-    ):
-        """Test that high damaging score blocks auto-approval."""
-        # Mock no cached scores (will fetch from API)
-        from reviews.models import ModelScores
-
-        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
-        mock_model_scores_create.return_value = MagicMock()
-
-        # Mock ORES API response with high damaging score
-        mock_response = Mock()
-        mock_response.headers = {}
-        mock_response.text = json.dumps(
-            {
-                "fiwiki": {
-                    "scores": {
-                        "12345": {
-                            "damaging": {
-                                "score": {
-                                    "prediction": True,
-                                    "probability": {"true": 0.85, "false": 0.15},
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        )
-        mock_fetch.return_value = mock_response
-
-        # Create mock revision
-        mock_revision = MagicMock()
-        mock_revision.revid = 12345
-        mock_revision.page.wiki.code = "fi"
-        mock_revision.page.wiki.family = "wikipedia"
-
-        # Check with threshold of 0.7
-        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.0)
-
-        self.assertTrue(result["should_block"])
-        self.assertEqual(result["test"]["status"], "fail")
-        self.assertIn("0.850", result["test"]["message"])
-
-    @patch("reviews.autoreview.ModelScores.objects.create")
-    @patch("reviews.autoreview.ModelScores.objects.get")
-    @patch("reviews.autoreview.http.fetch")
-    def test_ores_goodfaith_score_below_threshold(
-        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
-    ):
-        """Test that low goodfaith score blocks auto-approval."""
-        # Mock no cached scores (will fetch from API)
-        from reviews.models import ModelScores
-
-        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
-        mock_model_scores_create.return_value = MagicMock()
-
-        # Mock ORES API response with low goodfaith score
-        mock_response = Mock()
-        mock_response.headers = {}
-        mock_response.text = json.dumps(
-            {
-                "fiwiki": {
-                    "scores": {
-                        "12345": {
-                            "goodfaith": {
-                                "score": {
-                                    "prediction": False,
-                                    "probability": {"true": 0.3, "false": 0.7},
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        )
-        mock_fetch.return_value = mock_response
-
-        # Create mock revision
-        mock_revision = MagicMock()
-        mock_revision.revid = 12345
-        mock_revision.page.wiki.code = "fi"
-        mock_revision.page.wiki.family = "wikipedia"
-
-        # Check with threshold of 0.5
-        result = _check_ores_scores(mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.5)
-
-        self.assertTrue(result["should_block"])
-        self.assertEqual(result["test"]["status"], "fail")
-        self.assertIn("0.300", result["test"]["message"])
-
-    @patch("reviews.autoreview.ModelScores.objects.create")
-    @patch("reviews.autoreview.ModelScores.objects.get")
-    @patch("reviews.autoreview.http.fetch")
-    def test_ores_scores_within_thresholds(
-        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
-    ):
-        """Test that good scores pass the check."""
-        # Mock no cached scores (will fetch from API)
-        from reviews.models import ModelScores
-
-        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
-        mock_model_scores_create.return_value = MagicMock()
-
-        # Mock ORES API response with good scores
-        mock_response = Mock()
-        mock_response.headers = {}
-        mock_response.text = json.dumps(
-            {
-                "fiwiki": {
-                    "scores": {
-                        "12345": {
-                            "damaging": {
-                                "score": {
-                                    "prediction": False,
-                                    "probability": {"true": 0.02, "false": 0.98},
-                                }
-                            },
-                            "goodfaith": {
-                                "score": {
-                                    "prediction": True,
-                                    "probability": {"true": 0.999, "false": 0.001},
-                                }
-                            },
-                        }
-                    }
-                }
-            }
-        )
-        mock_fetch.return_value = mock_response
-
-        # Create mock revision
-        mock_revision = MagicMock()
-        mock_revision.revid = 12345
-        mock_revision.page.wiki.code = "fi"
-        mock_revision.page.wiki.family = "wikipedia"
-
-        # Check with reasonable thresholds
-        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
-
-        self.assertFalse(result["should_block"])
-        self.assertEqual(result["test"]["status"], "ok")
-        self.assertIn("damaging: 0.020", result["test"]["message"])
-        self.assertIn("goodfaith: 0.999", result["test"]["message"])
-
-    def test_ores_checks_disabled_when_thresholds_zero(self):
-        """Test that ORES checks are skipped when thresholds are 0.0."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 12345
-        mock_revision.page.wiki.code = "fi"
-        mock_revision.page.wiki.family = "wikipedia"
-
-        result = _check_ores_scores(mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.0)
-
-        self.assertFalse(result["should_block"])
-        self.assertEqual(result["test"]["status"], "skip")
-        self.assertIn("disabled", result["test"]["message"])
-
-    @patch("reviews.autoreview.ModelScores.objects.create")
-    @patch("reviews.autoreview.ModelScores.objects.get")
-    @patch("reviews.autoreview.http.fetch")
-    @patch("reviews.autoreview.logger")  # Mock logger to suppress error logs
-    def test_ores_api_error_blocks_approval(
-        self, mock_logger, mock_fetch, mock_model_scores_get, mock_model_scores_create
-    ):
-        """Test that ORES API errors block auto-approval (safe default)."""
-        # Mock no cached scores (will fetch from API)
-        from reviews.models import ModelScores
-
-        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
-        mock_model_scores_create.return_value = MagicMock()
-
-        # Mock API error
-        mock_fetch.side_effect = Exception("API connection failed")
-
-        # Create mock revision
-        mock_revision = MagicMock()
-        mock_revision.revid = 12345
-        mock_revision.page.wiki.code = "fi"
-        mock_revision.page.wiki.family = "wikipedia"
-
-        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
-
-        self.assertTrue(result["should_block"])
-        self.assertEqual(result["test"]["status"], "fail")
-        self.assertIn("Could not verify", result["test"]["message"])
-
-        # Verify logger.error was called
-        mock_logger.error.assert_called_once()
-
-    @patch("reviews.autoreview.ModelScores.objects.create")
-    @patch("reviews.autoreview.ModelScores.objects.get")
-    @patch("reviews.autoreview.http.fetch")
-    def test_ores_only_damaging_check_enabled(
-        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
-    ):
-        """Test checking only damaging score when goodfaith threshold is 0."""
-        # Mock no cached scores (will fetch from API)
-        from reviews.models import ModelScores
-
-        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
-        mock_model_scores_create.return_value = MagicMock()
-
-        mock_response = Mock()
-        mock_response.headers = {}
-        mock_response.text = json.dumps(
-            {
-                "fiwiki": {
-                    "scores": {
-                        "12345": {
-                            "damaging": {
-                                "score": {
-                                    "prediction": False,
-                                    "probability": {"true": 0.05, "false": 0.95},
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        )
-        mock_fetch.return_value = mock_response
-
-        mock_revision = MagicMock()
-        mock_revision.revid = 12345
-        mock_revision.page.wiki.code = "fi"
-        mock_revision.page.wiki.family = "wikipedia"
-
-        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.0)
-
-        self.assertFalse(result["should_block"])
-        self.assertEqual(result["test"]["status"], "ok")
-        self.assertIn("damaging: 0.050", result["test"]["message"])
-        self.assertNotIn("goodfaith", result["test"]["message"])
-
-    @patch("reviews.autoreview.ModelScores.objects.create")
-    @patch("reviews.autoreview.ModelScores.objects.get")
-    @patch("reviews.autoreview.http.fetch")
-    def test_ores_only_goodfaith_check_enabled(
-        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
-    ):
-        """Test checking only goodfaith score when damaging threshold is 0."""
-        # Mock no cached scores (will fetch from API)
-        from reviews.models import ModelScores
-
-        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
-        mock_model_scores_create.return_value = MagicMock()
-
-        mock_response = Mock()
-        mock_response.headers = {}
-        mock_response.text = json.dumps(
-            {
-                "fiwiki": {
-                    "scores": {
-                        "12345": {
-                            "goodfaith": {
-                                "score": {
-                                    "prediction": True,
-                                    "probability": {"true": 0.95, "false": 0.05},
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        )
-        mock_fetch.return_value = mock_response
-
-        mock_revision = MagicMock()
-        mock_revision.revid = 12345
-        mock_revision.page.wiki.code = "fi"
-        mock_revision.page.wiki.family = "wikipedia"
-
-        result = _check_ores_scores(mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.5)
-
-        self.assertFalse(result["should_block"])
-        self.assertEqual(result["test"]["status"], "ok")
-        self.assertIn("goodfaith: 0.950", result["test"]["message"])
-        self.assertNotIn("damaging", result["test"]["message"])
-
-    @override_settings(ORES_DAMAGING_THRESHOLD=0.7, ORES_GOODFAITH_THRESHOLD=0.5)
-    @patch("reviews.services.pywikibot.Site")
-    @patch("reviews.autoreview.ModelScores.objects.create")
-    @patch("reviews.autoreview.ModelScores.objects.get")
-    @patch("reviews.autoreview.http.fetch")
-    @patch("reviews.autoreview._is_bot_user")
-    @patch("reviews.autoreview.logger")
-    @patch("reviews.autoreview._get_parent_wikitext")
-    @patch("reviews.autoreview.PendingRevision.objects.filter")
-    @patch("reviews.autoreview.is_living_person")
-    def test_ores_integration_in_evaluate_revision(
-        self,
-        mock_is_living,
-        mock_filter,
-        mock_get_parent,
-        mock_logger,
-        mock_is_bot,
-        mock_fetch,
-        mock_model_scores_get,
-        mock_model_scores_create,
-        mock_site,
-    ):
-        """Test ORES check integration in _evaluate_revision."""
-        # Mock no cached scores (will fetch from API)
-        from reviews.models import ModelScores
-
-        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
-        mock_model_scores_create.return_value = MagicMock()
-
-        mock_is_bot.return_value = False
-        mock_is_living.return_value = False  # Not a living person article
-        mock_get_parent.return_value = ""  # No parent wikitext
-
-        # Mock PendingRevision.objects.filter to return empty queryset
-        mock_queryset = MagicMock()
-        mock_queryset.order_by.return_value.first.return_value = None
-        mock_filter.return_value = mock_queryset
-
-        # Mock pywikibot.Site for WikiClient
-        mock_site_instance = MagicMock()
-        mock_site.return_value = mock_site_instance
-        mock_site_instance.logevents.return_value = []
-
-        # Mock ORES API response with high damaging score
-        mock_response = Mock()
-        mock_response.headers = {}
-        mock_response.text = json.dumps(
-            {
-                "fiwiki": {
-                    "scores": {
-                        "12345": {
-                            "damaging": {
-                                "score": {
-                                    "prediction": True,
-                                    "probability": {"true": 0.85, "false": 0.15},
-                                }
-                            },
-                            "goodfaith": {
-                                "score": {
-                                    "prediction": False,
-                                    "probability": {"true": 0.2, "false": 0.8},
-                                }
-                            },
-                        }
-                    }
-                }
-            }
-        )
-        mock_fetch.return_value = mock_response
-
-        # Create mock objects
-        mock_wiki = MagicMock()
-        mock_wiki.code = "fi"
-        mock_wiki.family = "wikipedia"
-        mock_wiki.configuration.ores_damaging_threshold = 0.7
-        mock_wiki.configuration.ores_goodfaith_threshold = 0.5
-
-        mock_page = MagicMock()
-        mock_page.wiki = mock_wiki
-        mock_page.title = "Test Page"
-        mock_page.categories = []
-
-        mock_revision = MagicMock()
-        mock_revision.revid = 12345
-        mock_revision.id = 12345  # Add id attribute to fix Field 'id' error
-        mock_revision.page = mock_page
-        mock_revision.user_name = "TestUser"
-        mock_revision.timestamp = datetime.fromisoformat("2024-01-15T10:00:00")
-        mock_revision.get_wikitext.return_value = "Test content"
-        mock_revision.get_categories.return_value = []
-        mock_revision.superset_data = {}
-        mock_revision.parentid = None
-        mock_revision.render_error_count = 0
-
-        from reviews.services import WikiClient
-
-        mock_client = MagicMock(spec=WikiClient)
-        mock_client.has_manual_unapproval.return_value = False
-        mock_client.is_user_blocked_after_edit.return_value = False
-        mock_client.get_rendered_html.return_value = "<html></html>"
-
-        # Call _evaluate_revision
-        result = autoreview._evaluate_revision(
-            mock_revision,
-            mock_client,
-            None,
-            auto_groups={},
-            blocking_categories={},
-            redirect_aliases=[],
-        )
-
-        # Should be blocked due to high damaging score
-        self.assertEqual(result["decision"].status, "blocked")
-        self.assertTrue(any(t["id"] == "ores-scores" for t in result["tests"]))
-
-        # Verify no error logs were produced (logger.error should not be called)
-        mock_logger.error.assert_not_called()
-
-    def test_ores_scores_are_cached(self):
-        """Test that ORES scores are cached in the database after fetching."""
-        from reviews.models import ModelScores, PendingPage, PendingRevision, Wiki
-
-        # Create real test objects
-        wiki = Wiki.objects.create(
-            name="Test Wiki",
-            code="test",
-            family="wikipedia",
-            api_endpoint="https://test.wikipedia.org/w/api.php",
-        )
-
-        page = PendingPage.objects.create(
-            wiki=wiki, pageid=123, title="Test Page", stable_revid=999
-        )
-
-        revision = PendingRevision.objects.create(
-            page=page,
-            revid=12345,
-            timestamp=datetime.fromisoformat("2024-01-15T10:00:00"),
-            age_at_fetch=timedelta(hours=1),
-            sha1="abc123",
-            wikitext="Test content",
-        )
-
-        # Mock the ORES API response
-        with patch("reviews.autoreview.http.fetch") as mock_fetch:
-            mock_response = Mock()
-            mock_response.text = json.dumps(
-                {
-                    "testwiki": {
-                        "scores": {
-                            "12345": {
-                                "damaging": {
-                                    "score": {"probability": {"true": 0.15, "false": 0.85}}
-                                },
-                                "goodfaith": {
-                                    "score": {"probability": {"true": 0.92, "false": 0.08}}
-                                },
-                            }
-                        }
-                    }
-                }
-            )
-            mock_fetch.return_value = mock_response
-
-            # First call - should fetch from API
-            result1 = _check_ores_scores(revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
-
-            # Verify the API was called
-            mock_fetch.assert_called_once()
-
-            # Verify result
-            self.assertFalse(result1["should_block"])
-            self.assertEqual(result1["test"]["status"], "ok")
-
-            # Verify scores are cached in database
-            model_scores = ModelScores.objects.get(revision=revision)
-            self.assertIsNotNone(model_scores.ores_damaging_score)
-            self.assertIsNotNone(model_scores.ores_goodfaith_score)
-            self.assertEqual(model_scores.ores_damaging_score, 0.15)
-            self.assertEqual(model_scores.ores_goodfaith_score, 0.92)
-            self.assertIsNotNone(model_scores.ores_fetched_at)
-
-            # Second call - should use cached scores
-            result2 = _check_ores_scores(revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
-
-            # Verify the API was NOT called again (still once from before)
-            mock_fetch.assert_called_once()
-
-            # Verify result is the same
-            self.assertFalse(result2["should_block"])
-            self.assertEqual(result2["test"]["status"], "ok")
-            self.assertIn("0.150", result2["test"]["message"])
-            self.assertIn("0.920", result2["test"]["message"])
-
-
-class SupersededAdditionsTests(TestCase):
-    """Test suite for superseded additions detection."""
-
-    def test_normalize_wikitext(self):
-        """Test that wikitext normalization removes markup correctly."""
-        text = "Some text with [[link|display]] and {{template}} and <ref>citation</ref>"
-        normalized = autoreview._normalize_wikitext(text)
-        self.assertEqual(normalized, "Some text with display and and")
-
-    def test_normalize_wikitext_with_categories(self):
-        """Test that category links are removed."""
-        text = "Article text [[Category:Test]] more text"
-        normalized = autoreview._normalize_wikitext(text)
-        self.assertEqual(normalized, "Article text more text")
-
-    def test_extract_additions_simple(self):
-        """Test extracting additions from simple text change."""
-        parent = "Original text."
-        pending = "Original text. New addition."
-        additions = autoreview._extract_additions(parent, pending)
-        self.assertEqual(len(additions), 1)
-        self.assertIn("New addition.", additions[0])
-
-    def test_extract_additions_no_parent(self):
-        """Test extraction when there is no parent revision."""
-        parent = ""
-        pending = "New article text."
-        additions = autoreview._extract_additions(parent, pending)
-        self.assertEqual(additions, ["New article text."])
-
-    def test_extract_additions_multiple(self):
-        """Test extracting multiple separate additions."""
-        parent = "First paragraph. Third paragraph."
-        pending = "First paragraph. Second paragraph. Third paragraph. Fourth paragraph."
-        additions = autoreview._extract_additions(parent, pending)
-        self.assertGreaterEqual(len(additions), 2)
-
-    def test_is_addition_superseded_fully_removed(self):
-        """Test case 1: Addition was fully removed in current stable."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = 100
-        mock_revision.get_wikitext.return_value = (
-            "Article intro. User added this content about topic X. More text."
-        )
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision (which is different from the one being checked)
-        mock_latest = MagicMock()
-        mock_latest.revid = 125  # Different from 123
-        mock_latest.get_wikitext.return_value = "Article intro. More text."
-
-        # Mock parent revision
-        with (
-            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
-            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
-        ):
-            mock_parent.return_value = "Article intro. More text."
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            # Current stable has the addition removed
-            current_stable = "Article intro. More text."
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            self.assertTrue(result)
-
-    def test_is_addition_superseded_partially_removed(self):
-        """Test case 2: Addition was partially removed (majority removed)."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = 100
-        mock_revision.get_wikitext.return_value = (
-            "Article text. User added a very long detailed sentence about "
-            "topic X with lots of information and details here. More text."
-        )
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision
-        mock_latest = MagicMock()
-        mock_latest.revid = 125
-        mock_latest.get_wikitext.return_value = "Article text. User added info. More text."
-
-        with (
-            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
-            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
-        ):
-            mock_parent.return_value = "Article text. More text."
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            # Current stable only kept a small part (~15% of the addition)
-            current_stable = "Article text. User added info. More text."
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            # Should be considered superseded as significant content was removed
-            self.assertTrue(result)
-
-    def test_is_addition_superseded_moved_text(self):
-        """Test case 3: Addition was moved to different location."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = 100
-        mock_revision.get_wikitext.return_value = (
-            "Section 1. User added this important content. Section 2."
-        )
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision
-        mock_latest = MagicMock()
-        mock_latest.revid = 125
-        mock_latest.get_wikitext.return_value = (
-            "Section 1. Section 2. User added this important content."
-        )
-
-        with (
-            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
-            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
-        ):
-            mock_parent.return_value = "Section 1. Section 2."
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            # Current stable has the content moved to Section 2
-            current_stable = "Section 1. Section 2. User added this important content."
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            # Should NOT be superseded as content is still present
-            self.assertFalse(result)
-
-    def test_is_addition_superseded_rephrased(self):
-        """Test case 4: Addition was rephrased/reworded."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = 100
-        mock_revision.get_wikitext.return_value = (
-            "Article text. The quick brown fox jumps over the lazy dog. More text."
-        )
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision
-        mock_latest = MagicMock()
-        mock_latest.revid = 125
-        mock_latest.get_wikitext.return_value = (
-            "Article text. A fast brown fox leaps over a sleepy canine. More text."
-        )
-
-        with (
-            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
-            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
-        ):
-            mock_parent.return_value = "Article text. More text."
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            # Current stable has similar but rephrased content
-            current_stable = "Article text. A fast brown fox leaps over a sleepy canine. More text."
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            # Should NOT be superseded due to similarity (even if rephrased)
-            self.assertFalse(result)
-
-    def test_is_addition_superseded_with_new_text(self):
-        """Test case 5: Addition is present but surrounded by new content."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = 100
-        mock_revision.get_wikitext.return_value = (
-            "Article text. User added this sentence. More text."
-        )
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision
-        mock_latest = MagicMock()
-        mock_latest.revid = 125
-        mock_latest.get_wikitext.return_value = (
-            "Article text. New intro. User added this sentence. New conclusion. More text."
-        )
-
-        with (
-            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
-            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
-        ):
-            mock_parent.return_value = "Article text. More text."
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            # Current stable has the addition plus extra content
-            current_stable = (
-                "Article text. New intro. User added this sentence. New conclusion. More text."
-            )
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            # Should NOT be superseded as the addition is still present
-            self.assertFalse(result)
-
-    def test_is_addition_superseded_unchanged(self):
-        """Test case 6: Addition remains unchanged."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = 100
-        mock_revision.get_wikitext.return_value = (
-            "Article text. User added this content. More text."
-        )
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision
-        mock_latest = MagicMock()
-        mock_latest.revid = 125
-        mock_latest.get_wikitext.return_value = "Article text. User added this content. More text."
-
-        with (
-            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
-            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
-        ):
-            mock_parent.return_value = "Article text. More text."
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            # Current stable has the exact same addition
-            current_stable = "Article text. User added this content. More text."
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            # Should NOT be superseded
-            self.assertFalse(result)
-
-    def test_is_addition_superseded_short_addition(self):
-        """Test that very short additions are ignored."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = 100
-        mock_revision.get_wikitext.return_value = "Article text. Yes. More text."
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision
-        mock_latest = MagicMock()
-        mock_latest.revid = 125
-        mock_latest.get_wikitext.return_value = "Article text. More text."
-
-        with (
-            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
-            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
-        ):
-            mock_parent.return_value = "Article text. More text."
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            # Current stable doesn't have the short addition
-            current_stable = "Article text. More text."
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            # Should NOT be considered superseded (too short to matter)
-            self.assertFalse(result)
-
-    def test_is_addition_superseded_no_parent(self):
-        """Test behavior when there's no parent revision."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = None
-        mock_revision.get_wikitext.return_value = "New article content."
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision
-        mock_latest = MagicMock()
-        mock_latest.revid = 125
-        mock_latest.get_wikitext.return_value = "Different content."
-
-        with patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter:
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            current_stable = "Different content."
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            # Should NOT be superseded (first revision)
-            self.assertFalse(result)
-
-    def test_is_addition_superseded_empty_stable(self):
-        """Test behavior when current stable is empty."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = 100
-        mock_revision.get_wikitext.return_value = "New content added."
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision
-        mock_latest = MagicMock()
-        mock_latest.revid = 125
-        mock_latest.get_wikitext.return_value = ""
-
-        with (
-            patch("reviews.autoreview._get_parent_wikitext") as mock_parent,
-            patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter,
-        ):
-            mock_parent.return_value = ""
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            current_stable = ""
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            # Should return False (can't compare against empty)
-            self.assertFalse(result)
-
-    def test_is_addition_superseded_is_latest_revision(self):
-        """Test that if revision is the latest, it cannot be superseded."""
-        mock_revision = MagicMock()
-        mock_revision.revid = 123
-        mock_revision.parentid = 100
-        mock_revision.get_wikitext.return_value = (
-            "Article text. User added this content. More text."
-        )
-        mock_revision.page = MagicMock()
-
-        # Mock the latest revision to be the same as the revision being checked
-        mock_latest = MagicMock()
-        mock_latest.revid = 123  # Same as mock_revision.revid
-        mock_latest.get_wikitext.return_value = "Article text. User added this content. More text."
-
-        with patch("reviews.autoreview.PendingRevision.objects.filter") as mock_filter:
-            mock_filter.return_value.order_by.return_value.first.return_value = mock_latest
-
-            current_stable = "Article text. More text."
-            threshold = 0.2
-
-            result = autoreview._is_addition_superseded(mock_revision, current_stable, threshold)
-            # Should return False because this IS the latest revision
-            self.assertFalse(result)

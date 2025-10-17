@@ -40,52 +40,62 @@
                   <button class="button is-warning" @click="clearCache">Clear cache</button>
                 </div>
               </div>
-              <div class="field mt-3" v-if="currentWiki">
-                <label class="label is-small">FlaggedRevs Quick Links:</label>
-                <div class="buttons">
-                  <a :href="buildFlaggedRevsUrl('ValidationStatistics')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
-                    Validation Statistics
-                  </a>
-                  <a :href="buildFlaggedRevsUrl('PendingChanges')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
-                    Pending Changes
-                  </a>
-                  <a :href="buildFlaggedRevsUrl('Log/Review')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
-                    Review Log
-                  </a>
-                </div>
+              <div class="control">
+                <button class="button is-info" @click="refresh">Refresh</button>
+              </div>
+              <div class="control">
+                <button class="button is-warning" @click="clearCache">Clear cache</button>
+              </div>
+            </div>
+            <div class="field mt-3" v-if="currentWiki">
+              <label class="label is-small">FlaggedRevs Quick Links:</label>
+              <div class="buttons">
+                <a :href="buildFlaggedRevsUrl('ValidationStatistics')" class="button is-small is-link is-light"
+                  target="_blank" rel="noopener noreferrer">
+                  Validation Statistics
+                </a>
+                <a :href="buildFlaggedRevsUrl('PendingChanges')" class="button is-small is-link is-light"
+                  target="_blank" rel="noopener noreferrer">
+                  Pending Changes
+                </a>
+                <a :href="buildFlaggedRevsUrl('Log/Review')" class="button is-small is-link is-light" target="_blank"
+                  rel="noopener noreferrer">
+                  Review Log
+                </a>
               </div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section class="section" v-if="currentWiki">
-        <div class="box mb-5">
-          <div class="level is-mobile">
-            <div class="level-left">
-              <div class="level-item">
-                <h2 class="title is-4 mb-0">Configuration</h2>
-              </div>
-            </div>
-            <div class="level-right">
-              <div class="level-item">
-                <button class="button is-small is-text" @click="toggleConfiguration">
-                  {{ state.configurationOpen ? 'Hide' : 'Show' }}
-                </button>
-              </div>
+    <section class="section" v-if="currentWiki">
+      <div class="box mb-5">
+        <div class="level is-mobile">
+          <div class="level-left">
+            <div class="level-item">
+              <h2 class="title is-4 mb-0">Configuration</h2>
             </div>
           </div>
-          <div v-show="state.configurationOpen">
-            <div class="columns">
-              <div class="column">
-                <label class="label">Blocking categories</label>
-                <textarea class="textarea" rows="4" v-model="forms.blockingCategories" placeholder="One category per line"></textarea>
-              </div>
-              <div class="column">
-                <label class="label">Auto-approved user groups</label>
-                <textarea class="textarea" rows="4" v-model="forms.autoApprovedGroups" placeholder="One user group per line"></textarea>
-              </div>
+          <div class="level-right">
+            <div class="level-item">
+              <button class="button is-small is-text" @click="toggleConfiguration">
+                {{ state.configurationOpen ? 'Hide' : 'Show' }}
+              </button>
             </div>
+          </div>
+        </div>
+        <div v-show="state.configurationOpen">
+          <div class="columns">
+            <div class="column">
+              <label class="label">Blocking categories</label>
+              <textarea class="textarea" rows="4" v-model="forms.blockingCategories"
+                placeholder="One category per line"></textarea>
+            </div>
+            <div class="column">
+              <label class="label">Auto-approved user groups</label>
+              <textarea class="textarea" rows="4" v-model="forms.autoApprovedGroups"
+                placeholder="One user group per line"></textarea>
             <div class="content mt-4">
               <h3 class="title is-6">ORES Edit Quality Thresholds</h3>
               <p class="help">Set to 0 to disable checks. Values range from 0.0 to 1.0.</p>
@@ -120,7 +130,11 @@
               <button class="button is-primary" @click="saveConfiguration">Save configuration</button>
             </div>
           </div>
+          <div class="buttons">
+            <button class="button is-primary" @click="saveConfiguration">Save configuration</button>
+          </div>
         </div>
+      </div>
 
       <div class="notification is-danger" v-if="state.error">{{ state.error }}</div>
       <div class="notification is-info" v-if="state.loading">Loading data…</div>
@@ -223,74 +237,63 @@
                   <table class="table is-fullwidth is-striped">
                     <thead>
                       <tr>
-                        <th>Timestamp</th>
-                        <th>User</th>
-                        <th>Comment</th>
-                        <th>Tags</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <template v-for="revision in page.revisions" :key="revision.revid">
-                        <tr>
-                          <td>
-                            <a
-                              v-if="buildRevisionDiffUrl(page, revision)"
-                              :href="buildRevisionDiffUrl(page, revision)"
-                              class="has-text-link"
-                              target="_blank"
-                              rel="noreferrer noopener"
-                            >
-                              {{ formatDate(revision.timestamp) }}
+                        <td>
+                          <a v-if="buildRevisionDiffUrl(page, revision)" :href="buildRevisionDiffUrl(page, revision)"
+                            class="has-text-link" target="_blank" rel="noreferrer noopener">
+                            {{ formatDate(revision.timestamp) }}
+                          </a>
+                          <span v-else>{{ formatDate(revision.timestamp) }}</span>
+                        </td>
+                        <td>
+                          <template v-if="buildUserContributionsUrl(revision)">
+                            <a :href="buildUserContributionsUrl(revision)" class="has-text-link" target="_blank"
+                              rel="noreferrer noopener">
+                              {{ revision.user_name }}
                             </a>
-                            <span v-else>{{ formatDate(revision.timestamp) }}</span>
-                          </td>
-                          <td>
-                            <template v-if="buildUserContributionsUrl(revision)">
-                              <a
-                                :href="buildUserContributionsUrl(revision)"
-                                class="has-text-link"
-                                target="_blank"
-                                rel="noreferrer noopener"
-                              >
-                                {{ revision.user_name }}
-                              </a>
-                            </template>
-                            <template v-else>
-                              {{ revision.user_name || 'Unknown' }}
-                            </template>
-                            <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
-                            <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
-                            <span class="tag is-success is-light" v-if="revision.editor_profile.is_autopatrolled">Autopatrolled</span>
-                            <span class="tag is-success is-light" v-if="revision.editor_profile.is_autoreviewed">Autoreviewed</span>
-                          </td>
-                          <td>{{ revision.comment }}</td>
-                          <td>
-                            <span class="tag" v-for="tag in revision.change_tags" :key="tag">{{ tag }}</span>
-                          </td>
-                        </tr>
-                        <tr v-if="getRevisionReview(page, revision)">
-                          <td colspan="4" class="has-background-light">
-                            <div v-if="state.diffs.showDiffsByPage[page.pageid]" :id="'diff-container-' + revision.revid">
-                              <p v-if="state.diffs.loadingDiff[revision.revid]">Loading diff…</p>
-                              <div v-else v-html="state.diffs.diffHtml[revision.revid]"></div>
+                          </template>
+                          <template v-else>
+                            {{ revision.user_name || 'Unknown' }}
+                          </template>
+                          <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
+                          <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
+                          <span class="tag is-success is-light"
+                            v-if="revision.editor_profile.is_autopatrolled">Autopatrolled</span>
+                          <span class="tag is-success is-light"
+                            v-if="revision.editor_profile.is_autoreviewed">Autoreviewed</span>
+                        </td>
+                        <td>{{ revision.comment }}</td>
+                        <td>
+                          <span class="tag" v-for="tag in revision.change_tags" :key="tag">{{ tag }}</span>
+                        </td>
+                      </tr>
+                      <tr v-if="getRevisionReview(page, revision)">
+                        <td colspan="4" class="has-background-light">
+                          <div class="content mb-0">
+                            <p class="has-text-weight-semibold">Autoreview test results</p>
+                            <ul class="mb-2">
+                              <li v-for="test in getRevisionReview(page, revision).tests" :key="test.id" class="mb-1">
+                                <span class="tag" :class="statusTagClass(test.status)">{{ formatTestStatus(test.status)
+                                  }}</span>
+                                <span class="ml-2 has-text-weight-semibold">{{ test.title }}</span>
+                                <span class="ml-2">{{ test.message }}</span>
+                                <span class="tag is-light is-info ml-2" v-if="test.duration_ms">{{
+                                  formatDuration(test.duration_ms) }}</span>
+                              </li>
+                            </ul>
+                            <div>
+                              <p class="has-text-weight-semibold">{{ formatDecision(getRevisionReview(page,
+                                revision).decision) }}</p>
+                              <p class="is-size-7" v-if="getRevisionReview(page, revision).total_time_ms">
+                                Total processing time: {{ formatDuration(getRevisionReview(page,
+                                revision).total_time_ms) }}
+                              </p>
                             </div>
-                            <div class="content mb-0">
-                              <p class="has-text-weight-semibold">Autoreview test results</p>
-                              <ul class="mb-2">
-                                <li v-for="test in getRevisionReview(page, revision).tests" :key="test.id" class="mb-1">
-                                  <span class="tag" :class="statusTagClass(test.status)">{{ formatTestStatus(test.status) }}</span>
-                                  <span class="ml-2 has-text-weight-semibold">{{ test.title }}</span>
-                                  <span class="ml-2">{{ test.message }}</span>
-                                </li>
-                              </ul>
-                              <p class="has-text-weight-semibold">{{ formatDecision(getRevisionReview(page, revision).decision) }}</p>
-                            </div>
-                          </td>
-                        </tr>
-                      </template>
-                    </tbody>
-                  </table>
-                </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
               </div>
             </article>
             </div>
@@ -301,12 +304,17 @@
         <div class="notification is-warning" v-else>
           No pending revisions cached. Use the refresh button to fetch data.
         </div>
-      </section>
-    </div>
-    {% endverbatim %}
+      </div>
+      <div class="notification is-warning" v-else>
+        No pending revisions cached. Use the refresh button to fetch data.
+      </div>
+    </section>
+  </div>
+  {% endverbatim %}
 
-    {{ initial_wikis|json_script:"initial-wikis" }}
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script src="{% static 'reviews/app.js' %}"></script>
-  </body>
+  {{ initial_wikis|json_script:"initial-wikis" }}
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="{% static 'reviews/app.js' %}"></script>
+</body>
+
 </html>
