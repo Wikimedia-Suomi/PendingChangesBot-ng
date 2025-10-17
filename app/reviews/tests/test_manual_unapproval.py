@@ -27,6 +27,17 @@ class ManualUnapprovalTests(TestCase):
             api_endpoint="https://test.wikipedia.org/w/api.php",
         )
         self.config = WikiConfiguration.objects.create(wiki=self.wiki)
+        self.ensure_current_patcher = mock.patch(
+            "reviews.services.WikiClient.ensure_page_is_current"
+        )
+        self.mock_ensure_current = self.ensure_current_patcher.start()
+        self.addCleanup(self.ensure_current_patcher.stop)
+        def _return_page(*args, **kwargs):
+            if args:
+                return args[-1]
+            return kwargs.get("page")
+
+        self.mock_ensure_current.side_effect = _return_page
 
     @mock.patch("reviews.services.WikiClient.has_manual_unapproval")
     def test_manually_unapproved_revision_should_be_blocked(self, mock_has_unapproval):

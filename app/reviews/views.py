@@ -356,11 +356,19 @@ def api_page_revisions(request: HttpRequest, pk: int, pageid: int) -> JsonRespon
 @require_http_methods(["POST"])
 def api_autoreview(request: HttpRequest, pk: int, pageid: int) -> JsonResponse:
     wiki = _get_wiki(pk)
-    page = get_object_or_404(
-        PendingPage.objects.prefetch_related("revisions"),
-        wiki=wiki,
-        pageid=pageid,
-    )
+    page = get_object_or_404(PendingPage, wiki=wiki, pageid=pageid)
+
+    client = WikiClient(wiki)
+    refreshed_page = client.ensure_page_is_current(page)
+    if refreshed_page is None:
+        return JsonResponse(
+            {
+                "error": "The page is no longer pending review; data has been refreshed.",
+            },
+            status=HTTPStatus.NOT_FOUND,
+        )
+
+    page = PendingPage.objects.prefetch_related("revisions").get(pk=refreshed_page.pk)
     results = run_autoreview_for_page(page)
     return JsonResponse(
         {

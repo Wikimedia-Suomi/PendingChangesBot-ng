@@ -25,7 +25,16 @@ class ViewTests(TestCase):
             family="wikipedia",
             api_endpoint="https://test.wikipedia.org/w/api.php",
         )
-        WikiConfiguration.objects.create(wiki=self.wiki, redirect_aliases=["#REDIRECT"])
+        WikiConfiguration.objects.create(wiki=self.wiki)
+        self.wiki_client_patcher = mock.patch("reviews.views.WikiClient")
+        self.mock_wiki_client_cls = self.wiki_client_patcher.start()
+        self.addCleanup(self.wiki_client_patcher.stop)
+        self.mock_wiki_client = self.mock_wiki_client_cls.return_value
+        self.mock_wiki_client.ensure_page_is_current.side_effect = lambda page: page
+
+    @staticmethod
+    def _get_test_by_id(tests: list[dict], test_id: str) -> dict | None:
+        return next((test for test in tests if test.get("id") == test_id), None)
 
     def test_index_creates_default_wiki_if_missing(self):
         Wiki.objects.all().delete()
@@ -501,22 +510,24 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 6)
-        self.assertEqual(result["tests"][5]["status"], "fail")
-        self.assertEqual(result["tests"][5]["id"], "blocking-categories")
+        external_test = self._get_test_by_id(result["tests"], "external-link-domains")
+        self.assertIsNotNone(external_test)
+        self.assertEqual(external_test["status"], "ok")
+        blocking_test = self._get_test_by_id(result["tests"], "blocking-categories")
+        self.assertIsNotNone(blocking_test)
+        self.assertEqual(blocking_test["status"], "fail")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
         self.assertEqual(revision.categories, ["Secret"])
-        # 2 requests: 1 for redirect aliases, 1 for wikitext
-        # (manual un-approval check uses reviews.services.pywikibot.Site which isn't mocked here)
-        self.assertEqual(len(fake_site.requests), 2)
+        initial_request_count = len(fake_site.requests)
+        self.assertGreaterEqual(initial_request_count, 3)
 
         second_response = self.client.post(url)
         self.assertEqual(second_response.status_code, 200)
-        # redirect aliases are now cached, wikitext was already cached
-        # But there's 1 more request (possibly from another check)
-        self.assertEqual(len(fake_site.requests), 3)
+        new_requests = fake_site.requests[initial_request_count:]
+        self.assertEqual(len(new_requests), 1)
+        self.assertEqual(new_requests[0].get("list"), "logevents")
 
     @mock.patch("reviews.models.pywikibot.Site")
     @mock.patch("reviews.services.pywikibot.Site")
@@ -559,6 +570,185 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
+        external_test = self._get_test_by_id(result["tests"], "external-link-domains")
+        self.assertIsNotNone(external_test)
+        self.assertEqual(external_test["status"], "ok")
+        blocking_test = self._get_test_by_id(result["tests"], "blocking-categories")
+        self.assertIsNotNone(blocking_test)
+        self.assertEqual(blocking_test["status"], "ok")
+
+    def test_api_autoreview_returns_not_found_if_page_removed(self):
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=999,
+            title="Gone Page",
+            stable_revid=1,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=2,
+            parentid=1,
+            user_name="Editor",
+            user_id=1002,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=2),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=2),
+            sha1="hash4",
+            comment="Edit",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+            superset_data={"user_groups": ["user"]},
+        )
+
+        self.mock_wiki_client.ensure_page_is_current.side_effect = lambda _: None
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+        payload = response.json()
+        self.assertIn("error", payload)
+
+    @mock.patch("reviews.autoreview.domains_previously_used")
+    @mock.patch("reviews.autoreview.pywikibot.Site")
+    def test_api_autoreview_flags_new_external_domains(self, mock_site, mock_domains):
+        mock_site.return_value = mock.Mock()
+        mock_domains.return_value = (
+            False,
+            {
+                "newexample.test": {
+                    "used": False,
+                    "url_examples": ["https://new.example.test/link"],
+                    "error": None,
+                }
+            },
+        )
+
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=106,
+            title="External Links",
+            stable_revid=500,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=500,
+            parentid=None,
+            user_name="Stabilizer",
+            user_id=42,
+            timestamp=datetime.now(timezone.utc) - timedelta(days=3),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(days=3),
+            sha1="stable",
+            comment="Stable",
+            change_tags=[],
+            wikitext="Stable content",
+            categories=[],
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=501,
+            parentid=500,
+            user_name="NewUser",
+            user_id=43,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=6),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=6),
+            sha1="pending",
+            comment="Added link",
+            change_tags=[],
+            wikitext="Stable content with [https://new.example.test/link new link]",
+            categories=[],
+            superset_data={"user_groups": ["user"], "rc_bot": False},
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+
+        self.assertEqual(result["decision"]["status"], "manual")
+        external_test = self._get_test_by_id(result["tests"], "external-link-domains")
+        self.assertIsNotNone(external_test)
+        self.assertEqual(external_test["status"], "fail")
+        self.assertIn("newexample.test", external_test["message"])
+
+        mock_domains.assert_called_once()
+        called_site, called_urls = mock_domains.call_args[0]
+        self.assertIs(called_site, mock_site.return_value)
+        self.assertEqual(called_urls, ["https://new.example.test/link"])
+
+    @mock.patch("reviews.autoreview.domains_previously_used")
+    @mock.patch("reviews.autoreview.pywikibot.Site")
+    def test_api_autoreview_allows_known_external_domains(self, mock_site, mock_domains):
+        mock_site.return_value = mock.Mock()
+        mock_domains.return_value = (
+            True,
+            {
+                "known.example": {
+                    "used": True,
+                    "url_examples": ["https://known.example/path"],
+                    "error": None,
+                }
+            },
+        )
+
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=107,
+            title="Known Links",
+            stable_revid=600,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=600,
+            parentid=None,
+            user_name="Stabilizer",
+            user_id=44,
+            timestamp=datetime.now(timezone.utc) - timedelta(days=5),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(days=5),
+            sha1="stable",
+            comment="Stable",
+            change_tags=[],
+            wikitext="Base content",
+            categories=[],
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=601,
+            parentid=600,
+            user_name="AnotherUser",
+            user_id=45,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=2),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=2),
+            sha1="pending",
+            comment="Adds known link",
+            change_tags=[],
+            wikitext="Base content plus [https://known.example/path known link]",
+            categories=[],
+            superset_data={"user_groups": ["user"], "rc_bot": False},
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+
+        self.assertEqual(result["decision"]["status"], "manual")
+        external_test = self._get_test_by_id(result["tests"], "external-link-domains")
+        self.assertIsNotNone(external_test)
+        self.assertEqual(external_test["status"], "ok")
+        self.assertIn("previously used", external_test["message"])
+
+        mock_domains.assert_called_once()
+        called_site, called_urls = mock_domains.call_args[0]
+        self.assertIs(called_site, mock_site.return_value)
+        self.assertEqual(called_urls, ["https://known.example/path"])
+
+        self.assertGreaterEqual(len(result["tests"]), 8)
+        self.assertEqual(result["tests"][-1]["status"], "ok")
         # Flexible assertions: allow future additional tests without breaking
         tests = result["tests"]
         self.assertGreaterEqual(len(tests), 8, f"Expected at least 8 tests, got {len(tests)}")
@@ -588,6 +778,7 @@ class ViewTests(TestCase):
             )
         # Last test status OK or not_ok acceptable; ensure no unexpected 'error'
         self.assertNotEqual(tests[-1]["status"], "error")
+
 
     @mock.patch("reviews.services.pywikibot.Site")
     @mock.patch("reviews.autoreview.is_living_person", return_value=False)
