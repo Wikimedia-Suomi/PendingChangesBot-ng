@@ -2,21 +2,87 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
+from datetime import datetime, timedelta
 from http import HTTPStatus
 
 import requests
 from django.core.cache import cache
+from django.db.models import Count
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from .autoreview import run_autoreview_for_page
-from .models import EditorProfile, PendingPage, Wiki, WikiConfiguration
+from .models import (
+    EditorProfile,
+    PendingPage,
+    ReviewStatisticsCache,
+    ReviewStatisticsMetadata,
+    Wiki,
+    WikiConfiguration,
+)
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 1
+
+
+def calculate_percentile(values: list[float], percentile: float) -> float:
+    """Calculate the percentile of a list of values."""
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    index = (len(sorted_values) - 1) * (percentile / 100.0)
+    floor = int(index)
+    ceil = floor + 1
+    if ceil >= len(sorted_values):
+        return sorted_values[floor]
+    # Linear interpolation between floor and ceil
+    return sorted_values[floor] + (sorted_values[ceil] - sorted_values[floor]) * (index - floor)
+
+
+def get_time_filter_cutoff(time_filter: str) -> datetime | None:
+    """Get the cutoff datetime for a time filter."""
+    now = timezone.now()
+    if time_filter == "day":
+        return now - timedelta(days=1)
+    elif time_filter == "week":
+        return now - timedelta(days=7)
+    return None
+
+
+def statistics_page(request: HttpRequest) -> HttpResponse:
+    """Render the standalone statistics page."""
+    wikis = Wiki.objects.all().order_by("code")
+    if not wikis.exists():
+        # If no wikis, redirect to main page to populate them
+        return index(request)
+
+    payload = []
+    for wiki in wikis:
+        configuration, _ = WikiConfiguration.objects.get_or_create(wiki=wiki)
+        payload.append(
+            {
+                "id": wiki.id,
+                "name": wiki.name,
+                "code": wiki.code,
+                "api_endpoint": wiki.api_endpoint,
+                "configuration": {
+                    "blocking_categories": configuration.blocking_categories,
+                    "auto_approved_groups": configuration.auto_approved_groups,
+                },
+            }
+        )
+    return render(
+        request,
+        "reviews/statistics.html",
+        {
+            "initial_wikis": json.dumps(payload),
+        },
+    )
 
 
 def index(request: HttpRequest) -> HttpResponse:
@@ -498,3 +564,239 @@ def fetch_diff(request):
         return HttpResponse(html_content, content_type="text/html")
     except requests.RequestException as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+@require_GET
+def api_statistics(request: HttpRequest, pk: int) -> JsonResponse:
+    """Get cached review statistics for a wiki."""
+    wiki = _get_wiki(pk)
+
+    # Get metadata
+    try:
+        metadata = ReviewStatisticsMetadata.objects.get(wiki=wiki)
+        metadata_payload = {
+            "last_refreshed_at": metadata.last_refreshed_at.isoformat(),
+            "total_records": metadata.total_records,
+            "oldest_review_timestamp": (
+                metadata.oldest_review_timestamp.isoformat()
+                if metadata.oldest_review_timestamp
+                else None
+            ),
+            "newest_review_timestamp": (
+                metadata.newest_review_timestamp.isoformat()
+                if metadata.newest_review_timestamp
+                else None
+            ),
+        }
+    except ReviewStatisticsMetadata.DoesNotExist:
+        metadata_payload = {
+            "last_refreshed_at": None,
+            "total_records": 0,
+            "oldest_review_timestamp": None,
+            "newest_review_timestamp": None,
+        }
+
+    # Get filter parameters
+    reviewer_filter = request.GET.get("reviewer", "").strip()
+    reviewed_user_filter = request.GET.get("reviewed_user", "").strip()
+    time_filter = request.GET.get("time_filter", "all").strip()
+    exclude_auto_reviewers = request.GET.get("exclude_auto_reviewers", "false").lower() == "true"
+    limit = int(request.GET.get("limit", 100))
+
+    # Build base query
+    statistics_qs = ReviewStatisticsCache.objects.filter(wiki=wiki)
+
+    # Apply time filter
+    cutoff = get_time_filter_cutoff(time_filter)
+    if cutoff:
+        statistics_qs = statistics_qs.filter(reviewed_timestamp__gte=cutoff)
+
+    # Apply reviewer filter
+    if reviewer_filter:
+        statistics_qs = statistics_qs.filter(reviewer_name__iexact=reviewer_filter)
+
+    # Apply reviewed user filter
+    if reviewed_user_filter:
+        statistics_qs = statistics_qs.filter(reviewed_user_name__iexact=reviewed_user_filter)
+
+    # Apply auto-reviewer exclusion filter
+    if exclude_auto_reviewers:
+        # Get users with auto-review rights
+        auto_reviewers = EditorProfile.objects.filter(wiki=wiki, is_autoreviewed=True).values_list(
+            "username", flat=True
+        )
+        # Exclude these users from reviewed_user_name
+        statistics_qs = statistics_qs.exclude(reviewed_user_name__in=auto_reviewers)
+
+    # Get aggregated data - Top Reviewers (with same filters)
+    top_reviewers_qs = ReviewStatisticsCache.objects.filter(wiki=wiki)
+    if cutoff:
+        top_reviewers_qs = top_reviewers_qs.filter(reviewed_timestamp__gte=cutoff)
+    if exclude_auto_reviewers:
+        top_reviewers_qs = top_reviewers_qs.exclude(reviewed_user_name__in=auto_reviewers)
+
+    top_reviewers = (
+        top_reviewers_qs.values("reviewer_name")
+        .annotate(review_count=Count("id"))
+        .order_by("-review_count")[:20]
+    )
+
+    # Get aggregated data - Top Reviewed Users (with same filters)
+    top_reviewed_users_qs = ReviewStatisticsCache.objects.filter(wiki=wiki)
+    if cutoff:
+        top_reviewed_users_qs = top_reviewed_users_qs.filter(reviewed_timestamp__gte=cutoff)
+    if exclude_auto_reviewers:
+        top_reviewed_users_qs = top_reviewed_users_qs.exclude(reviewed_user_name__in=auto_reviewers)
+
+    top_reviewed_users = (
+        top_reviewed_users_qs.values("reviewed_user_name")
+        .annotate(review_count=Count("id"))
+        .order_by("-review_count")[:20]
+    )
+
+    # Get individual records (with optional filters)
+    records = statistics_qs.order_by("-reviewed_timestamp")[:limit]
+    records_payload = [
+        {
+            "reviewer_name": record.reviewer_name,
+            "reviewed_user_name": record.reviewed_user_name,
+            "page_title": record.page_title,
+            "page_id": record.page_id,
+            "reviewed_revision_id": record.reviewed_revision_id,
+            "pending_revision_id": record.pending_revision_id,
+            "reviewed_timestamp": record.reviewed_timestamp.isoformat(),
+            "pending_timestamp": record.pending_timestamp.isoformat(),
+            "review_delay_days": record.review_delay_days,
+        }
+        for record in records
+    ]
+
+    return JsonResponse(
+        {
+            "metadata": metadata_payload,
+            "top_reviewers": list(top_reviewers),
+            "top_reviewed_users": list(top_reviewed_users),
+            "records": records_payload,
+        }
+    )
+
+
+@require_GET
+def api_statistics_charts(request: HttpRequest, pk: int) -> JsonResponse:
+    """Get chart data for review statistics."""
+    wiki = _get_wiki(pk)
+
+    # Get filter parameters
+    time_filter = request.GET.get("time_filter", "all").strip()
+    exclude_auto_reviewers = request.GET.get("exclude_auto_reviewers", "false").lower() == "true"
+
+    # Build base query
+    statistics_qs = ReviewStatisticsCache.objects.filter(wiki=wiki)
+
+    # Apply time filter
+    cutoff = get_time_filter_cutoff(time_filter)
+    if cutoff:
+        statistics_qs = statistics_qs.filter(reviewed_timestamp__gte=cutoff)
+
+    # Apply auto-reviewer exclusion
+    if exclude_auto_reviewers:
+        auto_reviewers = EditorProfile.objects.filter(wiki=wiki, is_autoreviewed=True).values_list(
+            "username", flat=True
+        )
+        statistics_qs = statistics_qs.exclude(reviewed_user_name__in=auto_reviewers)
+
+    # Get all records for processing
+    records = statistics_qs.values(
+        "reviewed_timestamp", "reviewer_name", "review_delay_days"
+    ).order_by("reviewed_timestamp")
+
+    # Group data by date
+    reviewers_by_date = defaultdict(set)
+    pending_by_date = defaultdict(int)
+    delays_by_date = defaultdict(list)
+
+    for record in records:
+        date = record["reviewed_timestamp"].date()
+        date_str = date.isoformat()
+
+        reviewers_by_date[date_str].add(record["reviewer_name"])
+        pending_by_date[date_str] += 1
+        delays_by_date[date_str].append(float(record["review_delay_days"]))
+
+    # Build chart data
+    reviewers_over_time = [
+        {"date": date, "count": len(reviewers)}
+        for date, reviewers in sorted(reviewers_by_date.items())
+    ]
+
+    pending_reviews_per_day = [
+        {"date": date, "count": count} for date, count in sorted(pending_by_date.items())
+    ]
+
+    average_delay_over_time = [
+        {"date": date, "avg_delay": sum(delays) / len(delays) if delays else 0}
+        for date, delays in sorted(delays_by_date.items())
+    ]
+
+    delay_percentiles = [
+        {
+            "date": date,
+            "p10": calculate_percentile(delays, 10),
+            "p50": calculate_percentile(delays, 50),
+            "p90": calculate_percentile(delays, 90),
+        }
+        for date, delays in sorted(delays_by_date.items())
+    ]
+
+    # Calculate overall statistics
+    all_delays = [delay for delays in delays_by_date.values() for delay in delays]
+    overall_stats = {
+        "avg_delay": sum(all_delays) / len(all_delays) if all_delays else 0,
+        "p10": calculate_percentile(all_delays, 10),
+        "p50": calculate_percentile(all_delays, 50),
+        "p90": calculate_percentile(all_delays, 90),
+        "total_reviews": len(all_delays),
+        "unique_reviewers": len({rev for revs in reviewers_by_date.values() for rev in revs}),
+    }
+
+    return JsonResponse(
+        {
+            "reviewers_over_time": reviewers_over_time,
+            "pending_reviews_per_day": pending_reviews_per_day,
+            "average_delay_over_time": average_delay_over_time,
+            "delay_percentiles": delay_percentiles,
+            "overall_stats": overall_stats,
+        }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_statistics_refresh(request: HttpRequest, pk: int) -> JsonResponse:
+    """Refresh review statistics for a wiki."""
+    wiki = _get_wiki(pk)
+    client = WikiClient(wiki)
+
+    # Get optional limit parameter
+    limit = int(request.POST.get("limit", 10000))
+
+    try:
+        result = client.fetch_review_statistics(limit=limit)
+    except Exception as exc:  # pragma: no cover - network failures handled in UI
+        logger.exception("Failed to refresh statistics for %s", wiki.code)
+        return JsonResponse(
+            {"error": str(exc)},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+
+    return JsonResponse(
+        {
+            "total_records": result["total_records"],
+            "oldest_timestamp": (
+                result["oldest_timestamp"].isoformat() if result["oldest_timestamp"] else None
+            ),
+            "newest_timestamp": (
+                result["newest_timestamp"].isoformat() if result["newest_timestamp"] else None
+            ),
+        }
+    )

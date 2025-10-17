@@ -13,7 +13,7 @@
 }
 
 .large-checkbox {
-    transform: scale(2); 
+    transform: scale(2);
     transform-origin: center;
-    margin-right: 5px; 
+    margin-right: 5px;
 }

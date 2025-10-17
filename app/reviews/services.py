@@ -14,7 +14,14 @@ from django.db import transaction
 from django.utils import timezone as dj_timezone
 from pywikibot.data.superset import SupersetQuery
 
-from .models import EditorProfile, PendingPage, PendingRevision, Wiki
+from .models import (
+    EditorProfile,
+    PendingPage,
+    PendingRevision,
+    ReviewStatisticsCache,
+    ReviewStatisticsMetadata,
+    Wiki,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +328,149 @@ ORDER BY fp_pending_since, rev_id DESC
 
     def refresh(self) -> list[PendingPage]:
         return self.fetch_pending_pages()
+
+    def fetch_review_statistics(self, limit: int = 10000) -> dict:
+        """
+        Fetch review statistics from MediaWiki database using Superset.
+
+        Based on the SQL query from issue.md which uses the flaggedrevs table
+        to find manual reviews and calculate the delay between a pending revision
+        and when it was reviewed.
+
+        Returns:
+            dict: Contains 'total_records', 'oldest_timestamp', 'newest_timestamp'
+        """
+        limit = int(limit)
+        if limit <= 0:
+            return {"total_records": 0, "oldest_timestamp": None, "newest_timestamp": None}
+
+        sql_query = f"""
+SELECT
+   page_title,
+   t.fr_page_id AS page_id,
+   a1.actor_name AS reviewer_name,
+   a2.actor_name AS reviewed_user_name,
+   t.fr_rev_id AS reviewed_revision_id,
+   r2.rev_id AS pending_revision_id,
+   t.fr_timestamp AS reviewed_timestamp,
+   r2.rev_timestamp AS pending_timestamp,
+   TIMESTAMPDIFF(DAY, r2.rev_timestamp, fr_timestamp) AS review_delay_days
+FROM (
+    SELECT
+        fr.*,
+        MIN(r.rev_id) AS min_rev_id
+    FROM (
+            SELECT
+                fr1.fr_rev_id,
+                MAX(fr2.fr_rev_id) AS last_fr_rev_id,
+                fr1.fr_page_id,
+                fr1.fr_timestamp,
+                fr1.fr_user
+            FROM
+                flaggedrevs AS fr1,
+                flaggedrevs AS fr2
+            WHERE
+                fr1.fr_page_id=fr2.fr_page_id
+                AND fr1.fr_rev_id>fr2.fr_rev_id
+                AND fr1.fr_flags NOT LIKE "%auto%"
+            GROUP BY fr1.fr_rev_id
+            ORDER BY fr1.fr_rev_id DESC
+            LIMIT {limit}
+        ) AS fr,
+        revision AS r
+        WHERE
+            fr.fr_rev_id >= r.rev_id
+            AND fr.fr_page_id=r.rev_page
+            AND fr.last_fr_rev_id < r.rev_id
+        GROUP BY fr.fr_rev_id
+    ) AS t,
+    revision AS r2,
+    page,
+    actor a1,
+    actor a2
+WHERE
+    t.min_rev_id=r2.rev_id
+    AND r2.rev_page=page_id
+    AND page_namespace=0
+    AND a1.actor_user=fr_user
+    AND a2.actor_id=rev_actor
+"""
+
+        try:
+            superset = SupersetQuery(site=self.site)
+            payload = superset.query(sql_query)
+
+            oldest_timestamp = None
+            newest_timestamp = None
+            total_records = 0
+
+            with transaction.atomic():
+                # Clear existing statistics for this wiki
+                ReviewStatisticsCache.objects.filter(wiki=self.wiki).delete()
+
+                for entry in payload:
+                    # Parse timestamps
+                    reviewed_ts = parse_superset_timestamp(entry.get("reviewed_timestamp"))
+                    pending_ts = parse_superset_timestamp(entry.get("pending_timestamp"))
+
+                    if reviewed_ts is None or pending_ts is None:
+                        continue
+
+                    # Track oldest and newest timestamps
+                    if oldest_timestamp is None or reviewed_ts < oldest_timestamp:
+                        oldest_timestamp = reviewed_ts
+                    if newest_timestamp is None or reviewed_ts > newest_timestamp:
+                        newest_timestamp = reviewed_ts
+
+                    # Extract revision IDs directly from query results
+                    reviewed_revid = int(entry.get("reviewed_revision_id") or 0)
+                    pending_revid = int(entry.get("pending_revision_id") or 0)
+
+                    # Use update_or_create to handle potential duplicates
+                    _, created = ReviewStatisticsCache.objects.update_or_create(
+                        wiki=self.wiki,
+                        reviewed_revision_id=reviewed_revid,
+                        defaults={
+                            "reviewer_name": entry.get("reviewer_name", ""),
+                            "reviewed_user_name": entry.get("reviewed_user_name", ""),
+                            "page_title": entry.get("page_title", ""),
+                            "page_id": int(entry.get("page_id") or 0),
+                            "pending_revision_id": pending_revid,
+                            "reviewed_timestamp": reviewed_ts,
+                            "pending_timestamp": pending_ts,
+                            "review_delay_days": int(entry.get("review_delay_days") or 0),
+                        },
+                    )
+                    if created:
+                        total_records += 1
+
+                # Update or create metadata
+                metadata, _ = ReviewStatisticsMetadata.objects.update_or_create(
+                    wiki=self.wiki,
+                    defaults={
+                        "total_records": total_records,
+                        "oldest_review_timestamp": oldest_timestamp,
+                        "newest_review_timestamp": newest_timestamp,
+                    },
+                )
+
+            logger.info(
+                "Fetched %d review statistics records for %s (oldest: %s, newest: %s)",
+                total_records,
+                self.wiki.code,
+                oldest_timestamp,
+                newest_timestamp,
+            )
+
+            return {
+                "total_records": total_records,
+                "oldest_timestamp": oldest_timestamp,
+                "newest_timestamp": newest_timestamp,
+            }
+
+        except Exception:
+            logger.exception("Failed to fetch review statistics for %s", self.wiki.code)
+            return {"total_records": 0, "oldest_timestamp": None, "newest_timestamp": None}
 
 
 def parse_categories(wikitext: str) -> list[str]:
