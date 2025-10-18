@@ -261,58 +261,66 @@
         return data;
     }
 
-    // Fetch LiftWing predictions for multiple revisions
+    // Fetch LiftWing predictions for multiple revisions using BATCH API
     async function fetchPredictionsForRevisions(wiki, article, model, revisions, onProgress) {
-        const predictions = [];
-        const batchSize = 10; // Process 10 revisions at a time
+        // Extract revision IDs for batch request
+        const revisionIds = revisions.map(rev => rev.revid);
         
-        for (let i = 0; i < revisions.length; i += batchSize) {
-            const batch = revisions.slice(i, i + batchSize);
-            const batchPromises = batch.map(async (rev) => {
-    try {
-        const response = await fetch("/fetch_predictions/", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": getCookie("csrftoken"),
-        },
-                        body: JSON.stringify({ 
-                            wiki, 
-                            article, 
-                            model,
-                            rev_id: rev.revid 
-                        }),
-                    });
-                    const data = await response.json();
-                    return {
-                        revid: rev.revid,
-                        timestamp: rev.timestamp,
-                        user: rev.user,
-                        comment: rev.comment,
-                        prediction: data.prediction || null,
-                        error: data.error || null
-                    };
-                } catch (err) {
-                    return {
-                        revid: rev.revid,
-                        timestamp: rev.timestamp,
-                        user: rev.user,
-                        comment: rev.comment,
-                        prediction: null,
-                        error: err.toString()
-                    };
-                }
+        try {
+            // Single batch API call for all revisions
+            const response = await fetch("/fetch_liftwing_predictions/", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": getCookie("csrftoken"),
+                },
+                body: JSON.stringify({ 
+                    wiki, 
+                    model,
+                    revisions: revisionIds
+                }),
             });
             
-            const batchResults = await Promise.all(batchPromises);
-            predictions.push(...batchResults);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             
-            // Update progress
-            const progress = Math.min(100, Math.round(((i + batchSize) / revisions.length) * 100));
-            if (onProgress) onProgress(progress);
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            // Map predictions back to revision data
+            const predictions = revisions.map(rev => {
+                const prediction = data.predictions[rev.revid] || data.predictions[String(rev.revid)];
+                return {
+                    revid: rev.revid,
+                    timestamp: rev.timestamp,
+                    user: rev.user,
+                    comment: rev.comment,
+                    prediction: prediction && !prediction.error ? prediction : null,
+                    error: prediction && prediction.error ? prediction.error : null
+                };
+            });
+            
+            // Update progress to 100%
+            if (onProgress) onProgress(100);
+            
+            return predictions;
+            
+        } catch (err) {
+            console.error("Batch prediction error:", err);
+            // Return error for all revisions
+            return revisions.map(rev => ({
+                revid: rev.revid,
+                timestamp: rev.timestamp,
+                user: rev.user,
+                comment: rev.comment,
+                prediction: null,
+                error: err.toString()
+            }));
         }
-        
-        return predictions;
     }
 
     // Create line chart
@@ -438,7 +446,9 @@
         try {
             // Step 1: Validate article
             showStatus("Validating article...", 'info');
+            console.log("Step 1: Validating article", {wiki, article});
             const validation = await validateArticle(wiki, article);
+            console.log("Validation response:", validation);
             
             if (!validation.valid || !validation.exists) {
                 showStatus(`Article "${article}" not found on ${wiki}.wikipedia.org`, 'error');
@@ -450,7 +460,9 @@
             
             // Step 2: Fetch revisions (limit to latest 50 for demo)
             showStatus("Fetching revision history...", 'info');
+            console.log("Step 2: Fetching revisions for", validation.normalized_title);
             const revData = await fetchRevisions(wiki, validation.normalized_title);
+            console.log("Revisions response:", revData);
             
             if (!revData.revisions || revData.revisions.length === 0) {
                 showStatus("No revisions found for this article", 'error');
@@ -461,10 +473,12 @@
             // Limit to latest 20 revisions for demo (reverse order - oldest first)
             const revisions = revData.revisions.slice(0, 20).reverse();
             showStatus(`Found ${revisions.length} revisions`, 'success');
+            console.log("Processing revisions:", revisions.length);
             
             // Step 3: Fetch predictions
             showStatus(`Fetching LiftWing predictions for ${revisions.length} revisions...`, 'info');
             updateProgress(0);
+            console.log("Step 3: Fetching predictions");
             
             const predictions = await fetchPredictionsForRevisions(
                 wiki,
@@ -473,6 +487,7 @@
                 revisions,
                 (progress) => updateProgress(progress)
             );
+            console.log("Predictions response:", predictions);
             
             hideProgress();
             showStatus(`Analysis complete! Processed ${predictions.length} revisions`, 'success');

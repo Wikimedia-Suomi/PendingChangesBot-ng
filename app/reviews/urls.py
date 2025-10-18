@@ -7,6 +7,7 @@ urlpatterns = [
     path("api/wikis/<int:pk>/refresh/", views.api_refresh, name="api_refresh"),
     path("api/wikis/<int:pk>/pending/", views.api_pending, name="api_pending"),
     path("liftwing/", views.liftwing_page, name="liftwing"),
+    path("test-endpoints/", views.test_endpoints_page, name="test_endpoints"),
     path("validate_article/", views.validate_article, name="validate_article"),
     path("fetch_revisions/", views.fetch_revisions, name="fetch_revisions"),
     path("fetch_predictions/", views.fetch_predictions, name="fetch_predictions"),
