@@ -160,6 +160,8 @@ createApp({
     const forms = reactive({
       blockingCategories: "",
       autoApprovedGroups: "",
+      mlModelType: "revertrisk",
+      mlModelThreshold: 0.0,
     });
 
     const currentWiki = computed(() =>
@@ -237,10 +239,14 @@ createApp({
       if (!currentWiki.value) {
         forms.blockingCategories = "";
         forms.autoApprovedGroups = "";
+        forms.mlModelType = "revertrisk";
+        forms.mlModelThreshold = 0.0;
         return;
       }
       forms.blockingCategories = (currentWiki.value.configuration.blocking_categories || []).join("\n");
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
+      forms.mlModelType = currentWiki.value.configuration.ml_model_type || "revertrisk";
+      forms.mlModelThreshold = currentWiki.value.configuration.ml_model_threshold || 0.0;
     }
 
     async function apiRequest(url, options = {}) {
@@ -358,6 +364,8 @@ createApp({
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
+        ml_model_type: forms.mlModelType,
+        ml_model_threshold: parseFloat(forms.mlModelThreshold) || 0.0,
       };
       try {
         const data = await apiRequest(`/api/wikis/${state.selectedWikiId}/configuration/`, {

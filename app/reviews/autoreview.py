@@ -408,25 +408,39 @@ def _evaluate_revision(
         }
     )
 
-    # Test 8: Check revertrisk score if threshold is configured
-    revertrisk_threshold = revision.page.wiki.configuration.revertrisk_threshold
-    revertrisk_score = None
+    # Test 8: Check ML model score if threshold is configured
+    config = revision.page.wiki.configuration
 
-    if revertrisk_threshold > 0.0:
-        revertrisk_score = _get_revertrisk_score(revision)
+    # Use new ml_model fields, fall back to legacy revertrisk_threshold for backward compatibility
+    ml_model_type = getattr(config, 'ml_model_type', 'revertrisk')
+    ml_threshold = getattr(config, 'ml_model_threshold', None)
 
-        if revertrisk_score is not None:
-            if revertrisk_score > revertrisk_threshold:
+    # Backward compatibility: if ml_model_threshold is not set, use revertrisk_threshold
+    if ml_threshold is None or ml_threshold == 0.0:
+        ml_threshold = config.revertrisk_threshold
+        if ml_threshold > 0.0:
+            ml_model_type = 'revertrisk'  # Ensure we use revertrisk for legacy configs
+
+    ml_score = None
+    model_display_name = ML_MODEL_CONFIGS.get(ml_model_type, {}).get('description', ml_model_type)
+
+    if ml_threshold > 0.0:
+        ml_score = _get_ml_model_score(revision, ml_model_type)
+
+        if ml_score is not None:
+            if ml_score > ml_threshold:
                 tests.append(
                     {
-                        "id": "revertrisk",
-                        "title": "Revert risk",
+                        "id": "ml-model",
+                        "title": f"ML Check ({model_display_name})",
                         "status": "fail",
                         "message": (
-                            f"High revert risk score: {revertrisk_score:.3f} "
-                            f"(threshold: {revertrisk_threshold:.3f})"
+                            f"High {ml_model_type} score: {ml_score:.3f} "
+                            f"(threshold: {ml_threshold:.3f})"
                         ),
-                        "revertrisk_score": revertrisk_score,
+                        "ml_model_type": ml_model_type,
+                        "ml_score": ml_score,
+                        "revertrisk_score": ml_score if ml_model_type == 'revertrisk' else None,
                     }
                 )
                 return {
@@ -435,41 +449,47 @@ def _evaluate_revision(
                         status="blocked",
                         label="Cannot be auto-approved",
                         reason=(
-                            f"High revert risk score "
-                            f"({revertrisk_score:.3f} > {revertrisk_threshold:.3f})"
+                            f"High {ml_model_type} score "
+                            f"({ml_score:.3f} > {ml_threshold:.3f})"
                         ),
                     ),
                 }
             else:
                 tests.append(
                     {
-                        "id": "revertrisk",
-                        "title": "Revert risk",
+                        "id": "ml-model",
+                        "title": f"ML Check ({model_display_name})",
                         "status": "ok",
                         "message": (
-                            f"Low revert risk score: {revertrisk_score:.3f} "
-                            f"(threshold: {revertrisk_threshold:.3f})"
+                            f"Low {ml_model_type} score: {ml_score:.3f} "
+                            f"(threshold: {ml_threshold:.3f})"
                         ),
-                        "revertrisk_score": revertrisk_score,
+                        "ml_model_type": ml_model_type,
+                        "ml_score": ml_score,
+                        "revertrisk_score": ml_score if ml_model_type == 'revertrisk' else None,
                     }
                 )
         else:
             tests.append(
                 {
-                    "id": "revertrisk",
-                    "title": "Revert risk",
+                    "id": "ml-model",
+                    "title": f"ML Check ({model_display_name})",
                     "status": "not_ok",
-                    "message": "Failed to fetch revertrisk score from API",
+                    "message": f"Failed to fetch {ml_model_type} score from API",
+                    "ml_model_type": ml_model_type,
+                    "ml_score": None,
                     "revertrisk_score": None,
                 }
             )
     else:
         tests.append(
             {
-                "id": "revertrisk",
-                "title": "Revert risk",
+                "id": "ml-model",
+                "title": f"ML Check ({model_display_name})",
                 "status": "ok",
-                "message": "Revertrisk checking is disabled (threshold set to 0.0)",
+                "message": "ML model checking is disabled (threshold set to 0.0)",
+                "ml_model_type": ml_model_type,
+                "ml_score": None,
                 "revertrisk_score": None,
             }
         )
@@ -916,19 +936,59 @@ def _is_article_to_redirect_conversion(
     return True
 
 
-def _get_revertrisk_score(revision: PendingRevision) -> float | None:
+# ML Model Configuration
+ML_MODEL_CONFIGS = {
+    'revertrisk': {
+        'endpoint': 'revertrisk-language-agnostic:predict',
+        'probability_key': 'true',  # Extract probabilities.true
+        'description': 'Language-agnostic revert risk prediction',
+    },
+    'damaging': {
+        'endpoint': 'damaging:predict',
+        'probability_key': 'true',  # Extract probabilities.true
+        'description': 'Damaging edit detection',
+    },
+    'goodfaith': {
+        'endpoint': 'goodfaith:predict',
+        'probability_key': 'false',  # Extract probabilities.false (bad faith)
+        'description': 'Good faith prediction (inverted)',
+    },
+    'articlequality': {
+        'endpoint': 'articlequality:predict',
+        'probability_key': 'stub',  # Extract probabilities.stub (low quality indicator)
+        'description': 'Article quality assessment',
+    },
+    'articletopic': {
+        'endpoint': 'articletopic:predict',
+        'probability_key': None,  # Topic classification - requires different handling
+        'description': 'Article topic classification',
+    },
+}
+
+
+def _get_ml_model_score(revision: PendingRevision, model_type: str = 'revertrisk') -> float | None:
     """
-    Query the Wikimedia revertrisk API to get the revert risk score for an edit.
+    Query the Wikimedia ML API to get a score for an edit using the specified model.
 
     Args:
         revision: The pending revision to check
+        model_type: The ML model to use (revertrisk, damaging, goodfaith, etc.)
 
     Returns:
-        The revertrisk score (0.0-1.0) or None if the API call fails
+        The ML model score (0.0-1.0) or None if the API call fails
     """
+    model_config = ML_MODEL_CONFIGS.get(model_type)
+    if not model_config:
+        logger.error(
+            "Unknown ML model type: %s. Defaulting to revertrisk.",
+            model_type
+        )
+        model_type = 'revertrisk'
+        model_config = ML_MODEL_CONFIGS['revertrisk']
+
     url = (
-        'https://api.wikimedia.org/service/lw/inference/v1/models/'
-        'revertrisk-language-agnostic:predict'
+        f'https://api.wikimedia.org/service/lw/inference/v1/models/'
+        f'{model_config["endpoint"]}'
     )
     headers = {
         'Content-Type': 'application/json',
@@ -946,7 +1006,8 @@ def _get_revertrisk_score(revision: PendingRevision) -> float | None:
         # Check for successful response
         if resp.status_code != 200:
             logger.warning(
-                "Revertrisk API returned status %s for revision %s",
+                "%s API returned status %s for revision %s",
+                model_type,
                 resp.status_code,
                 revision.revid
             )
@@ -956,26 +1017,53 @@ def _get_revertrisk_score(revision: PendingRevision) -> float | None:
 
         # The API returns a structure like:
         # {"output": {"probabilities": {"true": 0.123, "false": 0.877}}}
-        # We want the "true" probability (probability of being reverted)
         probabilities = result.get('output', {}).get('probabilities', {})
-        true_prob = probabilities.get('true')
+        probability_key = model_config['probability_key']
+
+        if probability_key is None:
+            # Special handling for models that don't use binary classification
+            logger.warning(
+                "Model %s requires special handling not yet implemented",
+                model_type
+            )
+            return None
+
+        score = probabilities.get(probability_key)
 
         # Validate that the value exists before converting to float
-        if true_prob is None:
+        if score is None:
             logger.warning(
-                "Revertrisk API response missing 'true' probability for revision %s",
+                "%s API response missing '%s' probability for revision %s",
+                model_type,
+                probability_key,
                 revision.revid
             )
             return None
 
-        return float(true_prob)
+        return float(score)
     except Exception as e:  # pragma: no cover - network failure fallback
         logger.exception(
-            "Failed to fetch revertrisk score for revision %s: %s",
+            "Failed to fetch %s score for revision %s: %s",
+            model_type,
             revision.revid,
             e
         )
         return None
+
+
+def _get_revertrisk_score(revision: PendingRevision) -> float | None:
+    """
+    Query the Wikimedia revertrisk API to get the revert risk score for an edit.
+
+    DEPRECATED: Use _get_ml_model_score(revision, 'revertrisk') instead.
+
+    Args:
+        revision: The pending revision to check
+
+    Returns:
+        The revertrisk score (0.0-1.0) or None if the API call fails
+    """
+    return _get_ml_model_score(revision, 'revertrisk')
 
 
 def _validate_isbn_10(isbn: str) -> bool:

@@ -382,13 +382,33 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             auto_groups = [auto_groups]
         configuration.blocking_categories = blocking_categories
         configuration.auto_approved_groups = auto_groups
-        configuration.save(
-            update_fields=["blocking_categories", "auto_approved_groups", "updated_at"]
-        )
+
+        # Handle ML model configuration
+        ml_model_type = payload.get("ml_model_type")
+        ml_model_threshold = payload.get("ml_model_threshold")
+
+        update_fields = ["blocking_categories", "auto_approved_groups"]
+
+        if ml_model_type is not None:
+            configuration.ml_model_type = ml_model_type
+            update_fields.append("ml_model_type")
+
+        if ml_model_threshold is not None:
+            try:
+                configuration.ml_model_threshold = float(ml_model_threshold)
+                update_fields.append("ml_model_threshold")
+            except (ValueError, TypeError):
+                pass  # Ignore invalid threshold values
+
+        update_fields.append("updated_at")
+        configuration.save(update_fields=update_fields)
+
     return JsonResponse(
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
+            "ml_model_type": getattr(configuration, 'ml_model_type', 'revertrisk'),
+            "ml_model_threshold": getattr(configuration, 'ml_model_threshold', 0.0),
         }
     )
 

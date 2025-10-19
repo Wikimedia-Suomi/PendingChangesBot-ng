@@ -49,9 +49,34 @@ class WikiConfiguration(models.Model):
             "action=query&meta=siteinfo&siprop=magicwords)"
         ),
     )
+    # ML Model Configuration
+    ml_model_type = models.CharField(
+        max_length=50,
+        default='revertrisk',
+        choices=[
+            ('revertrisk', 'Revert Risk (language-agnostic)'),
+            ('damaging', 'Damaging Edit Detection'),
+            ('goodfaith', 'Good Faith Prediction'),
+            ('articlequality', 'Article Quality Assessment'),
+            ('articletopic', 'Article Topic Classification'),
+        ],
+        help_text="Which Wikimedia ML model to use for this wiki"
+    )
+
+    ml_model_threshold = models.FloatField(
+        default=0.0,
+        help_text=(
+            "Threshold for ML model score (0.0-1.0). "
+            "Edits with a score above this threshold will not be auto-approved. "
+            "Set to 0.0 to disable ML model checking."
+        ),
+    )
+
+    # Deprecated: Legacy field for backward compatibility
     revertrisk_threshold = models.FloatField(
         default=0.0,
         help_text=(
+            "DEPRECATED: Use ml_model_threshold instead. "
             "Threshold for revertrisk score (0.0-1.0). "
             "Edits with a score above this threshold will not be auto-approved. "
             "Set to 0.0 to disable revertrisk checking."
