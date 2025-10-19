@@ -51,6 +51,7 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     auto_groups = _normalize_to_lookup(configuration.auto_approved_groups)
     blocking_categories = _normalize_to_lookup(configuration.blocking_categories)
     redirect_aliases = _get_redirect_aliases(page.wiki)
+    category_namespaces = _get_category_namespaces(page.wiki)
     client = WikiClient(page.wiki)
 
     results = []
@@ -63,6 +64,7 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
             auto_groups=auto_groups,
             blocking_categories=blocking_categories,
             redirect_aliases=redirect_aliases,
+            category_namespaces=category_namespaces,
         )
         results.append(
             {
@@ -87,6 +89,7 @@ def _evaluate_revision(
     auto_groups: dict[str, str],
     blocking_categories: dict[str, str],
     redirect_aliases: list[str],
+    category_namespaces: list[str],
 ) -> dict:
     """Evaluate a revision using the autoreview checks in optimized order."""
     tests = []
@@ -280,6 +283,34 @@ def _evaluate_revision(
         }
     )
 
+    # Test 4: Check for removal of all categories
+    old_wikitext = _get_parent_wikitext(revision)
+    new_wikitext = revision.get_wikitext()
+    
+    if _removes_all_categories(old_wikitext, new_wikitext, redirect_aliases, category_namespaces):
+        tests.append({
+            "id": "removes-all-categories",
+            "title": "Removes all categories",
+            "status": "fail",
+            "message": "Removing all categories requires autoreview rights.",
+        })
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="blocked",
+                label="Cannot be auto-approved",
+                reason="The edit removes all categories.",
+            ),
+        }
+    else:
+        tests.append({
+            "id": "removes-all-categories",
+            "title": "Removes all categories",
+            "status": "ok",
+            "message": "The edit does not remove all categories.",
+        })
+
+    # Check if user has autopatrolled rights (after redirect conversion check)
     # Autopatrolled users approved after redirect check
     if profile and profile.is_autopatrolled:
         return {
@@ -580,6 +611,88 @@ def _check_for_new_render_errors(revision: PendingRevision, client: WikiClient) 
     return current_error_count > previous_error_count
 
 
+def _get_category_namespaces(wiki: Wiki) -> list[str]:
+    """
+    Get category namespace names for the wiki from the API.
+    
+    Similar to _get_redirect_aliases, this fetches the actual namespace
+    names from the wiki instead of using hardcoded values.
+    
+    Args:
+        wiki: The Wiki object
+        
+    Returns:
+        List of category namespace names (e.g., ['Category', 'Luokka'])
+    """
+    config = wiki.configuration
+    
+    # Check if we have cached values
+    if config.category_namespaces:
+        return config.category_namespaces
+    
+    try:
+        site = pywikibot.Site(code=wiki.code, fam=wiki.family)
+        request = site.simple_request(
+            action="query",
+            meta="siteinfo",
+            siprop="namespaces|namespacealiases",
+            formatversion=2,
+        )
+        response = request.submit()
+        
+        # Category namespace is always ID 14
+        namespaces = response.get("query", {}).get("namespaces", {})
+        category_namespace = namespaces.get("14", {})
+        
+        # Get canonical name and aliases
+        names = []
+        if "name" in category_namespace:
+            names.append(category_namespace["name"])
+        if "canonical" in category_namespace:
+            canonical = category_namespace["canonical"]
+            if canonical not in names:
+                names.append(canonical)
+        
+        # Get namespace aliases for category (ID 14)
+        aliases = response.get("query", {}).get("namespacealiases", [])
+        for alias in aliases:
+            if alias.get("id") == 14:
+                alias_name = alias.get("alias")
+                if alias_name and alias_name not in names:
+                    names.append(alias_name)
+        
+        if names:
+            # Cache the results
+            config.category_namespaces = names
+            config.save(update_fields=["category_namespaces", "updated_at"])
+            return names
+            
+    except Exception:  # pragma: no cover - network failure fallback
+        logger.exception("Failed to fetch category namespaces for %s", wiki.code)
+    
+    # Fallback to common category namespace names
+    language_fallbacks = {
+        "de": ["Kategorie", "Category"],
+        "en": ["Category"],
+        "pl": ["Kategoria", "Category"],
+        "fi": ["Luokka", "Category"],
+        "sv": ["Kategori", "Category"],
+    }
+    
+    fallback_names = language_fallbacks.get(
+        wiki.code,
+        ["Category"],  # Default fallback
+    )
+    
+    logger.warning(
+        "Using fallback category namespaces for %s: %s",
+        wiki.code,
+        fallback_names,
+    )
+    
+    return fallback_names
+
+
 def _is_redirect(wikitext: str, redirect_aliases: list[str]) -> bool:
     """Check if wikitext represents a redirect page."""
     if not wikitext or not redirect_aliases:
@@ -768,6 +881,65 @@ def _validate_isbn_13(isbn: str) -> bool:
     ):
         return False
 
+    return True
+
+
+def _count_categories(wikitext: str, category_namespaces: list[str]) -> int:
+    """
+    Count the number of category links in wikitext.
+    
+    Uses the actual category namespace names from the wiki API
+    instead of hardcoded language values.
+    
+    Args:
+        wikitext: The wikitext to analyze
+        category_namespaces: List of valid category namespace names for this wiki
+        
+    Returns:
+        Number of category links found
+    """
+    if not wikitext or not category_namespaces:
+        return 0
+    
+    # Build pattern from actual namespace names
+    # Escape special regex characters in namespace names
+    escaped_namespaces = [re.escape(ns) for ns in category_namespaces]
+    namespaces_pattern = "|".join(escaped_namespaces)
+    
+    # Pattern with re.DOTALL to handle line breaks inside categories
+    pattern = rf'\[\[\s*({namespaces_pattern})\s*:\s*[^\]]+?\]\]'
+    matches = re.findall(pattern, wikitext, re.IGNORECASE | re.DOTALL)
+    return len(matches)
+
+
+def _removes_all_categories(
+    old_wikitext: str,
+    new_wikitext: str,
+    redirect_aliases: list[str],
+    category_namespaces: list[str],
+) -> bool:
+    """
+    Check if edit removes all categories (should block auto-review).
+    
+    Args:
+        old_wikitext: The original wikitext before the edit
+        new_wikitext: The new wikitext after the edit
+        redirect_aliases: List of redirect magic words for the wiki
+        category_namespaces: List of category namespace names for the wiki
+        
+    Returns:
+        True if all categories were removed (should block auto-review),
+        False otherwise (can proceed with auto-review)
+    """
+    # Allow if converting to redirect
+    if _is_redirect(new_wikitext, redirect_aliases):
+        return False
+    
+    old_count = _count_categories(old_wikitext, category_namespaces)
+    new_count = _count_categories(new_wikitext, category_namespaces)
+    
+    # Block if had categories before and now has none
+    return old_count > 0 and new_count == 0
     total = sum(int(isbn[i]) * (1 if i % 2 == 0 else 3) for i in range(12))
     check_digit = (10 - (total % 10)) % 10
     return int(isbn[12]) == check_digit
