@@ -170,6 +170,10 @@ def index(request: HttpRequest) -> HttpResponse:
                 "configuration": {
                     "blocking_categories": configuration.blocking_categories,
                     "auto_approved_groups": configuration.auto_approved_groups,
+                    "ores_damaging_threshold": configuration.ores_damaging_threshold,
+                    "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
+                    "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
+                    "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,  # noqa E501
                 },
             }
         )
@@ -199,6 +203,18 @@ def api_wikis(request: HttpRequest) -> JsonResponse:
                     ),
                     "auto_approved_groups": (
                         configuration.auto_approved_groups if configuration else []
+                    ),
+                    "ores_damaging_threshold": (
+                        configuration.ores_damaging_threshold if configuration else 0.0
+                    ),
+                    "ores_goodfaith_threshold": (
+                        configuration.ores_goodfaith_threshold if configuration else 0.0
+                    ),
+                    "ores_damaging_threshold_living": (
+                        configuration.ores_damaging_threshold_living if configuration else 0.0
+                    ),
+                    "ores_goodfaith_threshold_living": (
+                        configuration.ores_goodfaith_threshold_living if configuration else 0.0
                     ),
                 },
             }
@@ -374,41 +390,85 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             payload = json.loads(request.body.decode("utf-8")) if request.body else {}
         else:
             payload = request.POST.dict()
+
         blocking_categories = payload.get("blocking_categories", [])
         auto_groups = payload.get("auto_approved_groups", [])
         if isinstance(blocking_categories, str):
             blocking_categories = [blocking_categories]
         if isinstance(auto_groups, str):
             auto_groups = [auto_groups]
+
+        ores_damaging_threshold = payload.get("ores_damaging_threshold")
+        ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
+        ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
+        ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
+
+        def validate_threshold(value, name):
+            if value is not None:
+                try:
+                    float_value = float(value)
+                    if not (0.0 <= float_value <= 1.0):
+                        return JsonResponse(
+                            {"error": f"{name} must be between 0.0 and 1.0"},
+                            status=400,
+                        )
+                    return float_value
+                except (ValueError, TypeError):
+                    return JsonResponse(
+                        {"error": f"{name} must be a valid number"},
+                        status=400,
+                    )
+            return None
+
+        validated_damaging = validate_threshold(ores_damaging_threshold, "ores_damaging_threshold")
+        if isinstance(validated_damaging, JsonResponse):
+            return validated_damaging
+
+        validated_goodfaith = validate_threshold(
+            ores_goodfaith_threshold, "ores_goodfaith_threshold"
+        )
+        if isinstance(validated_goodfaith, JsonResponse):
+            return validated_goodfaith
+
+        validated_damaging_living = validate_threshold(
+            ores_damaging_threshold_living, "ores_damaging_threshold_living"
+        )
+        if isinstance(validated_damaging_living, JsonResponse):
+            return validated_damaging_living
+
+        validated_goodfaith_living = validate_threshold(
+            ores_goodfaith_threshold_living, "ores_goodfaith_threshold_living"
+        )
+        if isinstance(validated_goodfaith_living, JsonResponse):
+            return validated_goodfaith_living
+
         configuration.blocking_categories = blocking_categories
         configuration.auto_approved_groups = auto_groups
+        update_fields = ["blocking_categories", "auto_approved_groups", "updated_at"]
 
-        # Handle ML model configuration
-        ml_model_type = payload.get("ml_model_type")
-        ml_model_threshold = payload.get("ml_model_threshold")
+        if validated_damaging is not None:
+            configuration.ores_damaging_threshold = validated_damaging
+            update_fields.append("ores_damaging_threshold")
+        if validated_goodfaith is not None:
+            configuration.ores_goodfaith_threshold = validated_goodfaith
+            update_fields.append("ores_goodfaith_threshold")
+        if validated_damaging_living is not None:
+            configuration.ores_damaging_threshold_living = validated_damaging_living
+            update_fields.append("ores_damaging_threshold_living")
+        if validated_goodfaith_living is not None:
+            configuration.ores_goodfaith_threshold_living = validated_goodfaith_living
+            update_fields.append("ores_goodfaith_threshold_living")
 
-        update_fields = ["blocking_categories", "auto_approved_groups"]
-
-        if ml_model_type is not None:
-            configuration.ml_model_type = ml_model_type
-            update_fields.append("ml_model_type")
-
-        if ml_model_threshold is not None:
-            try:
-                configuration.ml_model_threshold = float(ml_model_threshold)
-                update_fields.append("ml_model_threshold")
-            except (ValueError, TypeError):
-                pass  # Ignore invalid threshold values
-
-        update_fields.append("updated_at")
         configuration.save(update_fields=update_fields)
 
     return JsonResponse(
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
-            "ml_model_type": getattr(configuration, 'ml_model_type', 'revertrisk'),
-            "ml_model_threshold": getattr(configuration, 'ml_model_threshold', 0.0),
+            "ores_damaging_threshold": configuration.ores_damaging_threshold,
+            "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
+            "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
+            "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,
         }
     )
 

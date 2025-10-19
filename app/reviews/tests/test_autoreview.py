@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime
-from unittest.mock import MagicMock, patch
+import json
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, Mock, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from reviews import autoreview
 from reviews.autoreview import (
+    _check_ores_scores,
     _find_invalid_isbns,
     _validate_isbn_10,
     _validate_isbn_13,
@@ -288,6 +290,487 @@ class AutoreviewBlockedUserTests(TestCase):
 
         # Verify logevents was called with correct parameters
         mock_site_instance.logevents.assert_called_once()
+
+
+class OresScoreTests(TestCase):
+    """Test ORES damaging and goodfaith score checks."""
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_damaging_score_exceeds_threshold(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test that high damaging score blocks auto-approval."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        # Mock ORES API response with high damaging score
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "damaging": {
+                                "score": {
+                                    "prediction": True,
+                                    "probability": {"true": 0.85, "false": 0.15},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        # Create mock revision
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        # Check with threshold of 0.7
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.0)
+
+        self.assertTrue(result["should_block"])
+        self.assertEqual(result["test"]["status"], "fail")
+        self.assertIn("0.850", result["test"]["message"])
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_goodfaith_score_below_threshold(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test that low goodfaith score blocks auto-approval."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        # Mock ORES API response with low goodfaith score
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "goodfaith": {
+                                "score": {
+                                    "prediction": False,
+                                    "probability": {"true": 0.3, "false": 0.7},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        # Create mock revision
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        # Check with threshold of 0.5
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.5)
+
+        self.assertTrue(result["should_block"])
+        self.assertEqual(result["test"]["status"], "fail")
+        self.assertIn("0.300", result["test"]["message"])
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_scores_within_thresholds(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test that good scores pass the check."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        # Mock ORES API response with good scores
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "damaging": {
+                                "score": {
+                                    "prediction": False,
+                                    "probability": {"true": 0.02, "false": 0.98},
+                                }
+                            },
+                            "goodfaith": {
+                                "score": {
+                                    "prediction": True,
+                                    "probability": {"true": 0.999, "false": 0.001},
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        # Create mock revision
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        # Check with reasonable thresholds
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
+
+        self.assertFalse(result["should_block"])
+        self.assertEqual(result["test"]["status"], "ok")
+        self.assertIn("damaging: 0.020", result["test"]["message"])
+        self.assertIn("goodfaith: 0.999", result["test"]["message"])
+
+    def test_ores_checks_disabled_when_thresholds_zero(self):
+        """Test that ORES checks are skipped when thresholds are 0.0."""
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.0)
+
+        self.assertFalse(result["should_block"])
+        self.assertEqual(result["test"]["status"], "skip")
+        self.assertIn("disabled", result["test"]["message"])
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    @patch("reviews.autoreview.logger")  # Mock logger to suppress error logs
+    def test_ores_api_error_blocks_approval(
+        self, mock_logger, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test that ORES API errors block auto-approval (safe default)."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        # Mock API error
+        mock_fetch.side_effect = Exception("API connection failed")
+
+        # Create mock revision
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
+
+        self.assertTrue(result["should_block"])
+        self.assertEqual(result["test"]["status"], "fail")
+        self.assertIn("Could not verify", result["test"]["message"])
+
+        # Verify logger.error was called
+        mock_logger.error.assert_called_once()
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_only_damaging_check_enabled(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test checking only damaging score when goodfaith threshold is 0."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "damaging": {
+                                "score": {
+                                    "prediction": False,
+                                    "probability": {"true": 0.05, "false": 0.95},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.0)
+
+        self.assertFalse(result["should_block"])
+        self.assertEqual(result["test"]["status"], "ok")
+        self.assertIn("damaging: 0.050", result["test"]["message"])
+        self.assertNotIn("goodfaith", result["test"]["message"])
+
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    def test_ores_only_goodfaith_check_enabled(
+        self, mock_fetch, mock_model_scores_get, mock_model_scores_create
+    ):
+        """Test checking only goodfaith score when damaging threshold is 0."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "goodfaith": {
+                                "score": {
+                                    "prediction": True,
+                                    "probability": {"true": 0.95, "false": 0.05},
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.page.wiki.code = "fi"
+        mock_revision.page.wiki.family = "wikipedia"
+
+        result = _check_ores_scores(mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.5)
+
+        self.assertFalse(result["should_block"])
+        self.assertEqual(result["test"]["status"], "ok")
+        self.assertIn("goodfaith: 0.950", result["test"]["message"])
+        self.assertNotIn("damaging", result["test"]["message"])
+
+    @override_settings(ORES_DAMAGING_THRESHOLD=0.7, ORES_GOODFAITH_THRESHOLD=0.5)
+    @patch("reviews.services.pywikibot.Site")
+    @patch("reviews.autoreview.ModelScores.objects.create")
+    @patch("reviews.autoreview.ModelScores.objects.get")
+    @patch("reviews.autoreview.http.fetch")
+    @patch("reviews.autoreview._is_bot_user")
+    @patch("reviews.autoreview.logger")
+    @patch("reviews.autoreview._get_parent_wikitext")
+    @patch("reviews.autoreview.PendingRevision.objects.filter")
+    @patch("reviews.autoreview.is_living_person")
+    def test_ores_integration_in_evaluate_revision(
+        self,
+        mock_is_living,
+        mock_filter,
+        mock_get_parent,
+        mock_logger,
+        mock_is_bot,
+        mock_fetch,
+        mock_model_scores_get,
+        mock_model_scores_create,
+        mock_site,
+    ):
+        """Test ORES check integration in _evaluate_revision."""
+        # Mock no cached scores (will fetch from API)
+        from reviews.models import ModelScores
+
+        mock_model_scores_get.side_effect = ModelScores.DoesNotExist()
+        mock_model_scores_create.return_value = MagicMock()
+
+        mock_is_bot.return_value = False
+        mock_is_living.return_value = False  # Not a living person article
+        mock_get_parent.return_value = ""  # No parent wikitext
+
+        # Mock PendingRevision.objects.filter to return empty queryset
+        mock_queryset = MagicMock()
+        mock_queryset.order_by.return_value.first.return_value = None
+        mock_filter.return_value = mock_queryset
+
+        # Mock pywikibot.Site for WikiClient
+        mock_site_instance = MagicMock()
+        mock_site.return_value = mock_site_instance
+        mock_site_instance.logevents.return_value = []
+
+        # Mock ORES API response with high damaging score
+        mock_response = Mock()
+        mock_response.headers = {}
+        mock_response.text = json.dumps(
+            {
+                "fiwiki": {
+                    "scores": {
+                        "12345": {
+                            "damaging": {
+                                "score": {
+                                    "prediction": True,
+                                    "probability": {"true": 0.85, "false": 0.15},
+                                }
+                            },
+                            "goodfaith": {
+                                "score": {
+                                    "prediction": False,
+                                    "probability": {"true": 0.2, "false": 0.8},
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        )
+        mock_fetch.return_value = mock_response
+
+        # Create mock objects
+        mock_wiki = MagicMock()
+        mock_wiki.code = "fi"
+        mock_wiki.family = "wikipedia"
+        mock_wiki.configuration.ores_damaging_threshold = 0.7
+        mock_wiki.configuration.ores_goodfaith_threshold = 0.5
+
+        mock_page = MagicMock()
+        mock_page.wiki = mock_wiki
+        mock_page.title = "Test Page"
+        mock_page.categories = []
+
+        mock_revision = MagicMock()
+        mock_revision.revid = 12345
+        mock_revision.id = 12345  # Add id attribute to fix Field 'id' error
+        mock_revision.page = mock_page
+        mock_revision.user_name = "TestUser"
+        mock_revision.timestamp = datetime.fromisoformat("2024-01-15T10:00:00")
+        mock_revision.get_wikitext.return_value = "Test content"
+        mock_revision.get_categories.return_value = []
+        mock_revision.superset_data = {}
+        mock_revision.parentid = None
+        mock_revision.render_error_count = 0
+
+        from reviews.services import WikiClient
+
+        mock_client = MagicMock(spec=WikiClient)
+        mock_client.has_manual_unapproval.return_value = False
+        mock_client.is_user_blocked_after_edit.return_value = False
+        mock_client.get_rendered_html.return_value = "<html></html>"
+
+        # Call _evaluate_revision
+        result = autoreview._evaluate_revision(
+            mock_revision,
+            mock_client,
+            None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+        )
+
+        # Should be blocked due to high damaging score
+        self.assertEqual(result["decision"].status, "blocked")
+        self.assertTrue(any(t["id"] == "ores-scores" for t in result["tests"]))
+
+        # Verify no error logs were produced (logger.error should not be called)
+        mock_logger.error.assert_not_called()
+
+    def test_ores_scores_are_cached(self):
+        """Test that ORES scores are cached in the database after fetching."""
+        from reviews.models import ModelScores, PendingPage, PendingRevision, Wiki
+
+        # Create real test objects
+        wiki = Wiki.objects.create(
+            name="Test Wiki",
+            code="test",
+            family="wikipedia",
+            api_endpoint="https://test.wikipedia.org/w/api.php",
+        )
+
+        page = PendingPage.objects.create(
+            wiki=wiki, pageid=123, title="Test Page", stable_revid=999
+        )
+
+        revision = PendingRevision.objects.create(
+            page=page,
+            revid=12345,
+            timestamp=datetime.fromisoformat("2024-01-15T10:00:00"),
+            age_at_fetch=timedelta(hours=1),
+            sha1="abc123",
+            wikitext="Test content",
+        )
+
+        # Mock the ORES API response
+        with patch("reviews.autoreview.http.fetch") as mock_fetch:
+            mock_response = Mock()
+            mock_response.text = json.dumps(
+                {
+                    "testwiki": {
+                        "scores": {
+                            "12345": {
+                                "damaging": {
+                                    "score": {"probability": {"true": 0.15, "false": 0.85}}
+                                },
+                                "goodfaith": {
+                                    "score": {"probability": {"true": 0.92, "false": 0.08}}
+                                },
+                            }
+                        }
+                    }
+                }
+            )
+            mock_fetch.return_value = mock_response
+
+            # First call - should fetch from API
+            result1 = _check_ores_scores(revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
+
+            # Verify the API was called
+            mock_fetch.assert_called_once()
+
+            # Verify result
+            self.assertFalse(result1["should_block"])
+            self.assertEqual(result1["test"]["status"], "ok")
+
+            # Verify scores are cached in database
+            model_scores = ModelScores.objects.get(revision=revision)
+            self.assertIsNotNone(model_scores.ores_damaging_score)
+            self.assertIsNotNone(model_scores.ores_goodfaith_score)
+            self.assertEqual(model_scores.ores_damaging_score, 0.15)
+            self.assertEqual(model_scores.ores_goodfaith_score, 0.92)
+            self.assertIsNotNone(model_scores.ores_fetched_at)
+
+            # Second call - should use cached scores
+            result2 = _check_ores_scores(revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
+
+            # Verify the API was NOT called again (still once from before)
+            mock_fetch.assert_called_once()
+
+            # Verify result is the same
+            self.assertFalse(result2["should_block"])
+            self.assertEqual(result2["test"]["status"], "ok")
+            self.assertIn("0.150", result2["test"]["message"])
+            self.assertIn("0.920", result2["test"]["message"])
 
 
 class SupersededAdditionsTests(TestCase):
