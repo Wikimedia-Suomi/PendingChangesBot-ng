@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 import requests
 from django.core.cache import cache
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
@@ -391,22 +391,30 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
     wiki = _get_wiki(pk)
     configuration = wiki.configuration
     if request.method == "PUT":
-        if request.content_type == "application/json":
+        content_type = request.content_type or ""
+        if content_type.startswith("application/json"):
             payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+            blocking_categories = payload.get("blocking_categories", [])
+            auto_groups = payload.get("auto_approved_groups", [])
+            ores_damaging_threshold = payload.get("ores_damaging_threshold")
+            ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
+            ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
+            ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
         else:
-            payload = request.POST.dict()
+            encoding = request.encoding or "utf-8"
+            raw_body = request.body.decode(encoding) if request.body else ""
+            form_payload = QueryDict(raw_body, mutable=False)
+            blocking_categories = form_payload.getlist("blocking_categories")
+            auto_groups = form_payload.getlist("auto_approved_groups")
+            ores_damaging_threshold = form_payload.get("ores_damaging_threshold")
+            ores_goodfaith_threshold = form_payload.get("ores_goodfaith_threshold")
+            ores_damaging_threshold_living = form_payload.get("ores_damaging_threshold_living")
+            ores_goodfaith_threshold_living = form_payload.get("ores_goodfaith_threshold_living")
 
-        blocking_categories = payload.get("blocking_categories", [])
-        auto_groups = payload.get("auto_approved_groups", [])
         if isinstance(blocking_categories, str):
             blocking_categories = [blocking_categories]
         if isinstance(auto_groups, str):
             auto_groups = [auto_groups]
-
-        ores_damaging_threshold = payload.get("ores_damaging_threshold")
-        ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
-        ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
-        ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
 
         def validate_threshold(value, name):
             if value is not None:
@@ -628,23 +636,23 @@ def _resolve_wiki_from_payload(wiki_value):
         return Wiki.objects.get(code=str(wiki_value))
     except Exception:
         raise LookupError(f"Unknown wiki identifier: {wiki_value!r}")
-    
+
 @csrf_exempt
 def fetch_revisions(request):
     if request.method != 'POST':
         return JsonResponse({"error": "Invalid method"}, status=405)
-    
+
     try:
         data = json.loads(request.body)
     except Exception:
         return JsonResponse({"error": "Invalid JSON body"}, status=400)
-    
+
     wiki = data.get('wiki', 'en')
     article = data.get('article', '')
-    
+
     if not article:
         return JsonResponse({"error": "Missing article title"}, status=400)
-    
+
     base_url = f"https://{wiki}.wikipedia.org/w/api.php"
 
     params = {
@@ -656,7 +664,7 @@ def fetch_revisions(request):
         "format": "json",
         "formatversion": "2"  # Use format version 2 for consistent response
     }
-    
+
     headers = {"User-Agent": USER_AGENT}
 
     try:
@@ -665,18 +673,18 @@ def fetch_revisions(request):
         data = response.json()
 
         pages = data.get("query", {}).get("pages", [])
-        
+
         if not pages:
             return JsonResponse({"error": "No pages found in API response"}, status=404)
-        
+
         revisions = []
         for page in pages:
             if "missing" in page:
                 return JsonResponse({"error": "Article not found"}, status=404)
-            
+
             page_revisions = page.get("revisions", [])
             revisions.extend(page_revisions)
-        
+
         if not revisions:
             return JsonResponse({"error": "No revisions found for this article"}, status=404)
 
@@ -687,7 +695,7 @@ def fetch_revisions(request):
     except Exception as e:
         logger.exception("Unexpected error fetching revisions: %s", e)
         return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
-    
+
 @csrf_exempt
 def fetch_liftwing_predictions(request):
     """
@@ -713,6 +721,9 @@ def fetch_liftwing_predictions(request):
             predictions[rev_id] = data.get("output", {})
         except Exception as e:
             predictions[rev_id] = {"error": str(e)}
+        except requests.RequestException as e:
+            logger.error("LiftWing prediction failed for rev_id %s: %s", rev_id, e)
+            predictions[rev_id] = {"error": "Failed to fetch prediction from API."}
 
     return JsonResponse({"predictions": predictions})
 
@@ -737,12 +748,12 @@ def fetch_predictions(request):
     rev_id = data.get("rev_id")  # Optional: use specific revision
 
     headers = {"User-Agent": USER_AGENT}
-    
+
     # If rev_id not provided, fetch the latest revision ID
     if not rev_id:
         if not article:
             return JsonResponse({"error": "Missing article title or rev_id"}, status=400)
-            
+
         # LiftWing API endpoint for model inference
         api_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
 
@@ -756,7 +767,7 @@ def fetch_predictions(request):
             "rvprop": "ids",
             "format": "json",
         }
-        
+
         try:
             rev_resp = requests.get(rev_api, params=params, headers=headers, timeout=10)
             rev_resp.raise_for_status()
@@ -771,7 +782,7 @@ def fetch_predictions(request):
 
         if not rev_id:
             return JsonResponse({"error": "No revision found for this article"}, status=404)
-    
+
     # LiftWing API endpoint for model inference
     api_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
 
@@ -792,7 +803,7 @@ def fetch_predictions(request):
     except requests.RequestException as e:
         return JsonResponse({"error": f"LiftWing request failed: {str(e)}"}, status=500)
 
-    
+
 
 @require_GET
 def liftwing_models(request, wiki_code):
@@ -806,7 +817,7 @@ def liftwing_models(request, wiki_code):
         },
         {
             "name": "draftquality",
-            "version": "1.0.0", 
+            "version": "1.0.0",
             "description": "Predicts the quality of new article drafts"
         }
     ]

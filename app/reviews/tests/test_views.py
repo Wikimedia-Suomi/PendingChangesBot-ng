@@ -213,6 +213,28 @@ class ViewTests(TestCase):
         self.assertEqual(config.blocking_categories, ["Foo"])
         self.assertEqual(config.auto_approved_groups, ["sysop"])
 
+    def test_api_configuration_updates_settings_from_form_payload(self):
+        from urllib.parse import urlencode
+        
+        url = reverse("api_configuration", args=[self.wiki.pk])
+        # Properly encode form data with repeated keys for lists
+        form_data = urlencode([
+            ("blocking_categories", "Foo"),
+            ("blocking_categories", "Bar"),
+            ("auto_approved_groups", "sysop"),
+            ("auto_approved_groups", "steward"),
+        ])
+        response = self.client.put(
+            url,
+            data=form_data,
+            content_type="application/x-www-form-urlencoded",
+        )
+        self.assertEqual(response.status_code, 200)
+        config = self.wiki.configuration
+        config.refresh_from_db()
+        self.assertEqual(config.blocking_categories, ["Foo", "Bar"])
+        self.assertEqual(config.auto_approved_groups, ["sysop", "steward"])
+
     def test_api_configuration_updates_ores_thresholds(self):
         url = reverse("api_configuration", args=[self.wiki.pk])
         payload = {
