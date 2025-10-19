@@ -22,6 +22,10 @@ class FakeSite:
         self.users_data: dict[str, dict] = {}
         self.requests: list[dict] = []
 
+    def logevents(self, **kwargs):
+        """Mock logevents for block checking."""
+        return []
+
     def simple_request(self, **kwargs):
         self.requests.append(kwargs)
         return FakeRequest(self.response)

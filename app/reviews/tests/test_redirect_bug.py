@@ -63,6 +63,10 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
@@ -199,6 +203,10 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
@@ -318,6 +326,10 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
@@ -408,6 +420,10 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
             def __init__(self):
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
+
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
 
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
