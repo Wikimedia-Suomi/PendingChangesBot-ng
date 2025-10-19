@@ -110,7 +110,7 @@ def create_wordlist(dump_path, output_path):
     
     print(f"Step 8: Writing compressed output to {output_path}...")
     with gzip.open(output_path, 'wt', encoding='utf-8') as f:
-        for word in sorted_words:
+        f.writelines(f"{word}\n" for word in sorted_words)
             f.write(word + '\n')
     
     print(f"Done! Wordlist saved to {output_path}")
