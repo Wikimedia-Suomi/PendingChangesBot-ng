@@ -42,11 +42,16 @@
                 </div>
               </div>
               <div class="field mt-3" v-if="currentWiki">
-                <label class="label is-small">Quick Links:</label>
+                <label class="label is-small">App Statistics:</label>
                 <div class="buttons">
-                  <a :href="`/statistics/?wiki=${state.selectedWikiId}`" class="button is-small is-primary is-light">
+                  <a :href="`/statistics/?wiki=${state.selectedWikiId}`" class="button is-small is-primary is-light" target="_blank" rel="noopener noreferrer">
                     Review Statistics
                   </a>
+                </div>
+              </div>
+              <div class="field mt-3" v-if="currentWiki">
+                <label class="label is-small">FlaggedRevs Quick Links:</label>
+                <div class="buttons">
                   <a :href="buildFlaggedRevsUrl('ValidationStatistics')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
                     Validation Statistics
                   </a>
