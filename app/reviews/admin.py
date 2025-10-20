@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import EditorProfile, PendingPage, PendingRevision, Wiki, WikiConfiguration
+from .models import (
+    EditorProfile,
+    ModelScores,
+    PendingPage,
+    PendingRevision,
+    Wiki,
+    WikiConfiguration,
+)
 
 
 @admin.register(Wiki)
@@ -34,3 +41,16 @@ class EditorProfileAdmin(admin.ModelAdmin):
     list_display = ("username", "wiki", "is_blocked", "is_bot")
     search_fields = ("username",)
     list_filter = ("wiki", "is_blocked", "is_bot")
+
+
+@admin.register(ModelScores)
+class ModelScoresAdmin(admin.ModelAdmin):
+    list_display = (
+        "revision",
+        "ores_damaging_score",
+        "ores_goodfaith_score",
+        "ores_fetched_at",
+    )
+    search_fields = ("revision__revid", "revision__page__title")
+    list_filter = ("ores_fetched_at",)
+    readonly_fields = ("ores_fetched_at",)

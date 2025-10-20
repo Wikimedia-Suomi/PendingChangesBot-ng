@@ -125,6 +125,12 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 
 PYWIKIBOT_SITE_FAMILY = os.getenv("PYWIKIBOT_SITE_FAMILY", "wikipedia")
 
+# ORES model thresholds (global defaults, per-wiki config takes precedence)
+ORES_DAMAGING_THRESHOLD = float(os.getenv("ORES_DAMAGING_THRESHOLD", "0.3"))
+ORES_GOODFAITH_THRESHOLD = float(os.getenv("ORES_GOODFAITH_THRESHOLD", "0.7"))
+ORES_DAMAGING_THRESHOLD_LIVING = float(os.getenv("ORES_DAMAGING_THRESHOLD_LIVING", "0.1"))
+ORES_GOODFAITH_THRESHOLD_LIVING = float(os.getenv("ORES_GOODFAITH_THRESHOLD", "0.9"))
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
