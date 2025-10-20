@@ -1031,6 +1031,10 @@ createApp({
 
     onMounted(() => {
       syncForms();
+      // If on statistics page and have a wiki selected, load statistics for wiki
+      if (window.location.pathname.includes('/statistics/') && state.selectedWikiId) {
+        loadStatistics();
+      }
     });
 
     return {
