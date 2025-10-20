@@ -426,7 +426,79 @@ def _evaluate_revision(
             }
         )
 
-    # TEST 10: ORES edit quality scores (expensive API call, do last)
+    # TEST 10: Lift Wing ML model check (if configured)
+    config = revision.page.wiki.configuration
+    ml_model_type = config.ml_model_type
+    ml_threshold = config.ml_model_threshold
+
+    if ml_threshold > 0.0:
+        ml_score = _get_liftwing_ml_score(revision, ml_model_type)
+        model_display_name = LIFTWING_ML_MODELS.get(ml_model_type, {}).get('description', ml_model_type)
+
+        if ml_score is not None:
+            if ml_score > ml_threshold:
+                tests.append(
+                    {
+                        "id": "liftwing-ml",
+                        "title": f"Lift Wing ML ({model_display_name})",
+                        "status": "fail",
+                        "message": (
+                            f"High {ml_model_type} score: {ml_score:.3f} "
+                            f"(threshold: {ml_threshold:.3f})"
+                        ),
+                        "ml_model_type": ml_model_type,
+                        "ml_score": ml_score,
+                    }
+                )
+                return {
+                    "tests": tests,
+                    "decision": AutoreviewDecision(
+                        status="blocked",
+                        label="Cannot be auto-approved",
+                        reason=(
+                            f"High {ml_model_type} score from Lift Wing ML "
+                            f"({ml_score:.3f} > {ml_threshold:.3f})"
+                        ),
+                    ),
+                }
+            else:
+                tests.append(
+                    {
+                        "id": "liftwing-ml",
+                        "title": f"Lift Wing ML ({model_display_name})",
+                        "status": "ok",
+                        "message": (
+                            f"Low {ml_model_type} score: {ml_score:.3f} "
+                            f"(threshold: {ml_threshold:.3f})"
+                        ),
+                        "ml_model_type": ml_model_type,
+                        "ml_score": ml_score,
+                    }
+                )
+        else:
+            tests.append(
+                {
+                    "id": "liftwing-ml",
+                    "title": f"Lift Wing ML ({model_display_name})",
+                    "status": "not_ok",
+                    "message": f"Failed to fetch {ml_model_type} score from Lift Wing API",
+                    "ml_model_type": ml_model_type,
+                    "ml_score": None,
+                }
+            )
+    else:
+        tests.append(
+            {
+                "id": "liftwing-ml",
+                "title": "Lift Wing ML check",
+                "status": "ok",
+                "message": "Lift Wing ML checking is disabled (threshold set to 0.0)",
+                "ml_model_type": ml_model_type,
+                "ml_score": None,
+            }
+        )
+
+    # TEST 11: ORES edit quality scores (expensive API call, do last)
     ores_result = _evaluate_ores_thresholds(revision)
     if ores_result:
         tests.append(ores_result["test"])
@@ -795,6 +867,115 @@ def _find_invalid_isbns(text: str) -> list[str]:
             invalid_isbns.append(isbn_raw.strip())
 
     return invalid_isbns
+
+
+# Lift Wing ML Model Configuration
+LIFTWING_ML_MODELS = {
+    'revertrisk': {
+        'endpoint': 'revertrisk-language-agnostic:predict',
+        'probability_key': 'true',
+        'description': 'Language-agnostic revert risk prediction',
+    },
+    'damaging': {
+        'endpoint': 'damaging:predict',
+        'probability_key': 'true',
+        'description': 'Damaging edit detection',
+    },
+    'goodfaith': {
+        'endpoint': 'goodfaith:predict',
+        'probability_key': 'false',  # Inverted: false = bad faith
+        'description': 'Good faith prediction',
+    },
+    'articlequality': {
+        'endpoint': 'articlequality:predict',
+        'probability_key': 'stub',  # Low quality indicator
+        'description': 'Article quality assessment',
+    },
+    'articletopic': {
+        'endpoint': 'articletopic:predict',
+        'probability_key': None,  # Requires special handling
+        'description': 'Article topic classification',
+    },
+}
+
+
+def _get_liftwing_ml_score(revision: PendingRevision, model_type: str = 'revertrisk') -> float | None:
+    """
+    Query the Wikimedia Lift Wing API to get a score for an edit using the specified model.
+
+    Args:
+        revision: The pending revision to check
+        model_type: The ML model to use (revertrisk, damaging, goodfaith, etc.)
+
+    Returns:
+        The ML model score (0.0-1.0) or None if the API call fails
+    """
+    model_config = LIFTWING_ML_MODELS.get(model_type)
+    if not model_config:
+        logger.error(
+            "Unknown Lift Wing ML model type: %s. Defaulting to revertrisk.",
+            model_type
+        )
+        model_type = 'revertrisk'
+        model_config = LIFTWING_ML_MODELS['revertrisk']
+
+    url = (
+        f'https://api.wikimedia.org/service/lw/inference/v1/models/'
+        f'{model_config["endpoint"]}'
+    )
+    headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'PendingChangesBot/1.0 (https://github.com/Wikimedia-Suomi/PendingChangesBot-ng)'
+    }
+    payload = json.dumps({
+        'rev_id': revision.revid,
+        'lang': revision.page.wiki.code,
+        'project': revision.page.wiki.family
+    })
+
+    try:
+        resp = http.fetch(url, method='POST', headers=headers, data=payload)
+
+        if resp.status_code != 200:
+            logger.warning(
+                "%s Lift Wing API returned status %s for revision %s",
+                model_type,
+                resp.status_code,
+                revision.revid
+            )
+            return None
+
+        result = json.loads(resp.text)
+        probabilities = result.get('output', {}).get('probabilities', {})
+        probability_key = model_config['probability_key']
+
+        if probability_key is None:
+            logger.warning(
+                "Model %s requires special handling not yet implemented",
+                model_type
+            )
+            return None
+
+        score = probabilities.get(probability_key)
+
+        if score is None:
+            logger.warning(
+                "%s Lift Wing API response missing '%s' probability for revision %s",
+                model_type,
+                probability_key,
+                revision.revid
+            )
+            return None
+
+        return float(score)
+    except Exception as e:
+        logger.exception(
+            "Failed to fetch %s score from Lift Wing API for revision %s: %s",
+            model_type,
+            revision.revid,
+            e
+        )
+        return None
 
 
 def _is_living_person_article(revision: PendingRevision) -> bool:

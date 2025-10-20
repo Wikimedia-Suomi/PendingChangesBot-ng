@@ -160,6 +160,8 @@ createApp({
     const forms = reactive({
       blockingCategories: "",
       autoApprovedGroups: "",
+      mlModelType: "revertrisk",
+      mlModelThreshold: 0.0,
       oresDamagingThreshold: 0.0,
       oresGoodfaithThreshold: 0.0,
       oresDamagingThresholdLiving: 0.0,
@@ -241,6 +243,8 @@ createApp({
       if (!currentWiki.value) {
         forms.blockingCategories = "";
         forms.autoApprovedGroups = "";
+        forms.mlModelType = "revertrisk";
+        forms.mlModelThreshold = 0.0;
         forms.oresDamagingThreshold = 0.0;
         forms.oresGoodfaithThreshold = 0.0;
         forms.oresDamagingThresholdLiving = 0.0;
@@ -249,6 +253,8 @@ createApp({
       }
       forms.blockingCategories = (currentWiki.value.configuration.blocking_categories || []).join("\n");
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
+      forms.mlModelType = currentWiki.value.configuration.ml_model_type || "revertrisk";
+      forms.mlModelThreshold = currentWiki.value.configuration.ml_model_threshold || 0.0;
       forms.oresDamagingThreshold = currentWiki.value.configuration.ores_damaging_threshold || 0.0;
       forms.oresGoodfaithThreshold = currentWiki.value.configuration.ores_goodfaith_threshold || 0.0;
       forms.oresDamagingThresholdLiving = currentWiki.value.configuration.ores_damaging_threshold_living || 0.0;
@@ -395,6 +401,9 @@ createApp({
       const goodfaithLivingError = validateOresThreshold(forms.oresGoodfaithThresholdLiving, "Goodfaith threshold (Living persons)");
       if (goodfaithLivingError) validationErrors.push(goodfaithLivingError);
 
+      const mlThresholdError = validateOresThreshold(forms.mlModelThreshold, "Lift Wing ML threshold");
+      if (mlThresholdError) validationErrors.push(mlThresholdError);
+
       if (validationErrors.length > 0) {
         state.error = validationErrors.join(". ");
         return;
@@ -403,6 +412,8 @@ createApp({
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
+        ml_model_type: forms.mlModelType,
+        ml_model_threshold: forms.mlModelThreshold,
         ores_damaging_threshold: forms.oresDamagingThreshold,
         ores_goodfaith_threshold: forms.oresGoodfaithThreshold,
         ores_damaging_threshold_living: forms.oresDamagingThresholdLiving,

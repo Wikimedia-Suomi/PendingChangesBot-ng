@@ -170,6 +170,8 @@ def index(request: HttpRequest) -> HttpResponse:
                 "configuration": {
                     "blocking_categories": configuration.blocking_categories,
                     "auto_approved_groups": configuration.auto_approved_groups,
+                    "ml_model_type": configuration.ml_model_type,
+                    "ml_model_threshold": configuration.ml_model_threshold,
                     "ores_damaging_threshold": configuration.ores_damaging_threshold,
                     "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
                     "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
@@ -203,6 +205,12 @@ def api_wikis(request: HttpRequest) -> JsonResponse:
                     ),
                     "auto_approved_groups": (
                         configuration.auto_approved_groups if configuration else []
+                    ),
+                    "ml_model_type": (
+                        configuration.ml_model_type if configuration else 'revertrisk'
+                    ),
+                    "ml_model_threshold": (
+                        configuration.ml_model_threshold if configuration else 0.0
                     ),
                     "ores_damaging_threshold": (
                         configuration.ores_damaging_threshold if configuration else 0.0
@@ -398,6 +406,8 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
         if isinstance(auto_groups, str):
             auto_groups = [auto_groups]
 
+        ml_model_type = payload.get("ml_model_type")
+        ml_model_threshold = payload.get("ml_model_threshold")
         ores_damaging_threshold = payload.get("ores_damaging_threshold")
         ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
         ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
@@ -446,6 +456,18 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
         configuration.auto_approved_groups = auto_groups
         update_fields = ["blocking_categories", "auto_approved_groups", "updated_at"]
 
+        # Handle Lift Wing ML model configuration
+        if ml_model_type is not None:
+            configuration.ml_model_type = ml_model_type
+            update_fields.append("ml_model_type")
+
+        validated_ml_threshold = validate_threshold(ml_model_threshold, "ml_model_threshold")
+        if isinstance(validated_ml_threshold, JsonResponse):
+            return validated_ml_threshold
+        if validated_ml_threshold is not None:
+            configuration.ml_model_threshold = validated_ml_threshold
+            update_fields.append("ml_model_threshold")
+
         if validated_damaging is not None:
             configuration.ores_damaging_threshold = validated_damaging
             update_fields.append("ores_damaging_threshold")
@@ -465,6 +487,8 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
+            "ml_model_type": configuration.ml_model_type,
+            "ml_model_threshold": configuration.ml_model_threshold,
             "ores_damaging_threshold": configuration.ores_damaging_threshold,
             "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
             "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
