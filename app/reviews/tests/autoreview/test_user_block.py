@@ -6,7 +6,8 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
-from reviews import autoreview
+from reviews.autoreview.checks.user_block import check_user_block
+from reviews.autoreview.context import CheckContext
 from reviews.services import was_user_blocked_after
 
 
@@ -16,11 +17,8 @@ class AutoreviewBlockedUserTests(TestCase):
         was_user_blocked_after.cache_clear()
 
     @patch("reviews.services.wiki_client.pywikibot.Site")
-    @patch("reviews.autoreview._is_bot_user")
-    def test_blocked_user_not_auto_approved(self, mock_is_bot, mock_site):
+    def test_blocked_user_not_auto_approved(self, mock_site):
         """Test that a user blocked after making an edit is NOT auto-approved."""
-        mock_is_bot.return_value = False  # User is NOT a bot
-
         # Mock the pywikibot.Site and logevents to return a block event
         mock_site_instance = MagicMock()
         mock_site.return_value = mock_site_instance
@@ -49,29 +47,30 @@ class AutoreviewBlockedUserTests(TestCase):
         revision.page.wiki = mock_wiki
         revision.superset_data = {}
 
-        # Create a mock WikiClient - but we need the real is_user_blocked_after_edit method
+        # Create a mock WikiClient
         from reviews.services import WikiClient
-
         mock_client = WikiClient(mock_wiki)
 
-        # Call with correct signature: revision, client, profile, **kwargs
-        result = autoreview._evaluate_revision(
-            revision,
-            mock_client,
-            profile,
+        # Create context
+        context = CheckContext(
+            revision=revision,
+            client=mock_client,
+            profile=profile,
             auto_groups={},
             blocking_categories={},
-            redirect_aliases={},
+            redirect_aliases=[]
         )
 
-        # Assert
-        self.assertEqual(result["decision"].status, "blocked")
-        self.assertTrue(any(t["id"] == "blocked-user" for t in result["tests"]))
+        # Call the check
+        result = check_user_block(context)
 
-        # Verify pywikibot.Site was called (will be called twice:
-        # once in WikiClient.__init__, once in was_user_blocked_after)
+        # Assert
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.decision.status, "blocked")
+        self.assertIn("blocked", result.message.lower())
+
+        # Verify pywikibot.Site was called
         self.assertGreaterEqual(mock_site.call_count, 1)
 
         # Verify logevents was called with correct parameters
         mock_site_instance.logevents.assert_called_once()
-
