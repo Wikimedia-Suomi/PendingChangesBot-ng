@@ -11,6 +11,7 @@
       rel="stylesheet"
       href="https://fi.wikipedia.org/w/load.php?modules=mediawiki.diff.styles&only=styles"
     />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   </head>
   <body>
     {% verbatim %}
@@ -38,6 +39,14 @@
                 </div>
                 <div class="control">
                   <button class="button is-warning" @click="clearCache">Clear cache</button>
+                </div>
+              </div>
+              <div class="field mt-3" v-if="currentWiki">
+                <label class="label is-small">App Statistics:</label>
+                <div class="buttons">
+                  <a :href="`/statistics/?wiki=${state.selectedWikiId}`" class="button is-small is-primary is-light" target="_blank" rel="noopener noreferrer">
+                    Review Statistics
+                  </a>
                 </div>
               </div>
               <div class="field mt-3" v-if="currentWiki">
