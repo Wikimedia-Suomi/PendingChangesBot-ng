@@ -12,6 +12,7 @@ import mwparserfromhell
 import pywikibot
 from django.db import transaction
 from django.utils import timezone as dj_timezone
+from django.conf import settings
 from pywikibot.data.superset import SupersetQuery
 
 from .models import (
@@ -158,6 +159,7 @@ SELECT
    a.actor_name,
    a.actor_user,
    group_concat(DISTINCT(ctd_name)) AS change_tags,
+   group_concat(DISTINCT(ct_params)) AS change_tag_params,
    group_concat(DISTINCT(ug_group)) AS user_groups,
    group_concat(DISTINCT(ufg_group)) AS user_former_groups,
    group_concat(DISTINCT(cl_to)) AS page_categories,
@@ -251,7 +253,31 @@ ORDER BY fp_pending_since, rev_id DESC
 
         return pages
 
-    def _save_revision(self, page: PendingPage, payload: RevisionPayload) -> PendingRevision | None:
+    def _is_revert_to_reviewed_content(self, page: PendingPage, payload: RevisionPayload) -> bool:
+        """
+        This function checks if the older version was already reviewed/approved
+        by the system before.
+        """
+
+        # To check if the feature is enabled in the settings
+        if not getattr(settings, 'ENABLE_REVERT_DETECTION', True):
+            return False
+
+        revert_tags = {"mw-manual-revert", "mw-reverted", "mw-rollback", "mw-undo"}
+        if not any(tag in payload.tags for tag in revert_tags):
+            return False
+        reviewed_revisions = PendingRevision.objects.filter(
+            page__wiki=self.wiki,
+            page__pageid=page.pageid,
+            sha1=payload.sha1,
+            revid__lt=payload.revid
+        ).exclude(revid=payload.revid)
+
+        return reviewed_revisions.exists()
+
+    def _save_revision(
+        self, page: PendingPage, payload: RevisionPayload
+    ) -> PendingRevision | None:
         existing_page = (
             PendingPage.objects.filter(pk=page.pk).only("id").first() if page.pk else None
         )
@@ -260,6 +286,9 @@ ORDER BY fp_pending_since, rev_id DESC
                 "Pending page %s was deleted before saving revision %s", page.pk, payload.revid
             )
             return None
+
+        # checks if this is a "revert to reviewed" content
+        is_revert_to_reviewed = self._is_revert_to_reviewed_content(page, payload)
 
         age = dj_timezone.now() - payload.timestamp
         defaults = {
@@ -272,6 +301,7 @@ ORDER BY fp_pending_since, rev_id DESC
             "comment": payload.comment,
             "change_tags": payload.tags,
             "wikitext": "",
+            "is_revert_to_reviewed": is_revert_to_reviewed,  # the new field
         }
         if payload.superset_data is not None:
             defaults["superset_data"] = payload.superset_data
