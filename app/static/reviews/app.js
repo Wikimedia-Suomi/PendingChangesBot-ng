@@ -145,6 +145,18 @@ createApp({
       loading: false,
       error: "",
       configurationOpen: loadConfigurationOpen(),
+      statisticsOpen: false,
+      statistics: {
+        loading: false,
+        error: "",
+        metadata: null,
+        topReviewers: [],
+        topReviewedUsers: [],
+        records: [],
+        timeFilter: "all",
+        excludeAutoReviewers: false,
+        chartData: null,
+      },
       reviewResults: {},
       runningReviews: {},
       runningBulkReview: false,
@@ -507,6 +519,312 @@ createApp({
       state.configurationOpen = !state.configurationOpen;
     }
 
+    function toggleStatistics() {
+      state.statisticsOpen = !state.statisticsOpen;
+      if (state.statisticsOpen && state.statistics.topReviewers.length === 0) {
+        loadStatistics();
+      }
+    }
+
+    async function loadStatistics() {
+      if (!state.selectedWikiId) {
+        return;
+      }
+      state.statistics.loading = true;
+      state.statistics.error = "";
+      try {
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (state.statistics.timeFilter !== "all") {
+          params.append("time_filter", state.statistics.timeFilter);
+        }
+        if (state.statistics.excludeAutoReviewers) {
+          params.append("exclude_auto_reviewers", "true");
+        }
+
+        const url = `/api/wikis/${state.selectedWikiId}/statistics/?${params.toString()}`;
+        const data = await fetch(url);
+        if (!data.ok) {
+          throw new Error(data.statusText || "Failed to load statistics");
+        }
+        const json = await data.json();
+        state.statistics.metadata = json.metadata || null;
+        state.statistics.topReviewers = json.top_reviewers || [];
+        state.statistics.topReviewedUsers = json.top_reviewed_users || [];
+        state.statistics.records = json.records || [];
+
+        // Load chart data
+        await loadChartData();
+      } catch (error) {
+        state.statistics.error = error.message || "Failed to load statistics";
+        state.statistics.metadata = null;
+        state.statistics.topReviewers = [];
+        state.statistics.topReviewedUsers = [];
+        state.statistics.records = [];
+      } finally {
+        state.statistics.loading = false;
+      }
+    }
+
+    async function loadChartData() {
+      if (!state.selectedWikiId) {
+        return;
+      }
+      try {
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (state.statistics.timeFilter !== "all") {
+          params.append("time_filter", state.statistics.timeFilter);
+        }
+        if (state.statistics.excludeAutoReviewers) {
+          params.append("exclude_auto_reviewers", "true");
+        }
+
+        const url = `/api/wikis/${state.selectedWikiId}/statistics/charts/?${params.toString()}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(response.statusText || "Failed to load chart data");
+        }
+        const json = await response.json();
+        state.statistics.chartData = json;
+
+        // Render charts after Vue updates the DOM
+        setTimeout(() => renderCharts(), 100);
+      } catch (error) {
+        console.error("Failed to load chart data:", error);
+      }
+    }
+
+    function setTimeFilter(filter) {
+      state.statistics.timeFilter = filter;
+      loadStatistics();
+    }
+
+    function renderCharts() {
+      if (!state.statistics.chartData) {
+        return;
+      }
+
+      const chartData = state.statistics.chartData;
+
+      // Destroy existing charts
+      Chart.helpers.each(Chart.instances, (instance) => {
+        instance.destroy();
+      });
+
+      // Reviewers over time chart
+      const reviewersCtx = document.getElementById("reviewersOverTimeChart");
+      if (reviewersCtx) {
+        new Chart(reviewersCtx, {
+          type: "line",
+          data: {
+            labels: chartData.reviewers_over_time.map((d) => d.date),
+            datasets: [
+              {
+                label: "Number of Reviewers",
+                data: chartData.reviewers_over_time.map((d) => d.count),
+                borderColor: "rgb(54, 162, 235)",
+                backgroundColor: "rgba(54, 162, 235, 0.2)",
+                tension: 0.1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: "Reviewers Over Time",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+              },
+            },
+          },
+        });
+      }
+
+      // Pending reviews per day chart
+      const pendingCtx = document.getElementById("pendingReviewsChart");
+      if (pendingCtx) {
+        new Chart(pendingCtx, {
+          type: "bar",
+          data: {
+            labels: chartData.pending_reviews_per_day.map((d) => d.date),
+            datasets: [
+              {
+                label: "Reviews Per Day",
+                data: chartData.pending_reviews_per_day.map((d) => d.count),
+                borderColor: "rgb(75, 192, 192)",
+                backgroundColor: "rgba(75, 192, 192, 0.6)",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: "Pending Reviews Per Day",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+              },
+            },
+          },
+        });
+      }
+
+      // Average delay chart
+      const avgDelayCtx = document.getElementById("averageDelayChart");
+      if (avgDelayCtx) {
+        new Chart(avgDelayCtx, {
+          type: "line",
+          data: {
+            labels: chartData.average_delay_over_time.map((d) => d.date),
+            datasets: [
+              {
+                label: "Average Delay (days)",
+                data: chartData.average_delay_over_time.map((d) => d.avg_delay),
+                borderColor: "rgb(255, 159, 64)",
+                backgroundColor: "rgba(255, 159, 64, 0.2)",
+                fill: true,
+                tension: 0.1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: "Average Review Delay Over Time",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: "Days",
+                },
+              },
+            },
+          },
+        });
+      }
+
+      // Delay percentiles chart
+      const percentilesCtx = document.getElementById("delayPercentilesChart");
+      if (percentilesCtx) {
+        new Chart(percentilesCtx, {
+          type: "line",
+          data: {
+            labels: chartData.delay_percentiles.map((d) => d.date),
+            datasets: [
+              {
+                label: "P10 (Lower Bound)",
+                data: chartData.delay_percentiles.map((d) => d.p10),
+                borderColor: "rgb(153, 102, 255)",
+                backgroundColor: "rgba(153, 102, 255, 0.1)",
+                fill: false,
+                tension: 0.1,
+              },
+              {
+                label: "P50 (Median)",
+                data: chartData.delay_percentiles.map((d) => d.p50),
+                borderColor: "rgb(255, 99, 132)",
+                backgroundColor: "rgba(255, 99, 132, 0.2)",
+                fill: "-1",
+                tension: 0.1,
+              },
+              {
+                label: "P90 (Upper Bound)",
+                data: chartData.delay_percentiles.map((d) => d.p90),
+                borderColor: "rgb(255, 205, 86)",
+                backgroundColor: "rgba(255, 205, 86, 0.1)",
+                fill: false,
+                tension: 0.1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: "Review Delay Percentiles (P10, P50, P90)",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: "Days",
+                },
+              },
+            },
+          },
+        });
+      }
+    }
+
+    async function refreshStatistics() {
+      if (!state.selectedWikiId) {
+        return;
+      }
+      state.statistics.loading = true;
+      state.statistics.error = "";
+      try {
+        const response = await fetch(`/api/wikis/${state.selectedWikiId}/statistics/refresh/`, {
+          method: "POST",
+        });
+        if (!response.ok) {
+          throw new Error(response.statusText || "Failed to refresh statistics");
+        }
+        await loadStatistics();
+      } catch (error) {
+        state.statistics.error = error.message || "Failed to refresh statistics";
+      } finally {
+        state.statistics.loading = false;
+      }
+    }
+
+    function buildUserPageUrl(username) {
+      const origin = getWikiOrigin();
+      if (!origin || !username) {
+        return "";
+      }
+      const normalized = username.replace(/ /g, "_");
+      const encoded = encodeURIComponent(normalized);
+      return `${origin}/wiki/User:${encoded}`;
+    }
+
+    function buildPageUrl(pageTitle) {
+      const origin = getWikiOrigin();
+      if (!origin || !pageTitle) {
+        return "";
+      }
+      const normalized = pageTitle.replace(/ /g, "_");
+      const encoded = encodeURIComponent(normalized);
+      return `${origin}/wiki/${encoded}`;
+    }
+
+    function buildPageDiffUrl(pageTitle, revisionId) {
+      const origin = getWikiOrigin();
+      if (!origin || !pageTitle || !revisionId) {
+        return "";
+      }
+      const normalized = pageTitle.replace(/ /g, "_");
+      const encoded = encodeURIComponent(normalized);
+      return `${origin}/w/index.php?title=${encoded}&diff=prev&oldid=${revisionId}`;
+    }
+
     async function runAutoreview(page, showDiffs=true) {
       if (!page || !state.selectedWikiId) {
         return;
@@ -705,10 +1023,18 @@ createApp({
     watch(currentWiki, () => {
       syncForms();
       loadPending();
+      // Reload statistics if statistics panel is open
+      if (state.statisticsOpen) {
+        loadStatistics();
+      }
     }, { immediate: true });
 
     onMounted(() => {
       syncForms();
+      // If on statistics page and have a wiki selected, load statistics for wiki
+      if (window.location.pathname.includes('/statistics/') && state.selectedWikiId) {
+        loadStatistics();
+      }
     });
 
     return {
@@ -724,11 +1050,19 @@ createApp({
       saveConfiguration,
       loadPending,
       formatDate,
+      formatDateTime,
       toggleConfiguration,
+      toggleStatistics,
+      loadStatistics,
+      refreshStatistics,
+      setTimeFilter,
       formatTitle,
       buildLatestRevisionUrl,
       buildRevisionDiffUrl,
       buildUserContributionsUrl,
+      buildUserPageUrl,
+      buildPageUrl,
+      buildPageDiffUrl,
       buildFlaggedRevsUrl,
       runAutoreview,
       runAutoreviewAllVisible,
