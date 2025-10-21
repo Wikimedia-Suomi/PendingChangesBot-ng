@@ -19,9 +19,6 @@ from .parsers import (
 from .types import RevisionPayload
 from .user_blocks import was_user_blocked_after
 
-# Import statistics models at runtime since they're used in fetch_review_statistics
-from reviews.models import ReviewStatisticsCache, ReviewStatisticsMetadata
-
 if TYPE_CHECKING:
     from reviews.models import (
         EditorProfile,
@@ -340,6 +337,8 @@ ORDER BY fp_pending_since, rev_id DESC
         Returns:
             dict: Contains 'total_records', 'oldest_timestamp', 'newest_timestamp'
         """
+        from reviews.models import ReviewStatisticsCache, ReviewStatisticsMetadata
+
         limit = int(limit)
         if limit <= 0:
             return {"total_records": 0, "oldest_timestamp": None, "newest_timestamp": None}
@@ -471,139 +470,3 @@ WHERE
         except Exception:
             logger.exception("Failed to fetch review statistics for %s", self.wiki.code)
             return {"total_records": 0, "oldest_timestamp": None, "newest_timestamp": None}
-
-
-def parse_categories(wikitext: str) -> list[str]:
-    code = mwparserfromhell.parse(wikitext or "")
-    categories: list[str] = []
-    for link in code.filter_wikilinks():
-        target = str(link.title).strip()
-        if target.lower().startswith("category:"):
-            categories.append(target.split(":", 1)[-1])
-    return sorted(set(categories))
-
-
-def parse_superset_timestamp(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    normalized = value.replace("Z", "+00:00")
-    try:
-        timestamp = datetime.fromisoformat(normalized)
-    except ValueError:
-        try:
-            timestamp = datetime.fromisoformat(normalized.replace(" ", "T"))
-        except ValueError:
-            if normalized.isdigit() and len(normalized) == 14:
-                try:
-                    timestamp = datetime.strptime(normalized, "%Y%m%d%H%M%S")
-                except ValueError:
-                    logger.warning("Unable to parse Superset timestamp: %s", value)
-                    return None
-                else:
-                    timestamp = timestamp.replace(tzinfo=timezone.utc)
-            else:
-                logger.warning("Unable to parse Superset timestamp: %s", value)
-                return None
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=timezone.utc)
-    return timestamp
-
-
-def parse_superset_list(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return [item.strip() for item in value.split(",") if item and item.strip()]
-
-
-def _parse_optional_int(value) -> int | None:
-    try:
-        if value is None:
-            return None
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _prepare_superset_metadata(entry: dict) -> dict:
-    metadata = dict(entry)
-    for key in (
-        "change_tags",
-        "user_groups",
-        "user_former_groups",
-        "page_categories",
-    ):
-        if key in metadata and isinstance(metadata[key], str):
-            metadata[key] = parse_superset_list(metadata[key])
-    if "actor_user" in metadata:
-        metadata["actor_user"] = _parse_optional_int(metadata.get("actor_user"))
-    if "rc_bot" in metadata:
-        metadata["rc_bot"] = _parse_superset_bool(metadata.get("rc_bot"))
-    if "rc_patrolled" in metadata:
-        metadata["rc_patrolled"] = _parse_superset_bool(metadata.get("rc_patrolled"))
-    return metadata
-
-
-def _parse_superset_bool(value) -> bool | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"", "null"}:
-            return None
-        if normalized in {"1", "true", "t", "yes", "y"}:
-            return True
-        if normalized in {"0", "false", "f", "no", "n"}:
-            return False
-    return bool(value)
-
-
-# Simple in-memory cache using Python's built-in LRU cache
-@lru_cache(maxsize=1000)
-def was_user_blocked_after(code: str, family: str, username: str, year: int) -> bool:
-    """
-    Check if user was blocked after a specific year.
-    Uses @lru_cache for automatic caching.
-
-    Timestamp precision is reduced to year to improve cache hit rate,
-    since exact accuracy isn't required for this check.
-
-    Args:
-        code: Wiki code (e.g., "fi")
-        family: Wiki family (e.g., "wikipedia")
-        username: Username to check
-        year: Year to check blocks after
-
-    Returns:
-        True if user was blocked after the given year
-    """
-    try:
-        site = pywikibot.Site(code, family)
-        # Create timestamp for start of year
-        timestamp = pywikibot.Timestamp(year, 1, 1, 0, 0, 0)
-
-        # Get block events after the timestamp
-        # reverse=True means enumerate forward from start timestamp
-        block_events = site.logevents(
-            logtype="block",
-            page=f"User:{username}",
-            start=timestamp,
-            reverse=True,
-            total=1,  # Only need to find one block event
-        )
-
-        # Check if any 'block' action exists
-        for event in block_events:
-            if event.action() == "block":
-                return True
-
-        return False
-
-    except Exception as e:
-        logger.error(f"Error checking blocks for {username}: {e}")
-        # Fail safe: assume NOT blocked if we can't verify
-        # This prevents breaking existing functionality when the API is unavailable
-        return False

@@ -15,7 +15,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
-from .autoreview import run_autoreview_for_page
+from .autoreview.checks import AVAILABLE_CHECKS
+from .autoreview.runner import run_autoreview_for_page
 from .models import (
     EditorProfile,
     PendingPage,
@@ -535,6 +536,63 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
             "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
             "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,
+        }
+    )
+
+
+@require_GET
+def api_available_checks(request: HttpRequest) -> JsonResponse:
+    """List all available autoreview checks."""
+    checks = [
+        {
+            "id": check["id"],
+            "name": check["name"],
+            "priority": check["priority"],
+        }
+        for check in sorted(AVAILABLE_CHECKS, key=lambda c: c["priority"])
+    ]
+    return JsonResponse({"checks": checks})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT"])
+def api_enabled_checks(request: HttpRequest, pk: int) -> JsonResponse:
+    """Get or update enabled checks for a wiki."""
+    wiki = _get_wiki(pk)
+    configuration = wiki.configuration
+
+    if request.method == "PUT":
+        if request.content_type == "application/json":
+            payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+        else:
+            payload = request.POST.dict()
+
+        enabled_checks = payload.get("enabled_checks")
+        if enabled_checks is not None:
+            if not isinstance(enabled_checks, list):
+                return JsonResponse(
+                    {"error": "enabled_checks must be a list of check IDs"},
+                    status=400,
+                )
+
+            all_check_ids = {c["id"] for c in AVAILABLE_CHECKS}
+            invalid_ids = [cid for cid in enabled_checks if cid not in all_check_ids]
+            if invalid_ids:
+                return JsonResponse(
+                    {"error": f"Invalid check IDs: {', '.join(invalid_ids)}"},
+                    status=400,
+                )
+
+            configuration.enabled_checks = enabled_checks
+            configuration.save(update_fields=["enabled_checks", "updated_at"])
+
+    all_check_ids = [c["id"] for c in sorted(AVAILABLE_CHECKS, key=lambda c: c["priority"])]
+    enabled = configuration.enabled_checks if configuration.enabled_checks else all_check_ids
+
+    return JsonResponse(
+        {
+            "enabled_checks": enabled,
+            "all_checks": all_check_ids,
         }
     )
 

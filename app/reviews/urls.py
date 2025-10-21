@@ -20,6 +20,8 @@ urlpatterns = [
     ),
     path("api/wikis/<int:pk>/clear/", views.api_clear_cache, name="api_clear_cache"),
     path("api/wikis/<int:pk>/configuration/", views.api_configuration, name="api_configuration"),
+    path("api/checks/", views.api_available_checks, name="api_available_checks"),
+    path("api/wikis/<int:pk>/checks/", views.api_enabled_checks, name="api_enabled_checks"),
     path("api/wikis/<int:pk>/statistics/", views.api_statistics, name="api_statistics"),
     path(
         "api/wikis/<int:pk>/statistics/charts/",
