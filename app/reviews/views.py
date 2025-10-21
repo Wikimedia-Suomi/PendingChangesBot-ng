@@ -1071,3 +1071,240 @@ def api_statistics_refresh(request: HttpRequest, pk: int) -> JsonResponse:
             ),
         }
     )
+
+
+# ============================================================================
+# LiftWing Model Visualization Endpoints
+# ============================================================================
+
+def liftwing_page(request):
+    """Render the LiftWing visualization page."""
+    return render(request, "reviews/lift.html")
+
+
+@csrf_exempt
+def validate_article(request):
+    """
+    POST JSON: { "wiki": "en", "article": "Page title" }
+    Response JSON: { "valid": bool, "exists": bool, "pageid": int|null,
+        "normalized_title": str|null, "missing": bool, "error": null|str }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    wiki = data.get("wiki", "en")
+    article = data.get("article", "")
+
+    if not article:
+        return JsonResponse({"error": "Missing article title"}, status=400)
+
+    # MediaWiki API to check if article exists
+    api_url = f"https://{wiki}.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "titles": article,
+        "format": "json",
+        "formatversion": 2,
+    }
+
+    try:
+        response = requests.get(api_url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        pages = data.get("query", {}).get("pages", [])
+
+        if not pages:
+            return JsonResponse(
+                {"valid": False, "exists": False, "error": "No pages returned"},
+                status=200,
+            )
+
+        page = pages[0]
+        is_missing = page.get("missing", False)
+        pageid = page.get("pageid")
+        title = page.get("title", article)
+
+        return JsonResponse(
+            {
+                "valid": not is_missing,
+                "exists": not is_missing,
+                "pageid": pageid,
+                "normalized_title": title,
+                "missing": is_missing,
+                "error": None,
+            }
+        )
+
+    except Exception as e:
+        return JsonResponse({"error": f"Validation failed: {str(e)}"}, status=500)
+
+
+@csrf_exempt
+def fetch_revisions(request):
+    """
+    POST JSON: { "wiki": "en", "article": "Page title" }
+    Returns: { "title": str, "revisions": [{revid, timestamp, user, comment}, ...] }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    wiki = data.get("wiki", "en")
+    article = data.get("article", "")
+
+    if not article:
+        return JsonResponse({"error": "Missing article title"}, status=400)
+
+    api_url = f"https://{wiki}.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "titles": article,
+        "prop": "revisions",
+        "rvprop": "ids|timestamp|user|comment",
+        "rvlimit": 50,
+        "format": "json",
+        "formatversion": 2,
+    }
+
+    try:
+        response = requests.get(api_url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        pages = data.get("query", {}).get("pages", [])
+
+        if not pages:
+            return JsonResponse({"error": "No pages found"}, status=404)
+
+        page = pages[0]
+        revisions = page.get("revisions", [])
+
+        return JsonResponse({"title": article, "revisions": revisions})
+
+    except Exception as e:
+        return JsonResponse({"error": f"Failed to fetch revisions: {str(e)}"}, status=500)
+
+
+@csrf_exempt
+def fetch_liftwing_predictions(request):
+    """
+    POST JSON: { "wiki": "en", "model": "articlequality", "revisions": [12345, 67890] }
+    Response: { "predictions": { "12345": {...}, "67890": {...} } }
+    
+    Optimized to use concurrent requests with ThreadPoolExecutor for parallel processing.
+    Much faster than sequential requests.
+    """
+    data = json.loads(request.body)
+    wiki = data.get("wiki", "en")
+    model = data.get("model", "articlequality")
+    revisions = data.get("revisions", [])
+
+    if not revisions:
+        return JsonResponse({"error": "Missing revisions list"}, status=400)
+
+    # Base URL for LiftWing API
+    base_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+    headers = {"User-Agent": USER_AGENT}
+    
+    def fetch_single_prediction(rev_id):
+        """Fetch prediction for a single revision ID"""
+        try:
+            payload = {"rev_id": rev_id}
+            resp = requests.post(base_url, json=payload, headers=headers, timeout=15)
+            resp.raise_for_status()
+            result = resp.json()
+            return (rev_id, result.get("output", result))
+        except requests.exceptions.Timeout:
+            return (rev_id, {"error": "Request timed out"})
+        except requests.exceptions.HTTPError as e:
+            return (rev_id, {"error": f"HTTP {e.response.status_code}: {str(e)}"})
+        except Exception as e:
+            return (rev_id, {"error": str(e)})
+    
+    predictions = {}
+    
+    # Use ThreadPoolExecutor for parallel requests (max 10 concurrent)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit all tasks
+        future_to_rev = {executor.submit(fetch_single_prediction, rev_id): rev_id 
+                        for rev_id in revisions}
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_rev):
+            rev_id, prediction = future.result()
+            predictions[rev_id] = prediction
+
+    return JsonResponse({"predictions": predictions})
+
+
+@csrf_exempt
+def fetch_predictions(request):
+    """
+    POST JSON: { "wiki": "en", "article": "Article Title", "model": "articlequality" }
+    Calls the LiftWing API to fetch predictions for an article.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    wiki = data.get("wiki", "en")
+    article = data.get("article", "")
+    model = data.get("model", "articlequality")
+
+    if not article:
+        return JsonResponse({"error": "Missing article title"}, status=400)
+
+    # Get latest revision ID
+    api_url = f"https://{wiki}.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "titles": article,
+        "prop": "revisions",
+        "rvlimit": 1,
+        "rvprop": "ids",
+        "format": "json",
+        "formatversion": 2,
+    }
+
+    try:
+        response = requests.get(api_url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        pages = data.get("query", {}).get("pages", [])
+
+        if not pages or not pages[0].get("revisions"):
+            return JsonResponse({"error": "No revision found"}, status=404)
+
+        rev_id = pages[0]["revisions"][0]["revid"]
+
+        # Call LiftWing API
+        liftwing_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+        payload = {"rev_id": rev_id}
+        headers = {"User-Agent": USER_AGENT}
+
+        liftwing_response = requests.post(liftwing_url, headers=headers, json=payload, timeout=10)
+        liftwing_response.raise_for_status()
+        prediction = liftwing_response.json()
+
+        return JsonResponse({
+            "wiki": wiki,
+            "article": article,
+            "rev_id": rev_id,
+            "model": model,
+            "prediction": prediction
+        })
+
+    except Exception as e:
+        return JsonResponse({"error": f"Request failed: {str(e)}"}, status=500)
