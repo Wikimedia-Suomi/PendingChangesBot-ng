@@ -18,7 +18,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
-from .autoreview import run_autoreview_for_page
+from .autoreview.checks import AVAILABLE_CHECKS
+from .autoreview.runner import run_autoreview_for_page
 from .models import (
     EditorProfile,
     PendingPage,
@@ -32,6 +33,7 @@ from .services import WikiClient
 logger = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 1
 
+# Constants for LiftWing feature
 VALIDATION_TIMEOUT = 8  # seconds
 USER_AGENT = "PendingChangesBot/1.0 (https://github.com/Wikimedia-Suomi/PendingChangesBot-ng)"
 
