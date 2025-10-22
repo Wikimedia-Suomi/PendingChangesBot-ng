@@ -20,10 +20,20 @@ urlpatterns = [
     path("api/wikis/<int:pk>/clear/", views.api_clear_cache, name="api_clear_cache"),
     path("api/wikis/<int:pk>/configuration/", views.api_configuration, name="api_configuration"),
     path("api/wikis/fetch-diff/", views.fetch_diff, name="fetch_diff"),
-    path("api/statistics/", views.api_statistics, name="api_statistics"),
     path(
-        "api/statistics/available-months/", views.api_available_months, name="api_available_months"
+        "api/flaggedrevs-statistics/",
+        views.api_flaggedrevs_statistics,
+        name="api_flaggedrevs_statistics",
     ),
-    path("api/review-activity/", views.api_review_activity, name="api_review_activity"),
+    path(
+        "api/flaggedrevs-statistics/available-months/",
+        views.api_flaggedrevs_months,
+        name="api_flaggedrevs_months",
+    ),
+    path(
+        "api/flaggedrevs-activity/",
+        views.api_flaggedrevs_activity,
+        name="api_flaggedrevs_activity",
+    ),
     path("statistics/", views.statistics_page, name="statistics_page"),
 ]

@@ -14,12 +14,11 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .autoreview import run_autoreview_for_page
 from .models import (
     EditorProfile,
-    FlaggedRevsStatistics,
     PendingPage,
-    ReviewActivity,
     Wiki,
     WikiConfiguration,
 )
+from .models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
@@ -508,7 +507,7 @@ def fetch_diff(request):
 
 
 @require_GET
-def api_statistics(request: HttpRequest) -> JsonResponse:
+def api_flaggedrevs_statistics(request: HttpRequest) -> JsonResponse:
     wiki_code = request.GET.get("wiki")
     data_series = request.GET.get("series")
     start_date = request.GET.get("start_date")
@@ -552,7 +551,7 @@ def api_statistics(request: HttpRequest) -> JsonResponse:
 
 
 @require_GET
-def api_review_activity(request: HttpRequest) -> JsonResponse:
+def api_flaggedrevs_activity(request: HttpRequest) -> JsonResponse:
     wiki_code = request.GET.get("wiki")
     start_date = request.GET.get("start_date")
     end_date = request.GET.get("end_date")
@@ -586,7 +585,7 @@ def api_review_activity(request: HttpRequest) -> JsonResponse:
 
 
 @require_GET
-def api_available_months(request: HttpRequest) -> JsonResponse:
+def api_flaggedrevs_months(request: HttpRequest) -> JsonResponse:
     months_data = (
         FlaggedRevsStatistics.objects.values_list("date", flat=True).distinct().order_by("-date")
     )
@@ -605,4 +604,4 @@ def statistics_page(request: HttpRequest) -> HttpResponse:
     """Render the statistics visualization page."""
     wikis = Wiki.objects.all().order_by("code")
     wikis_json = json.dumps([{"code": w.code, "name": w.name} for w in wikis])
-    return render(request, "reviews/statistics.html", {"wikis": wikis_json})
+    return render(request, "reviews/flaggedrevs_statistics.html", {"wikis": wikis_json})

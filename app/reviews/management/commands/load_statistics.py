@@ -8,7 +8,8 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from pywikibot.data.superset import SupersetQuery
 
-from reviews.models import FlaggedRevsStatistics, ReviewActivity, Wiki
+from reviews.models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
+from reviews.models.wiki import Wiki
 
 logger = logging.getLogger(__name__)
 

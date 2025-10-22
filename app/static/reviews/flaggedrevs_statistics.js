@@ -921,14 +921,14 @@ createApp({
 
         // Load statistics for each selected wiki
         for (const wiki of state.selectedWikis) {
-          const statsUrl = `/api/statistics/?wiki=${wiki}${queryString ? '&' + queryString : ''}`;
+          const statsUrl = `/api/flaggedrevs-statistics/?wiki=${wiki}${queryString ? '&' + queryString : ''}`;
           promises.push(
             fetch(statsUrl)
               .then(response => response.json())
           );
 
           // Load review activity (stretch goal)
-          const activityUrl = `/api/review-activity/?wiki=${wiki}${queryString ? '&' + queryString : ''}`;
+          const activityUrl = `/api/flaggedrevs-activity/?wiki=${wiki}${queryString ? '&' + queryString : ''}`;
           promises.push(
             fetch(activityUrl)
               .then(response => response.json())
@@ -1195,7 +1195,7 @@ createApp({
     // Load available months from database
     async function loadAvailableMonths() {
       try {
-        const response = await fetch('/api/statistics/available-months/');
+        const response = await fetch('/api/flaggedrevs-statistics/available-months/');
         const data = await response.json();
         state.availableMonths = data.months || [];
       } catch (error) {

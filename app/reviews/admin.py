@@ -7,9 +7,8 @@ from .models import (
     PendingRevision,
     Wiki,
     WikiConfiguration,
-    FlaggedRevsStatistics,
-    ReviewActivity,
 )
+from .models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
 
 
 @admin.register(Wiki)

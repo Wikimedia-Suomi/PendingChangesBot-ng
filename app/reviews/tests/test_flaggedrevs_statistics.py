@@ -8,7 +8,8 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from reviews.models import FlaggedRevsStatistics, ReviewActivity, Wiki
+from reviews.models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
+from reviews.models.wiki import Wiki
 
 
 class FlaggedRevsStatisticsModelTests(TestCase):
