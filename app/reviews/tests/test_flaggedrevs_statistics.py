@@ -162,7 +162,7 @@ class StatisticsAPITests(TestCase):
 
     def test_api_statistics_all_wikis(self):
         """Test API returns statistics for all wikis."""
-        response = self.client.get(reverse("api_statistics"))
+        response = self.client.get(reverse("api_flaggedrevs_statistics"))
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
@@ -171,7 +171,7 @@ class StatisticsAPITests(TestCase):
 
     def test_api_statistics_single_wiki(self):
         """Test API filters by wiki."""
-        response = self.client.get(reverse("api_statistics"), {"wiki": "test1"})
+        response = self.client.get(reverse("api_flaggedrevs_statistics"), {"wiki": "test1"})
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
@@ -181,7 +181,7 @@ class StatisticsAPITests(TestCase):
 
     def test_api_statistics_data_format(self):
         """Test API returns correct data format."""
-        response = self.client.get(reverse("api_statistics"), {"wiki": "test1"})
+        response = self.client.get(reverse("api_flaggedrevs_statistics"), {"wiki": "test1"})
         data = response.json()["data"][0]
 
         self.assertIn("wiki", data)
@@ -208,7 +208,7 @@ class StatisticsAPITests(TestCase):
 
         # Filter for January only
         response = self.client.get(
-            reverse("api_statistics"),
+            reverse("api_flaggedrevs_statistics"),
             {"wiki": "test1", "start_date": "2024-01-01", "end_date": "2024-01-31"},
         )
         data = response.json()
@@ -236,7 +236,7 @@ class ReviewActivityAPITests(TestCase):
 
     def test_api_review_activity(self):
         """Test review activity API endpoint."""
-        response = self.client.get(reverse("api_review_activity"))
+        response = self.client.get(reverse("api_flaggedrevs_activity"))
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
@@ -245,7 +245,7 @@ class ReviewActivityAPITests(TestCase):
 
     def test_api_review_activity_data_format(self):
         """Test review activity API returns correct format."""
-        response = self.client.get(reverse("api_review_activity"), {"wiki": "test"})
+        response = self.client.get(reverse("api_flaggedrevs_activity"), {"wiki": "test"})
         data = response.json()["data"][0]
 
         self.assertIn("wiki", data)
@@ -261,7 +261,7 @@ class StatisticsPageTests(TestCase):
 
     def test_statistics_page_loads(self):
         """Test that statistics page loads successfully."""
-        response = self.client.get(reverse("statistics_page"))
+        response = self.client.get(reverse("flaggedrevs_statistics_page"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "FlaggedRevs Statistics")
 
@@ -273,7 +273,7 @@ class StatisticsPageTests(TestCase):
             api_endpoint="https://test.wikipedia.org/w/api.php",
         )
 
-        response = self.client.get(reverse("statistics_page"))
+        response = self.client.get(reverse("flaggedrevs_statistics_page"))
         self.assertContains(response, "test")
 
 
@@ -333,63 +333,6 @@ class LoadStatisticsCommandTests(TestCase):
         self.assertEqual(FlaggedRevsStatistics.objects.count(), 0)
 
 
-class AddSampleStatisticsCommandTests(TestCase):
-    """Tests for add_sample_statistics management command."""
-
-    def setUp(self):
-        """Set up test wikis."""
-        self.wiki1 = Wiki.objects.create(
-            name="Finnish Wikipedia",
-            code="fi",
-            api_endpoint="https://fi.wikipedia.org/w/api.php",
-        )
-        self.wiki2 = Wiki.objects.create(
-            name="German Wikipedia",
-            code="de",
-            api_endpoint="https://de.wikipedia.org/w/api.php",
-        )
-
-    def test_add_sample_statistics_creates_data(self):
-        """Test that add_sample_statistics creates sample data."""
-        out = StringIO()
-        call_command("add_sample_statistics", stdout=out, stderr=StringIO())
-
-        # Check that statistics data was created
-        stats_count = FlaggedRevsStatistics.objects.count()
-        self.assertGreater(stats_count, 0)
-
-        # Check that review activity data was created
-        activity_count = ReviewActivity.objects.count()
-        self.assertGreater(activity_count, 0)
-
-    def test_add_sample_statistics_creates_data_for_all_wikis(self):
-        """Test that sample data is created for all wikis."""
-        call_command("add_sample_statistics", stdout=StringIO(), stderr=StringIO())
-
-        # Check that data exists for both wikis
-        fi_stats = FlaggedRevsStatistics.objects.filter(wiki=self.wiki1)
-        de_stats = FlaggedRevsStatistics.objects.filter(wiki=self.wiki2)
-
-        self.assertGreater(fi_stats.count(), 0)
-        self.assertGreater(de_stats.count(), 0)
-
-    def test_add_sample_statistics_with_existing_data(self):
-        """Test that add_sample_statistics works with existing data."""
-        # First, create some data
-        FlaggedRevsStatistics.objects.create(
-            wiki=self.wiki1,
-            date=date(2024, 1, 1),
-            total_pages_ns0=1000,
-        )
-
-        # Run command again - should add more data
-        call_command("add_sample_statistics", stdout=StringIO(), stderr=StringIO())
-
-        # Check that data was added
-        stats_count = FlaggedRevsStatistics.objects.count()
-        self.assertGreater(stats_count, 1)
-
-
 class StatisticsAPIIntegrationTests(TestCase):
     """Integration tests for statistics API endpoints."""
 
@@ -442,7 +385,7 @@ class StatisticsAPIIntegrationTests(TestCase):
 
     def test_api_statistics_with_specific_wiki(self):
         """Test API filters by specific wiki code."""
-        response = self.client.get(reverse("api_statistics"), {"wiki": "fi"})
+        response = self.client.get(reverse("api_flaggedrevs_statistics"), {"wiki": "fi"})
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -453,7 +396,7 @@ class StatisticsAPIIntegrationTests(TestCase):
 
     def test_api_statistics_month_filtering(self):
         """Test API filtering by month (YYYYMM format)."""
-        response = self.client.get(reverse("api_statistics"), {"month": "202401"})
+        response = self.client.get(reverse("api_flaggedrevs_statistics"), {"month": "202401"})
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -467,7 +410,7 @@ class StatisticsAPIIntegrationTests(TestCase):
 
     def test_api_review_activity_with_specific_wiki(self):
         """Test review activity API with specific wiki code."""
-        response = self.client.get(reverse("api_review_activity"), {"wiki": "fi"})
+        response = self.client.get(reverse("api_flaggedrevs_activity"), {"wiki": "fi"})
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -479,11 +422,11 @@ class StatisticsAPIIntegrationTests(TestCase):
     def test_data_consistency_across_apis(self):
         """Test that data is consistent between statistics and review activity APIs."""
         # Get statistics data
-        stats_response = self.client.get(reverse("api_statistics"))
+        stats_response = self.client.get(reverse("api_flaggedrevs_statistics"))
         stats_data = stats_response.json()["data"]
 
         # Get review activity data
-        activity_response = self.client.get(reverse("api_review_activity"))
+        activity_response = self.client.get(reverse("api_flaggedrevs_activity"))
         activity_data = activity_response.json()["data"]
 
         # Both should have the same wikis

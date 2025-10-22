@@ -49,5 +49,9 @@ urlpatterns = [
         views.api_flaggedrevs_activity,
         name="api_flaggedrevs_activity",
     ),
-    path("statistics/", views.statistics_page, name="statistics_page"),
+    path(
+        "flaggedrevs-statistics/",
+        views.flaggedrevs_statistics_page,
+        name="flaggedrevs_statistics_page",
+    ),
 ]
