@@ -554,6 +554,9 @@ createApp({
       state.statistics.loading = true;
       state.statistics.error = "";
       try {
+        // Update URL parameters
+        updateStatisticsUrl();
+
         // Build query parameters
         const params = new URLSearchParams();
         if (state.statistics.timeFilter !== "all") {
@@ -618,7 +621,29 @@ createApp({
 
     function setTimeFilter(filter) {
       state.statistics.timeFilter = filter;
+      updateStatisticsUrl();
       loadStatistics();
+    }
+
+    function updateStatisticsUrl() {
+      // Update URL parameters without reloading the page
+      if (!window.location.pathname.includes('/statistics/')) {
+        return;
+      }
+      const params = new URLSearchParams(window.location.search);
+      params.set('wiki', state.selectedWikiId);
+      if (state.statistics.timeFilter !== 'all') {
+        params.set('time_filter', state.statistics.timeFilter);
+      } else {
+        params.delete('time_filter');
+      }
+      if (state.statistics.excludeAutoReviewers) {
+        params.set('exclude_auto_reviewers', 'true');
+      } else {
+        params.delete('exclude_auto_reviewers');
+      }
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState({}, '', newUrl);
     }
 
     function renderCharts() {
@@ -1063,9 +1088,20 @@ createApp({
     onMounted(() => {
       syncForms();
       loadAvailableChecks();
-      // If on statistics page and have a wiki selected, load statistics for wiki
-      if (window.location.pathname.includes('/statistics/') && state.selectedWikiId) {
-        loadStatistics();
+      // If on statistics page, read URL params and load statistics
+      if (window.location.pathname.includes('/statistics/')) {
+        const params = new URLSearchParams(window.location.search);
+        const timeFilter = params.get('time_filter');
+        if (timeFilter && ['day', 'week', 'all'].includes(timeFilter)) {
+          state.statistics.timeFilter = timeFilter;
+        }
+        const excludeAutoReviewers = params.get('exclude_auto_reviewers');
+        if (excludeAutoReviewers === 'true') {
+          state.statistics.excludeAutoReviewers = true;
+        }
+        if (state.selectedWikiId) {
+          loadStatistics();
+        }
       }
     });
 

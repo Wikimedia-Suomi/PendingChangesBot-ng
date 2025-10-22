@@ -72,11 +72,25 @@
           </a>
         </div>
 
+        <div class="field mb-4" v-if="state.selectedWikiId">
+          <label class="label is-small">FlaggedRevs Quick Links:</label>
+          <div class="buttons">
+            <a :href="buildFlaggedRevsUrl('ValidationStatistics')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
+              Validation Statistics
+            </a>
+            <a :href="buildFlaggedRevsUrl('PendingChanges')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
+              Pending Changes
+            </a>
+            <a :href="buildFlaggedRevsUrl('Log/Review')" class="button is-small is-link is-light" target="_blank" rel="noopener noreferrer">
+              Review Log
+            </a>
+          </div>
+        </div>
+
         <!-- Filter Controls -->
         <div class="box mb-4">
-          <h4 class="title is-6">Filters</h4>
+          <h4 class="title is-6">Time Period</h4>
           <div class="field">
-            <label class="label is-small">Time Period</label>
             <div class="control">
               <div class="buttons has-addons">
                 <button
@@ -102,13 +116,6 @@
                 </button>
               </div>
             </div>
-          </div>
-          <div class="field">
-            <label class="checkbox">
-              <input type="checkbox" v-model="state.statistics.excludeAutoReviewers" @change="loadStatistics">
-              Show only users without automatic review rights
-              <span class="tag is-info is-light ml-2">Priority use case</span>
-            </label>
           </div>
         </div>
 
@@ -171,6 +178,13 @@
 
         <!-- Data Tables -->
         <div v-if="state.statistics.topReviewers.length || state.statistics.topReviewedUsers.length">
+          <div class="field mb-4">
+            <label class="checkbox">
+              <input type="checkbox" v-model="state.statistics.excludeAutoReviewers" @change="loadStatistics">
+              Show only users without automatic review rights
+              <span class="tag is-info is-light ml-2">Priority use case</span>
+            </label>
+          </div>
           <div class="columns">
             <div class="column">
               <div class="box">

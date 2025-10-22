@@ -1,4 +1,5 @@
 """Tests for superseded additions check."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -52,16 +53,15 @@ class SupersededAdditionsTests(TestCase):
         mock_revision.page.wiki.code = "fi"
         mock_revision.parent_wikitext = "Original text"
         mock_revision.wikitext = "Original text New addition here"
+        mock_revision.get_wikitext.return_value = "Original text New addition here"
+        mock_revision.parentid = None
 
         current_stable = "Original text"
         threshold = 0.7
 
-        result = is_addition_superseded(
-            mock_revision, current_stable, threshold
-        )
+        result = is_addition_superseded(mock_revision, current_stable, threshold)
 
-        self.assertTrue(result["is_superseded"])
-        self.assertIn("superseded", result["message"].lower())
+        self.assertTrue(result)
 
     def test_is_addition_superseded_partially_removed(self):
         """Test case 2: Addition was partially removed (majority removed)."""
@@ -69,15 +69,17 @@ class SupersededAdditionsTests(TestCase):
         mock_revision.page.wiki.code = "fi"
         mock_revision.parent_wikitext = "Original text."
         mock_revision.wikitext = "Original text. Addition of many words and sentences here."
+        mock_revision.get_wikitext.return_value = (
+            "Original text. Addition of many words and sentences here."
+        )
+        mock_revision.parentid = None
 
         current_stable = "Original text. Addition of"
         threshold = 0.7
 
-        result = is_addition_superseded(
-            mock_revision, current_stable, threshold
-        )
+        result = is_addition_superseded(mock_revision, current_stable, threshold)
 
-        self.assertTrue(result["is_superseded"])
+        self.assertTrue(result)
 
     def test_is_addition_superseded_content_still_present(self):
         """Test case 4: Addition content is still largely present (not superseded)."""
@@ -85,12 +87,14 @@ class SupersededAdditionsTests(TestCase):
         mock_revision.page.wiki.code = "fi"
         mock_revision.parent_wikitext = "Original text."
         mock_revision.wikitext = "Original text. New section with important details."
+        mock_revision.get_wikitext.return_value = (
+            "Original text. New section with important details."
+        )
+        mock_revision.parentid = None  # No parent means extract_additions will return the full text
 
         current_stable = "Original text. New section with important details."
         threshold = 0.7
 
-        result = is_addition_superseded(
-            mock_revision, current_stable, threshold
-        )
+        result = is_addition_superseded(mock_revision, current_stable, threshold)
 
-        self.assertFalse(result["is_superseded"])
+        self.assertFalse(result)

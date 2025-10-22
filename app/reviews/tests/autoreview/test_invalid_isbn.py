@@ -1,4 +1,5 @@
 """Tests for ISBN validation and detection checks."""
+
 from __future__ import annotations
 
 from django.test import TestCase
@@ -219,4 +220,3 @@ class ISBNDetectionTests(TestCase):
         text4 = "isbn: 9780306406158, 2020"
         invalid = find_invalid_isbns(text4)
         self.assertEqual(len(invalid), 1)
-

@@ -1,4 +1,5 @@
 """Tests for user block checks."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -49,6 +50,7 @@ class AutoreviewBlockedUserTests(TestCase):
 
         # Create a mock WikiClient
         from reviews.services import WikiClient
+
         mock_client = WikiClient(mock_wiki)
 
         # Create context
@@ -58,7 +60,7 @@ class AutoreviewBlockedUserTests(TestCase):
             profile=profile,
             auto_groups={},
             blocking_categories={},
-            redirect_aliases=[]
+            redirect_aliases=[],
         )
 
         # Call the check

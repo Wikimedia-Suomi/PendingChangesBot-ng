@@ -32,7 +32,32 @@ CACHE_TTL = 60 * 60 * 1
 
 
 def calculate_percentile(values: list[float], percentile: float) -> float:
-    """Calculate the percentile of a list of values."""
+    """
+    Calculate the percentile of a list of values using linear interpolation.
+
+    This function implements the standard percentile calculation method:
+    1. Sort the values in ascending order
+    2. Calculate the index position: (n-1) * (percentile/100)
+    3. If the index is not a whole number, interpolate between the floor and ceiling values
+
+    For median (P50), this returns the middle value for odd-length lists,
+    or the average of the two middle values for even-length lists.
+
+    Args:
+        values: List of numeric values to calculate percentile from
+        percentile: The percentile to calculate (0-100), e.g., 50 for median
+
+    Returns:
+        The calculated percentile value, or 0.0 if the list is empty
+
+    Examples:
+        >>> calculate_percentile([1, 2, 3, 4, 5], 50)  # Median
+        3.0
+        >>> calculate_percentile([1, 2, 3, 4], 50)  # Median of even list
+        2.5
+        >>> calculate_percentile([1, 5, 10, 20], 90)  # P90
+        17.0
+    """
     if not values:
         return 0.0
     sorted_values = sorted(values)
@@ -768,14 +793,22 @@ def api_statistics_charts(request: HttpRequest, pk: int) -> JsonResponse:
         "reviewed_timestamp", "reviewer_name", "review_delay_days"
     ).order_by("reviewed_timestamp")
 
-    # Group data by date
+    # Group data by date or hour depending on time filter
     reviewers_by_date = defaultdict(set)
     pending_by_date = defaultdict(int)
     delays_by_date = defaultdict(list)
 
+    # For "day" filter, group by hour; otherwise by date
+    use_hourly = time_filter == "day"
+
     for record in records:
-        date = record["reviewed_timestamp"].date()
-        date_str = date.isoformat()
+        timestamp = record["reviewed_timestamp"]
+        if use_hourly:
+            # Group by hour: format as "YYYY-MM-DD HH:00"
+            date_str = timestamp.strftime("%Y-%m-%d %H:00")
+        else:
+            # Group by date: format as "YYYY-MM-DD"
+            date_str = timestamp.date().isoformat()
 
         reviewers_by_date[date_str].add(record["reviewer_name"])
         pending_by_date[date_str] += 1

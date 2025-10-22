@@ -1,4 +1,5 @@
 """Tests for ORES score checks."""
+
 from __future__ import annotations
 
 import json
@@ -43,7 +44,7 @@ class OresScoreTests(TestCase):
             profile=None,
             auto_groups={},
             blocking_categories={},
-            redirect_aliases=[]
+            redirect_aliases=[],
         )
 
     @patch("reviews.models.ModelScores.objects.create")
@@ -84,7 +85,8 @@ class OresScoreTests(TestCase):
         mock_revision.page.wiki.family = "wikipedia"
 
         context = self._create_context(
-                      mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.0)
+            mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.0
+        )
         result = check_ores_scores(context)
 
         self.assertEqual(result.status, "fail")
@@ -129,7 +131,8 @@ class OresScoreTests(TestCase):
         mock_revision.page.wiki.family = "wikipedia"
 
         context = self._create_context(
-                      mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.5)
+            mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.5
+        )
         result = check_ores_scores(context)
 
         self.assertEqual(result.status, "fail")
@@ -180,10 +183,11 @@ class OresScoreTests(TestCase):
         mock_revision.page.wiki.family = "wikipedia"
 
         context = self._create_context(
-                      mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.5)
+            mock_revision, damaging_threshold=0.7, goodfaith_threshold=0.5
+        )
         result = check_ores_scores(context)
 
-        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.status, "ok")
         self.assertIsNone(result.decision)
 
     def test_ores_checks_disabled_when_thresholds_zero(self):
@@ -195,7 +199,8 @@ class OresScoreTests(TestCase):
         mock_revision.page.wiki.family = "wikipedia"
 
         context = self._create_context(
-                      mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.0)
+            mock_revision, damaging_threshold=0.0, goodfaith_threshold=0.0
+        )
         result = check_ores_scores(context)
 
         self.assertEqual(result.status, "skip")
@@ -223,7 +228,6 @@ class OresScoreTests(TestCase):
             pageid=123,
             title="Test Page",
             stable_revid=12340,
-
         )
 
         revision = PendingRevision.objects.create(
@@ -231,7 +235,7 @@ class OresScoreTests(TestCase):
             page=page,
             comment="Test edit",
             timestamp="2025-10-10 01:01:01Z",
-            age_at_fetch = timedelta(hours=4),
+            age_at_fetch=timedelta(hours=4),
         )
 
         # First call - no cache
@@ -269,4 +273,4 @@ class OresScoreTests(TestCase):
 
         # Verify cache was created
         self.assertTrue(mock_model_scores_create.called)
-        self.assertEqual(result1.status, "pass")
+        self.assertEqual(result1.status, "ok")
