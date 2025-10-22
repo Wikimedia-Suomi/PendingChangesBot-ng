@@ -293,7 +293,7 @@ class ViewTests(TestCase):
         self.assertEqual(config.ores_damaging_threshold, 0.0)
         self.assertEqual(config.ores_goodfaith_threshold, 1.0)
 
-    @mock.patch("reviews.services.pywikibot.Site")
+    @mock.patch("reviews.services.wiki_client.pywikibot.Site")
     def test_api_autoreview_marks_bot_revision_auto_approvable(self, mock_site):
         page = PendingPage.objects.create(
             wiki=self.wiki,
@@ -332,7 +332,7 @@ class ViewTests(TestCase):
         self.assertEqual(result["tests"][1]["status"], "ok")
         self.assertEqual(result["tests"][1]["id"], "bot-user")
 
-    @mock.patch("reviews.services.pywikibot.Site")
+    @mock.patch("reviews.services.wiki_client.pywikibot.Site")
     def test_api_autoreview_allows_configured_user_groups(self, mock_site):
         config = self.wiki.configuration
         config.auto_approved_groups = ["sysop"]
@@ -372,7 +372,7 @@ class ViewTests(TestCase):
         self.assertEqual(result["tests"][3]["status"], "ok")
         self.assertEqual(result["tests"][3]["id"], "auto-approved-group")
 
-    @mock.patch("reviews.services.pywikibot.Site")
+    @mock.patch("reviews.services.wiki_client.pywikibot.Site")
     def test_api_autoreview_defaults_to_profile_rights(self, mock_site):
         page = PendingPage.objects.create(
             wiki=self.wiki,
@@ -410,7 +410,7 @@ class ViewTests(TestCase):
         self.assertEqual(result["decision"]["status"], "approve")
         self.assertEqual(len(result["tests"]), 5)
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_api_autoreview_blocks_on_blocking_categories(self, mock_site):
         config = self.wiki.configuration
         config.blocking_categories = ["Secret"]
@@ -518,12 +518,10 @@ class ViewTests(TestCase):
         # But there's 1 more request (possibly from another check)
         self.assertEqual(len(fake_site.requests), 3)
 
-    @mock.patch("reviews.models.pywikibot.Site")
-    @mock.patch("reviews.services.pywikibot.Site")
-    @mock.patch("reviews.autoreview.is_living_person")
-    @mock.patch("reviews.autoreview.logger")
+    @mock.patch("reviews.services.wiki_client.pywikibot.Site")
+    @mock.patch("reviews.autoreview.utils.living_person.is_living_person")
     def test_api_autoreview_requires_manual_review_when_no_rules_apply(
-        self, mock_logger, mock_is_living, mock_service_site, mock_model_site
+        self, mock_is_living, mock_service_site
     ):
         mock_is_living.return_value = False  # Mock to prevent pywikibot calls
         mock_service_site.return_value.simple_request.return_value.submit.return_value = {
@@ -589,12 +587,9 @@ class ViewTests(TestCase):
         # Last test status OK or not_ok acceptable; ensure no unexpected 'error'
         self.assertNotEqual(tests[-1]["status"], "error")
 
-    @mock.patch("reviews.services.pywikibot.Site")
-    @mock.patch("reviews.autoreview.is_living_person", return_value=False)
-    @mock.patch("reviews.autoreview.logger")
-    def test_api_autoreview_orders_revisions_from_oldest_to_newest(
-        self, mock_logger, mock_is_living, mock_site
-    ):
+    @mock.patch("reviews.services.wiki_client.pywikibot.Site")
+    @mock.patch("reviews.autoreview.utils.living_person.is_living_person", return_value=False)
+    def test_api_autoreview_orders_revisions_from_oldest_to_newest(self, mock_is_living, mock_site):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=104,
