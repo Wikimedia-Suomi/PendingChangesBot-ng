@@ -1,0 +1,24 @@
+# Example requirements.txt with mypy and security tools
+# Add these lines to your existing requirements.txt
+
+# Existing dependencies
+Django>=4.2,<5
+pywikibot>=9.0.0
+mwparserfromhell>=0.6.6
+requests>=2.31.0
+ruff>=0.6.0
+pre-commit>=3.0.0
+beautifulsoup4>=4.12.0
+lxml>=5.2.0
+
+# NEW: Type checking
+mypy>=1.8.0
+django-stubs>=4.2.0
+types-requests>=2.31.0
+types-beautifulsoup4>=4.12.0
+
+# NEW: Security scanning
+pip-audit>=2.7.0
+
+# Note: Bandit security rules are already included in Ruff
+# No need to install standalone Bandit

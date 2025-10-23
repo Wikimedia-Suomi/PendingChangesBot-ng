@@ -1,0 +1,102 @@
+# Example pyproject.toml configuration with mypy and enhanced security scanning
+# This is a REFERENCE - merge these sections into your existing pyproject.toml
+
+[project]
+name = "PendingChangesBot-ng"
+description = "A bot to help review pending changes on Wikimedia projects"
+requires-python = ">=3.9"
+
+# ============================================================================
+# RUFF CONFIGURATION (Enhanced with Security Rules)
+# ============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+extend-exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    "migrations",
+    "static"
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort (import sorting)
+    "UP",  # pyupgrade (enforce modern Python syntax)
+    "S",   # bandit security rules (NEW)
+]
+
+ignore = [
+    "E203",
+    "UP007",  # Use X | Y for type annotations (requires Python 3.10+)
+    # Security rule exceptions (add as needed):
+    # "S101",  # Use of assert (common in tests)
+    # "S311",  # Use of random (not cryptographically secure)
+]
+
+# Allow certain security violations in tests
+[tool.ruff.lint.per-file-ignores]
+"*/tests/*" = ["S101", "S105", "S106"]  # Allow assert, hardcoded passwords in tests
+
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+# ============================================================================
+# MYPY CONFIGURATION (NEW)
+# ============================================================================
+[tool.mypy]
+python_version = "3.9"
+plugins = ["mypy_django_plugin.main"]
+
+# Reporting
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+show_error_codes = true
+pretty = true
+
+# Type checking strictness (start lenient, increase gradually)
+disallow_untyped_defs = false       # Set to true once type coverage improves
+disallow_incomplete_defs = false    # Set to true once type coverage improves
+disallow_untyped_calls = false      # Set to true once type coverage improves
+check_untyped_defs = true
+no_implicit_optional = true
+strict_optional = true
+
+# Import handling
+warn_redundant_casts = true
+warn_unreachable = true
+
+# Exclude patterns
+exclude = [
+    "migrations/",
+    "user-config\\.py",
+    "__pycache__",
+    "build/",
+    "dist/",
+]
+
+# Third-party library overrides
+[[tool.mypy.overrides]]
+module = [
+    "pywikibot.*",
+    "mwparserfromhell.*",
+]
+ignore_missing_imports = true
+
+# Django stubs configuration
+[tool.django-stubs]
+django_settings_module = "reviewer.settings"
+strict_settings = false  # Set to false if using dynamic settings
