@@ -151,6 +151,7 @@ SELECT
    a.actor_name,
    a.actor_user,
    group_concat(DISTINCT(ctd_name)) AS change_tags,
+   group_concat(DISTINCT(ct_params)) AS change_tags_params,
    group_concat(DISTINCT(ug_group)) AS user_groups,
    group_concat(DISTINCT(ufg_group)) AS user_former_groups,
    group_concat(DISTINCT(cl_to)) AS page_categories,
@@ -378,6 +379,7 @@ def _prepare_superset_metadata(entry: dict) -> dict:
     metadata = dict(entry)
     for key in (
         "change_tags",
+        "change_tags_params",
         "user_groups",
         "user_former_groups",
         "page_categories",

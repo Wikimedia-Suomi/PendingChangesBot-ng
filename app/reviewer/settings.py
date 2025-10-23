@@ -125,6 +125,10 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 
 PYWIKIBOT_SITE_FAMILY = os.getenv("PYWIKIBOT_SITE_FAMILY", "wikipedia")
 
+# Revert detection configuration
+# Enable/disable revert detection for already-reviewed edits
+ENABLE_REVERT_DETECTION = os.getenv("ENABLE_REVERT_DETECTION", "True").lower() in ("true", "1", "yes")
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
