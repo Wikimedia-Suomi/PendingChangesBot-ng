@@ -81,6 +81,13 @@ the steps below once per user account that will run PendingChangesBot:
 
 3. **Log in with Pywikibot**
 
+   - Using management command
+
+   ```bash
+   python manage.py auth_with_username_and_password
+   ```
+
+
    - On **Windows**:
 
    ```bash
@@ -165,6 +172,29 @@ python manage.py test
 python3 manage.py test
 ```
 
+## Code Coverage
+
+Run tests with coverage measurement:
+
+```bash
+cd app
+coverage run --source='.' manage.py test
+```
+
+View coverage report in terminal:
+
+```bash
+coverage report
+```
+
+Generate and view HTML coverage report:
+
+```bash
+coverage html
+open htmlcov/index.html  # On macOS
+# Or navigate to htmlcov/index.html in your browser
+```
+
 ## Code Quality & Security
 
 This project uses automated checks to catch bugs and security issues before they reach production.
@@ -198,7 +228,7 @@ python -m pip_audit -r requirements.txt
 
 The CI will run these same checks on every PR.
 
-### Code Formatting and Linting
+## Code Formatting and Linting
 
 This project uses [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting.
 

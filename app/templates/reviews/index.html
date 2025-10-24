@@ -11,6 +11,7 @@
       rel="stylesheet"
       href="https://fi.wikipedia.org/w/load.php?modules=mediawiki.diff.styles&only=styles"
     />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   </head>
   <body>
     {% verbatim %}
@@ -38,6 +39,14 @@
                 </div>
                 <div class="control">
                   <button class="button is-warning" @click="clearCache">Clear cache</button>
+                </div>
+              </div>
+              <div class="field mt-3" v-if="currentWiki">
+                <label class="label is-small">App Statistics:</label>
+                <div class="buttons">
+                  <a :href="`/statistics/?wiki=${state.selectedWikiId}`" class="button is-small is-primary is-light" target="_blank" rel="noopener noreferrer">
+                    Review Statistics
+                  </a>
                 </div>
               </div>
               <div class="field mt-3" v-if="currentWiki">
@@ -84,6 +93,48 @@
               <div class="column">
                 <label class="label">Auto-approved user groups</label>
                 <textarea class="textarea" rows="4" v-model="forms.autoApprovedGroups" placeholder="One user group per line"></textarea>
+              </div>
+            </div>
+            <div class="content mt-4">
+              <h3 class="title is-6">ORES Edit Quality Thresholds</h3>
+              <p class="help">Set to 0 to disable checks. Values range from 0.0 to 1.0.</p>
+            </div>
+            <div class="columns">
+              <div class="column">
+                <div class="field">
+                  <label class="label">Damaging threshold</label>
+                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresDamagingThreshold" placeholder="0.7">
+                  <p class="help">Edits with damaging probability above this will be blocked</p>
+                </div>
+                <div class="field mt-3">
+                  <label class="label">Goodfaith threshold</label>
+                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresGoodfaithThreshold" placeholder="0.5">
+                  <p class="help">Edits with goodfaith probability below this will be blocked</p>
+                </div>
+              </div>
+              <div class="column">
+                <div class="field">
+                  <label class="label">Damaging threshold (Living persons)</label>
+                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresDamagingThresholdLiving" placeholder="0.5">
+                  <p class="help">Stricter threshold for biographies of living persons</p>
+                </div>
+                <div class="field mt-3">
+                  <label class="label">Goodfaith threshold (Living persons)</label>
+                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.oresGoodfaithThresholdLiving" placeholder="0.7">
+                  <p class="help">Stricter threshold for biographies of living persons</p>
+                </div>
+              </div>
+            </div>
+            <div class="content mt-5">
+              <h3 class="title is-6">Enabled Autoreview Checks</h3>
+              <p class="help">Select which checks should run during autoreview. All checks are enabled by default.</p>
+            </div>
+            <div class="columns is-multiline">
+              <div class="column is-half" v-for="check in state.availableChecks" :key="check.id">
+                <label class="checkbox">
+                  <input type="checkbox" :value="check.id" v-model="forms.enabledChecks">
+                  <strong class="ml-2">{{ check.name }}</strong>
+                </label>
               </div>
             </div>
             <div class="buttons">
@@ -138,9 +189,9 @@
               <div class="show-diff-checkbox">
                 <input
                   class="large-checkbox"
-                  type="checkbox" 
-                  id="showdiff" 
-                  name="showdiff" 
+                  type="checkbox"
+                  id="showdiff"
+                  name="showdiff"
                   v-model="state.diffs.showDiffs"
                   @change="saveDiffsToLocalStorage"
                 >
@@ -173,9 +224,9 @@
                   <div class="show-diff-checkbox">
                     <input
                       class="large-checkbox"
-                      type="checkbox" 
-                      id="showPagediff" 
-                      name="showPagediff" 
+                      type="checkbox"
+                      id="showPagediff"
+                      name="showPagediff"
                       v-model="state.diffs.showDiffsByPage[page.pageid]"
                     >
                     <label for="showPagediff">Show Diffs</label>
