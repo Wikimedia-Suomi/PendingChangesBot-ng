@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
-from .autoreview import run_autoreview_for_page
+from .autoreview import run_autoreview_for_page, generate_approval_comment_and_revision
 from .models import EditorProfile, PendingPage, Wiki, WikiConfiguration
 from .services import WikiClient
 
@@ -346,12 +346,20 @@ def api_autoreview(request: HttpRequest, pk: int, pageid: int) -> JsonResponse:
         pageid=pageid,
     )
     results = run_autoreview_for_page(page)
+    
+    # Generate consolidated approval comment and find highest approvable revision
+    max_approvable_revid, approval_comment = generate_approval_comment_and_revision(results)
+    
     return JsonResponse(
         {
             "pageid": page.pageid,
             "title": page.title,
             "mode": "dry-run",
             "results": results,
+            "approval_summary": {
+                "max_approvable_revid": max_approvable_revid,
+                "approval_comment": approval_comment,
+            },
         }
     )
 

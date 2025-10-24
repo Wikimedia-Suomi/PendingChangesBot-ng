@@ -69,6 +69,64 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     return results
 
 
+def generate_approval_comment_and_revision(autoreview_results: list[dict]) -> tuple[int | None, str]:
+    """
+    Generate consolidated approval comment and determine highest approvable revision ID.
+    
+    This function processes autoreview results and determines the maximum revision ID
+    that can be safely approved, along with creating a consolidated comment that
+    summarizes the reasons for all intermediate approvals.
+    
+    Args:
+        autoreview_results: Results from run_autoreview_for_page() containing approval decisions
+        
+    Returns:
+        Tuple of (rev_id, comment) where:
+        - rev_id: Highest approved revision ID (None if no revisions can be approved)
+        - comment: Consolidated summary of all approvals
+        
+    Example:
+        >>> results = [{"revid": 12345, "decision": {"status": "approve", "reason": "user was bot"}},
+        ...           {"revid": 12346, "decision": {"status": "approve", "reason": "no content change"}}]
+        >>> rev_id, comment = generate_approval_comment_and_revision(results)
+        >>> print(comment)
+        "rev_id 12345 approved because user was bot, rev_id 12346 approved because no content change"
+    """
+    # Filter for approved revisions only
+    approved_revisions = [
+        result for result in autoreview_results 
+        if result["decision"]["status"] == "approve"
+    ]
+    
+    if not approved_revisions:
+        return None, "No revisions can be approved"
+    
+    # Find the highest (latest) revision ID that can be approved
+    max_revid = max(result["revid"] for result in approved_revisions)
+    
+    # Group revisions by their approval reason to create concise comments
+    reason_groups = {}
+    for result in approved_revisions:
+        reason = result["decision"]["reason"]
+        if reason not in reason_groups:
+            reason_groups[reason] = []
+        reason_groups[reason].append(result["revid"])
+    
+    # Generate consolidated comment
+    comment_parts = []
+    for reason, rev_ids in reason_groups.items():
+        if len(rev_ids) == 1:
+            comment_parts.append(f"rev_id {rev_ids[0]} approved because {reason}")
+        else:
+            # Group consecutive revisions with same reason
+            rev_ids_sorted = sorted(rev_ids)
+            comment_parts.append(f"rev_id {', '.join(map(str, rev_ids_sorted))} approved because {reason}")
+    
+    comment = ", ".join(comment_parts)
+    
+    return max_revid, comment
+
+
 def _evaluate_revision(
     revision: PendingRevision,
     client: WikiClient,
