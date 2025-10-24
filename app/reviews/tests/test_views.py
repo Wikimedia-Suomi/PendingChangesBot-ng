@@ -353,11 +353,13 @@ class ViewTests(TestCase):
         self.assertEqual(len(data["results"]), 1)
         result = data["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 2)
+        self.assertEqual(len(result["tests"]), 3)
         self.assertEqual(result["tests"][0]["status"], "ok")
-        self.assertEqual(result["tests"][0]["id"], "manual-unapproval")
+        self.assertEqual(result["tests"][0]["id"], "broken-wikicode")
         self.assertEqual(result["tests"][1]["status"], "ok")
-        self.assertEqual(result["tests"][1]["id"], "bot-user")
+        self.assertEqual(result["tests"][1]["id"], "manual-unapproval")
+        self.assertEqual(result["tests"][2]["status"], "ok")
+        self.assertEqual(result["tests"][2]["id"], "bot-user")
 
     @mock.patch("reviews.services.wiki_client.pywikibot.Site")
     def test_api_autoreview_allows_configured_user_groups(self, mock_site):
@@ -393,11 +395,13 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 4)
+        self.assertEqual(len(result["tests"]), 5)
         self.assertEqual(result["tests"][0]["status"], "ok")
-        self.assertEqual(result["tests"][0]["id"], "manual-unapproval")
-        self.assertEqual(result["tests"][3]["status"], "ok")
-        self.assertEqual(result["tests"][3]["id"], "auto-approved-group")
+        self.assertEqual(result["tests"][0]["id"], "broken-wikicode")
+        self.assertEqual(result["tests"][1]["status"], "ok")
+        self.assertEqual(result["tests"][1]["id"], "manual-unapproval")
+        self.assertEqual(result["tests"][4]["status"], "ok")
+        self.assertEqual(result["tests"][4]["id"], "auto-approved-group")
 
     @mock.patch("reviews.services.wiki_client.pywikibot.Site")
     def test_api_autoreview_defaults_to_profile_rights(self, mock_site):
@@ -435,10 +439,11 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 5)
+        self.assertEqual(len(result["tests"]), 6)
 
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.models.pending_revision.pywikibot.Site")
-    def test_api_autoreview_blocks_on_blocking_categories(self, mock_site):
+    def test_api_autoreview_blocks_on_blocking_categories(self, mock_site, mock_html):
         config = self.wiki.configuration
         config.blocking_categories = ["Secret"]
         config.save(update_fields=["blocking_categories"])
@@ -528,9 +533,9 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 6)
-        self.assertEqual(result["tests"][5]["status"], "fail")
-        self.assertEqual(result["tests"][5]["id"], "blocking-categories")
+        self.assertEqual(len(result["tests"]), 7)
+        self.assertEqual(result["tests"][6]["status"], "fail")
+        self.assertEqual(result["tests"][6]["id"], "blocking-categories")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")

@@ -4,6 +4,7 @@ from .article_to_redirect import check_article_to_redirect
 from .auto_approved_groups import check_auto_approved_groups
 from .blocking_categories import check_blocking_categories
 from .bot_user import check_bot_user
+from .broken_wikicode import check_broken_wikicode_indicators
 from .invalid_isbn import check_invalid_isbn
 from .manual_unapproval import check_manual_unapproval
 from .ores_scores import check_ores_scores
@@ -12,6 +13,12 @@ from .superseded_additions import check_superseded_additions
 from .user_block import check_user_block
 
 AVAILABLE_CHECKS = [
+    {
+        "id": "broken-wikicode",
+        "name": "Broken wikicode indicators",
+        "function": check_broken_wikicode_indicators,
+        "priority": 0,
+    },
     {
         "id": "manual-unapproval",
         "name": "Manual un-approval check",

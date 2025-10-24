@@ -28,8 +28,9 @@ class ManualUnapprovalTests(TestCase):
         )
         self.config = WikiConfiguration.objects.create(wiki=self.wiki)
 
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.services.WikiClient.has_manual_unapproval")
-    def test_manually_unapproved_revision_should_be_blocked(self, mock_has_unapproval):
+    def test_manually_unapproved_revision_should_be_blocked(self, mock_has_unapproval, mock_html):
         """Bot should not auto-approve revisions that have been manually un-approved."""
         mock_has_unapproval.return_value = True
 
@@ -86,8 +87,9 @@ class ManualUnapprovalTests(TestCase):
         self.assertIsNotNone(manual_unapproval_test)
         self.assertEqual(manual_unapproval_test["status"], "fail")
 
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.services.WikiClient.has_manual_unapproval")
-    def test_not_manually_unapproved_revision_passes_check(self, mock_has_unapproval):
+    def test_not_manually_unapproved_revision_passes_check(self, mock_has_unapproval, mock_html):
         """Revisions without manual un-approval should pass the check."""
         mock_has_unapproval.return_value = False
 
@@ -137,8 +139,9 @@ class ManualUnapprovalTests(TestCase):
 
         self.assertEqual(result["decision"]["status"], "approve")
 
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.services.WikiClient.has_manual_unapproval")
-    def test_manual_unapproval_overrides_autoreview_rights(self, mock_has_unapproval):
+    def test_manual_unapproval_overrides_autoreview_rights(self, mock_has_unapproval, mock_html):
         """Manual un-approval should block even users with autoreview rights."""
         mock_has_unapproval.return_value = True
 

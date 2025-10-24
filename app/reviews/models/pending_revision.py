@@ -96,3 +96,25 @@ class PendingRevision(models.Model):
                 if content is not None:
                     return str(content)
         return ""
+
+    def get_rendered_html(self) -> str:
+        """Fetch the rendered HTML for this revision from the wiki API."""
+        site = pywikibot.Site(
+            code=self.page.wiki.code,
+            fam=self.page.wiki.family,
+        )
+        request = site.simple_request(
+            action="parse",
+            oldid=str(self.revid),
+            prop="text",
+            formatversion=2,
+        )
+        try:
+            response = request.submit()
+        except Exception:
+            logger.exception("Failed to fetch rendered HTML for revision %s", self.revid)
+            return ""
+
+        parse_result = response.get("parse", {})
+        html_text = parse_result.get("text", "")
+        return html_text if isinstance(html_text, str) else ""
