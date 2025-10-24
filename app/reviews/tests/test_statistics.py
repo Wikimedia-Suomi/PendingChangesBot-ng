@@ -185,7 +185,7 @@ class StatisticsServiceTests(TestCase):
         )
         WikiConfiguration.objects.create(wiki=self.wiki)
 
-    @mock.patch("reviews.services.SupersetQuery")
+    @mock.patch("reviews.services.wiki_client.SupersetQuery")
     def test_fetch_review_statistics(self, mock_superset):
         """Test fetching review statistics from Superset."""
         from reviews.services import WikiClient
@@ -222,7 +222,7 @@ class StatisticsServiceTests(TestCase):
         metadata = ReviewStatisticsMetadata.objects.get(wiki=self.wiki)
         self.assertEqual(metadata.total_records, 1)
 
-    @mock.patch("reviews.services.SupersetQuery")
+    @mock.patch("reviews.services.wiki_client.SupersetQuery")
     def test_fetch_review_statistics_with_invalid_timestamp(self, mock_superset):
         """Test handling of invalid timestamps in statistics."""
         from reviews.services import WikiClient

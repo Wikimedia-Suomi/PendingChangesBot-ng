@@ -125,6 +125,18 @@
                 </div>
               </div>
             </div>
+            <div class="content mt-5">
+              <h3 class="title is-6">Enabled Autoreview Checks</h3>
+              <p class="help">Select which checks should run during autoreview. All checks are enabled by default.</p>
+            </div>
+            <div class="columns is-multiline">
+              <div class="column is-half" v-for="check in state.availableChecks" :key="check.id">
+                <label class="checkbox">
+                  <input type="checkbox" :value="check.id" v-model="forms.enabledChecks">
+                  <strong class="ml-2">{{ check.name }}</strong>
+                </label>
+              </div>
+            </div>
             <div class="buttons">
               <button class="button is-primary" @click="saveConfiguration">Save configuration</button>
             </div>
