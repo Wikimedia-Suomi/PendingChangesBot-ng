@@ -17,7 +17,7 @@ def normalize_wikitext(text: str) -> str:
         return ""
 
     # TODO: check why text is not always suitable for re.
-    text=str(text)
+    text = str(text)
     text = re.sub(r"<ref[^>]*>.*?</ref>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<ref[^>]*/>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\{\{[^{}]*\}\}", "", text)

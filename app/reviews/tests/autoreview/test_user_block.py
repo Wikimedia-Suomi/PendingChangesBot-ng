@@ -1,4 +1,5 @@
 """Tests for user block checks."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -49,6 +50,7 @@ class AutoreviewBlockedUserTests(TestCase):
 
         # Create a mock WikiClient
         from reviews.services import WikiClient
+
         mock_client = WikiClient(mock_wiki)
 
         # Create context
@@ -58,7 +60,7 @@ class AutoreviewBlockedUserTests(TestCase):
             profile=profile,
             auto_groups={},
             blocking_categories={},
-            redirect_aliases=[]
+            redirect_aliases=[],
         )
 
         # Call the check
@@ -74,3 +76,35 @@ class AutoreviewBlockedUserTests(TestCase):
 
         # Verify logevents was called with correct parameters
         mock_site_instance.logevents.assert_called_once()
+
+    @patch("reviews.autoreview.checks.user_block.logger")
+    def test_blocked_user_check_handles_exception(self, mock_logger):
+        """Test that user block check handles exceptions gracefully."""
+        mock_wiki = MagicMock()
+        mock_wiki.code = "en"
+        mock_wiki.family = "wikipedia"
+
+        revision = MagicMock()
+        revision.user_name = "TestUser"
+        revision.timestamp = datetime.fromisoformat("2024-01-15T10:00:00")
+        revision.page.wiki = mock_wiki
+
+        # Create a mock client that raises exception
+        mock_client = MagicMock()
+        mock_client.is_user_blocked_after_edit.side_effect = Exception("API connection failed")
+
+        context = CheckContext(
+            revision=revision,
+            client=mock_client,
+            profile=None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+        )
+
+        result = check_user_block(context)
+
+        # Should handle exception and return fail status
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.decision.status, "error")
+        self.assertIn("Could not verify", result.message)

@@ -48,9 +48,11 @@ def is_addition_superseded(
         pending_wikitext = getattr(revision, "wikitext", "")
 
     if not isinstance(pending_wikitext, str):
-        pending_wikitext = getattr(revision, "wikitext", "") if isinstance(
-            getattr(revision, "wikitext", ""), str
-        ) else str(pending_wikitext or "")
+        pending_wikitext = (
+            getattr(revision, "wikitext", "")
+            if isinstance(getattr(revision, "wikitext", ""), str)
+            else str(pending_wikitext or "")
+        )
 
     if not pending_wikitext:
         return {
@@ -94,9 +96,7 @@ def is_addition_superseded(
                 )
                 return {
                     "is_superseded": True,
-                    "message": (
-                        "Addition appears superseded: similarity below threshold."
-                    ),
+                    "message": ("Addition appears superseded: similarity below threshold."),
                 }
 
     return {

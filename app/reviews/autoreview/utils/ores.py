@@ -19,11 +19,11 @@ def get_ores_thresholds(revision: PendingRevision) -> tuple[float, float]:
     """Get ORES thresholds with living person adjustments."""
     configuration = revision.page.wiki.configuration
 
-    damaging_threshold =  settings.ORES_DAMAGING_THRESHOLD
+    damaging_threshold = settings.ORES_DAMAGING_THRESHOLD
     if configuration.ores_damaging_threshold is not None:
-        damaging_threshold =  configuration.ores_damaging_threshold
+        damaging_threshold = configuration.ores_damaging_threshold
 
-    goodfaith_threshold =  settings.ORES_GOODFAITH_THRESHOLD
+    goodfaith_threshold = settings.ORES_GOODFAITH_THRESHOLD
     if configuration.ores_goodfaith_threshold is not None:
         goodfaith_threshold = configuration.ores_goodfaith_threshold
 

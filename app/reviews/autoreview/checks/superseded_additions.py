@@ -25,9 +25,7 @@ def check_superseded_additions(context: CheckContext) -> CheckResult:
             current_stable_wikitext = stable_revision.get_wikitext()
             threshold = context.revision.page.wiki.configuration.superseded_similarity_threshold
 
-            result = is_addition_superseded(
-                context.revision, current_stable_wikitext, threshold
-            )
+            result = is_addition_superseded(context.revision, current_stable_wikitext, threshold)
 
             if result["is_superseded"]:
                 return CheckResult(
