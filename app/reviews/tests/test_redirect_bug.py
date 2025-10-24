@@ -28,7 +28,7 @@ class RedirectConversionTests(TestCase):
         )
         WikiConfiguration.objects.create(wiki=self.wiki)
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_article_to_redirect_conversion_should_block(self, mock_site):
         """Article-to-redirect conversion by autopatrolled user should be blocked."""
         page = PendingPage.objects.create(
@@ -63,48 +63,58 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"]
-                                }
-                            ]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "magicwords": [
+                                    {
+                                        "name": "redirect",
+                                        "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+                                    }
+                                ]
+                            }
                         }
-                    })
+                    )
 
                 # Otherwise, it's a wikitext request
                 if self.wikitext_call_count == 0:
                     self.wikitext_call_count += 1
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {
-                                        "main": {"content": old_article_wikitext}
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {
+                                        "revisions": [
+                                            {"slots": {"main": {"content": old_article_wikitext}}}
+                                        ]
                                     }
-                                }]
-                            }]
+                                ]
+                            }
                         }
-                    })
+                    )
                 else:
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {
-                                        "main": {"content": new_redirect_wikitext}
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {
+                                        "revisions": [
+                                            {"slots": {"main": {"content": new_redirect_wikitext}}}
+                                        ]
                                     }
-                                }]
-                            }]
+                                ]
+                            }
                         }
-                    })
+                    )
 
         fake_site = FakeSite()
         mock_site.return_value = fake_site
@@ -165,10 +175,10 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
         self.assertEqual(
             result["decision"]["status"],
             "blocked",
-            "Article-to-redirect conversions should be blocked for autopatrolled-only users"
+            "Article-to-redirect conversions should be blocked for autopatrolled-only users",
         )
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_redirect_to_redirect_edit_should_not_block(self, mock_site):
         """Redirect-to-redirect edit should not block based on this rule."""
         page = PendingPage.objects.create(
@@ -193,43 +203,49 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"]
-                                }
-                            ]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "magicwords": [
+                                    {
+                                        "name": "redirect",
+                                        "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+                                    }
+                                ]
+                            }
                         }
-                    })
+                    )
 
                 # Otherwise, it's a wikitext request
                 if self.wikitext_call_count == 0:
                     self.wikitext_call_count += 1
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {"main": {"content": old_redirect}}
-                                }]
-                            }]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {"revisions": [{"slots": {"main": {"content": old_redirect}}}]}
+                                ]
+                            }
                         }
-                    })
-                return FakeRequest({
-                    "query": {
-                        "pages": [{
-                            "revisions": [{
-                                "slots": {"main": {"content": new_redirect}}
-                            }]
-                        }]
+                    )
+                return FakeRequest(
+                    {
+                        "query": {
+                            "pages": [
+                                {"revisions": [{"slots": {"main": {"content": new_redirect}}}]}
+                            ]
+                        }
                     }
-                })
+                )
 
         fake_site = FakeSite()
         mock_site.return_value = fake_site
@@ -281,7 +297,7 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_article_to_redirect_by_autoreviewed_user_should_allow(self, mock_site):
         """Article-to-redirect by auto-reviewed user should allow."""
         config = self.wiki.configuration
@@ -310,43 +326,49 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"]
-                                }
-                            ]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "magicwords": [
+                                    {
+                                        "name": "redirect",
+                                        "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+                                    }
+                                ]
+                            }
                         }
-                    })
+                    )
 
                 # Otherwise, it's a wikitext request
                 if self.wikitext_call_count == 0:
                     self.wikitext_call_count += 1
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {"main": {"content": old_article}}
-                                }]
-                            }]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {"revisions": [{"slots": {"main": {"content": old_article}}}]}
+                                ]
+                            }
                         }
-                    })
-                return FakeRequest({
-                    "query": {
-                        "pages": [{
-                            "revisions": [{
-                                "slots": {"main": {"content": new_redirect}}
-                            }]
-                        }]
+                    )
+                return FakeRequest(
+                    {
+                        "query": {
+                            "pages": [
+                                {"revisions": [{"slots": {"main": {"content": new_redirect}}}]}
+                            ]
+                        }
                     }
-                })
+                )
 
         fake_site = FakeSite()
         mock_site.return_value = fake_site
@@ -374,7 +396,7 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_localized_redirect_keywords(self, mock_site):
         """Localized redirect keywords should be recognized."""
         page = PendingPage.objects.create(
@@ -399,43 +421,49 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
                 self.requests: list[dict] = []
                 self.wikitext_call_count = 0
 
+            def logevents(self, **kwargs):
+                """Mock logevents for block checking."""
+                return []
+
             def simple_request(self, **kwargs):
                 self.requests.append(kwargs)
 
                 # Check if this is a request for magic words
                 if kwargs.get("meta") == "siteinfo" and kwargs.get("siprop") == "magicwords":
-                    return FakeRequest({
-                        "query": {
-                            "magicwords": [
-                                {
-                                    "name": "redirect",
-                                    "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"]
-                                }
-                            ]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "magicwords": [
+                                    {
+                                        "name": "redirect",
+                                        "aliases": ["#OHJAUS", "#UUDELLEENOHJAUS", "#REDIRECT"],
+                                    }
+                                ]
+                            }
                         }
-                    })
+                    )
 
                 # Otherwise, it's a wikitext request
                 if self.wikitext_call_count == 0:
                     self.wikitext_call_count += 1
-                    return FakeRequest({
-                        "query": {
-                            "pages": [{
-                                "revisions": [{
-                                    "slots": {"main": {"content": old_article}}
-                                }]
-                            }]
+                    return FakeRequest(
+                        {
+                            "query": {
+                                "pages": [
+                                    {"revisions": [{"slots": {"main": {"content": old_article}}}]}
+                                ]
+                            }
                         }
-                    })
-                return FakeRequest({
-                    "query": {
-                        "pages": [{
-                            "revisions": [{
-                                "slots": {"main": {"content": new_redirect}}
-                            }]
-                        }]
+                    )
+                return FakeRequest(
+                    {
+                        "query": {
+                            "pages": [
+                                {"revisions": [{"slots": {"main": {"content": new_redirect}}}]}
+                            ]
+                        }
                     }
-                })
+                )
 
         fake_site = FakeSite()
         mock_site.return_value = fake_site
@@ -475,32 +503,32 @@ Yliopistossa on kaksi pääkirjastoa, yhteensä 46 000 neliömetriä.
 
     def test_case_insensitive_redirect_keywords(self):
         """Case insensitive redirect keywords should be recognized."""
-        from reviews.autoreview import _is_redirect
+        from reviews.autoreview.utils.redirect import is_redirect
 
         aliases = ["#REDIRECT", "#OHJAUS"]
 
-        self.assertTrue(_is_redirect("#REDIRECT [[Target]]", aliases))
-        self.assertTrue(_is_redirect("#Redirect [[Target]]", aliases))
-        self.assertTrue(_is_redirect("#redirect [[target]]", aliases))
-        self.assertTrue(_is_redirect("#ReDiRecT [[target]]", aliases))
-        self.assertTrue(_is_redirect("#OHJAUS [[Kohde]]", aliases))
-        self.assertTrue(_is_redirect("#ohjaus [[Kohde]]", aliases))
-        self.assertTrue(_is_redirect("#Ohjaus [[Kohde]]", aliases))
-        self.assertTrue(_is_redirect("#REDIRECT  [[Target]]", aliases))
-        self.assertTrue(_is_redirect("# REDIRECT [[Target]]", aliases))
-        self.assertTrue(_is_redirect("#REDIRECT [[Help:Page#Section]]", aliases))
-        self.assertTrue(_is_redirect("#REDIRECT [[Target]]\n[[Category:Test]]", aliases))
-        self.assertTrue(_is_redirect("#UUDELLEENOHJAUS [[Kohde]]", ["#UUDELLEENOHJAUS"]))
+        self.assertTrue(is_redirect("#REDIRECT [[Target]]", aliases))
+        self.assertTrue(is_redirect("#Redirect [[Target]]", aliases))
+        self.assertTrue(is_redirect("#redirect [[target]]", aliases))
+        self.assertTrue(is_redirect("#ReDiRecT [[target]]", aliases))
+        self.assertTrue(is_redirect("#OHJAUS [[Kohde]]", aliases))
+        self.assertTrue(is_redirect("#ohjaus [[Kohde]]", aliases))
+        self.assertTrue(is_redirect("#Ohjaus [[Kohde]]", aliases))
+        self.assertTrue(is_redirect("#REDIRECT  [[Target]]", aliases))
+        self.assertTrue(is_redirect("# REDIRECT [[Target]]", aliases))
+        self.assertTrue(is_redirect("#REDIRECT [[Help:Page#Section]]", aliases))
+        self.assertTrue(is_redirect("#REDIRECT [[Target]]\n[[Category:Test]]", aliases))
+        self.assertTrue(is_redirect("#UUDELLEENOHJAUS [[Kohde]]", ["#UUDELLEENOHJAUS"]))
 
-        self.assertFalse(_is_redirect("  #REDIRECT [[Target]]", aliases))
-        self.assertFalse(_is_redirect("\n#REDIRECT [[Target]]", aliases))
-        self.assertFalse(_is_redirect(" \t#REDIRECT [[Target]]", aliases))
-        self.assertFalse(_is_redirect("\n\n#REDIRECT [[Target]]", aliases))
-        self.assertFalse(_is_redirect("Text #REDIRECT [[Target]]", aliases))
-        self.assertFalse(_is_redirect("#REDIRECT [[Target", aliases))
-        self.assertFalse(_is_redirect("#REDIRECT [[", aliases))
-        self.assertFalse(_is_redirect("#REDIRECT \n[[Target]]", aliases))
-        self.assertFalse(_is_redirect("#REDIRECT[[s\nource]]", aliases))
-        self.assertFalse(_is_redirect("", aliases))
-        self.assertFalse(_is_redirect("#REDIRECT", aliases))
-        self.assertFalse(_is_redirect("Normal article content", aliases))
+        self.assertFalse(is_redirect("  #REDIRECT [[Target]]", aliases))
+        self.assertFalse(is_redirect("\n#REDIRECT [[Target]]", aliases))
+        self.assertFalse(is_redirect(" \t#REDIRECT [[Target]]", aliases))
+        self.assertFalse(is_redirect("\n\n#REDIRECT [[Target]]", aliases))
+        self.assertFalse(is_redirect("Text #REDIRECT [[Target]]", aliases))
+        self.assertFalse(is_redirect("#REDIRECT [[Target", aliases))
+        self.assertFalse(is_redirect("#REDIRECT [[", aliases))
+        self.assertFalse(is_redirect("#REDIRECT \n[[Target]]", aliases))
+        self.assertFalse(is_redirect("#REDIRECT[[s\nource]]", aliases))
+        self.assertFalse(is_redirect("", aliases))
+        self.assertFalse(is_redirect("#REDIRECT", aliases))
+        self.assertFalse(is_redirect("Normal article content", aliases))
