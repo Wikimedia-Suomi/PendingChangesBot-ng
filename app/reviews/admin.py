@@ -8,6 +8,7 @@ from .models import (
     Wiki,
     WikiConfiguration,
 )
+from .models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
 
 
 @admin.register(Wiki)
@@ -54,3 +55,32 @@ class ModelScoresAdmin(admin.ModelAdmin):
     search_fields = ("revision__revid", "revision__page__title")
     list_filter = ("ores_fetched_at",)
     readonly_fields = ("ores_fetched_at",)
+
+
+@admin.register(FlaggedRevsStatistics)
+class FlaggedRevsStatisticsAdmin(admin.ModelAdmin):
+    list_display = (
+        "wiki",
+        "date",
+        "total_pages_ns0",
+        "reviewed_pages_ns0",
+        "synced_pages_ns0",
+        "pending_changes",
+        "pending_lag_average",
+    )
+    search_fields = ("wiki__name", "wiki__code")
+    list_filter = ("wiki", "date")
+
+
+@admin.register(ReviewActivity)
+class ReviewActivityAdmin(admin.ModelAdmin):
+    list_display = (
+        "wiki",
+        "date",
+        "number_of_reviewers",
+        "number_of_reviews",
+        "number_of_pages",
+        "reviews_per_reviewer",
+    )
+    search_fields = ("wiki__name", "wiki__code")
+    list_filter = ("wiki", "date")
