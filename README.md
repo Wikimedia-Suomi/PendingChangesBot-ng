@@ -86,7 +86,7 @@ the steps below once per user account that will run PendingChangesBot:
    ```bash
    python manage.py auth_with_username_and_password
    ```
-   
+
 
    - On **Windows**:
 
@@ -170,6 +170,29 @@ python manage.py test
 
 ```bash
 python3 manage.py test
+```
+
+## Code Coverage
+
+Run tests with coverage measurement:
+
+```bash
+cd app
+coverage run --source='.' manage.py test
+```
+
+View coverage report in terminal:
+
+```bash
+coverage report
+```
+
+Generate and view HTML coverage report:
+
+```bash
+coverage html
+open htmlcov/index.html  # On macOS
+# Or navigate to htmlcov/index.html in your browser
 ```
 
 ## Code Formatting and Linting
