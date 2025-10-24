@@ -173,6 +173,9 @@ createApp({
     const forms = reactive({
       blockingCategories: "",
       autoApprovedGroups: "",
+      testMode: false,  // Test mode toggle
+      testRevisionIds: [],  // Array of revision IDs
+      newRevisionId: "",  // Input field for new revision ID
       oresDamagingThreshold: 0.0,
       oresGoodfaithThreshold: 0.0,
       oresDamagingThresholdLiving: 0.0,
@@ -255,6 +258,9 @@ createApp({
       if (!currentWiki.value) {
         forms.blockingCategories = "";
         forms.autoApprovedGroups = "";
+        forms.testMode = false;
+        forms.testRevisionIds = [];
+        forms.newRevisionId = "";
         forms.oresDamagingThreshold = 0.0;
         forms.oresGoodfaithThreshold = 0.0;
         forms.oresDamagingThresholdLiving = 0.0;
@@ -264,6 +270,10 @@ createApp({
       }
       forms.blockingCategories = (currentWiki.value.configuration.blocking_categories || []).join("\n");
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
+      // Load test mode settings from configuration
+      forms.testMode = currentWiki.value.configuration.test_mode || false;
+      forms.testRevisionIds = [...(currentWiki.value.configuration.test_revision_ids || [])];
+      forms.newRevisionId = "";
       forms.oresDamagingThreshold = currentWiki.value.configuration.ores_damaging_threshold || 0.0;
       forms.oresGoodfaithThreshold = currentWiki.value.configuration.ores_goodfaith_threshold || 0.0;
       forms.oresDamagingThresholdLiving = currentWiki.value.configuration.ores_damaging_threshold_living || 0.0;
@@ -405,6 +415,10 @@ createApp({
         return;
       }
 
+      // Track previous test mode state to detect changes
+      const previousTestMode = currentWiki.value?.configuration.test_mode || false;
+      const previousRevisionIds = JSON.stringify(currentWiki.value?.configuration.test_revision_ids || []);
+
       const validationErrors = [];
       const damagingError = validateOresThreshold(forms.oresDamagingThreshold, "Damaging threshold");
       if (damagingError) validationErrors.push(damagingError);
@@ -426,6 +440,8 @@ createApp({
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
+        test_mode: forms.testMode,  // Include test mode toggle
+        test_revision_ids: forms.testRevisionIds,  // Include revision IDs array
         ores_damaging_threshold: forms.oresDamagingThreshold,
         ores_goodfaith_threshold: forms.oresGoodfaithThreshold,
         ores_damaging_threshold_living: forms.oresDamagingThresholdLiving,
@@ -453,10 +469,55 @@ createApp({
         });
 
         syncForms();
+
+        // Auto-refresh results when in test mode or when test mode settings change
+        const testModeChanged = previousTestMode !== data.test_mode;
+        const revisionIdsChanged = previousRevisionIds !== JSON.stringify(data.test_revision_ids || []);
+        const isTestMode = data.test_mode;
+
+        // Refresh if test mode changed, revision IDs changed, or currently in test mode
+        if (testModeChanged || revisionIdsChanged || isTestMode) {
+          await loadPending();
+        }
+
         state.configurationOpen = false;
       } catch (error) {
         // Error already handled in apiRequest.
       }
+    }
+
+    // Add a revision ID to the test mode list
+    async function addRevisionId() {
+      const value = forms.newRevisionId.trim();
+      if (!value) {
+        return;
+      }
+      // Validate: must be a number
+      if (!/^\d+$/.test(value)) {
+        state.error = "Revision ID must be a number";
+        return;
+      }
+      // Prevent duplicates
+      if (forms.testRevisionIds.includes(value)) {
+        state.error = "Revision ID already added";
+        return;
+      }
+      // Add to array
+      forms.testRevisionIds.push(value);
+      // Clear input field
+      forms.newRevisionId = "";
+      state.error = "";
+
+      // Auto-save configuration and refresh list
+      await saveConfiguration();
+    }
+
+    // Remove a revision ID from the test mode list
+    async function removeRevisionId(index) {
+      forms.testRevisionIds.splice(index, 1);
+
+      // Auto-save configuration and refresh list
+      await saveConfiguration();
     }
 
     function formatDate(value) {
@@ -1139,6 +1200,8 @@ createApp({
       formatTestStatus,
       statusTagClass,
       formatDecision,
+      addRevisionId,  // Add revision ID function
+      removeRevisionId,  // Remove revision ID function
       saveDiffsToLocalStorage,
     };
   },

@@ -70,6 +70,19 @@ class WikiConfiguration(models.Model):
         blank=True,
         help_text="List of check IDs to run. All checks are enabled by default.",
     )
+    # Test mode: use test_revision_ids instead of flaggedpages for testing
+    test_mode = models.BooleanField(
+        default=False,
+        help_text=(
+            "Enable test mode to use specific revision IDs "
+            "instead of live flaggedpages data."
+        ),
+    )
+    test_revision_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of revision IDs to use when test mode is enabled.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:

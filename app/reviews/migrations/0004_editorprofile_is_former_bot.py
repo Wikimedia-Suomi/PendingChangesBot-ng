@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('reviews', '0003_pendingpage_categories'),
+        ('reviews', '0002_wikiconfiguration_auto_approved_groups'),
     ]
 
     operations = [
