@@ -229,16 +229,28 @@ class ViewTests(TestCase):
         self.assertEqual(config.blocking_categories, ["SingleCat"])
         self.assertEqual(config.auto_approved_groups, ["admin"])
 
-    def test_api_configuration_updates_with_urlencoded_data(self):
-        """Test api_configuration with URL-encoded form data."""
+    def test_api_configuration_updates_settings_from_form_payload(self):
+        """Test api_configuration handles form-encoded PUT with multi-value fields."""
+        from urllib.parse import urlencode
+
         url = reverse("api_configuration", args=[self.wiki.pk])
-        # Send as URL-encoded form data (not JSON) to hit the else branch
+        # Properly encode form data with repeated keys for lists
+        form_data = urlencode([
+            ("blocking_categories", "Foo"),
+            ("blocking_categories", "Bar"),
+            ("auto_approved_groups", "sysop"),
+            ("auto_approved_groups", "steward"),
+        ])
         response = self.client.put(
             url,
-            data="blocking_categories=FormCat&auto_approved_groups=formadmin",
+            data=form_data,
             content_type="application/x-www-form-urlencoded",
         )
         self.assertEqual(response.status_code, 200)
+        config = self.wiki.configuration
+        config.refresh_from_db()
+        self.assertEqual(config.blocking_categories, ["Foo", "Bar"])
+        self.assertEqual(config.auto_approved_groups, ["sysop", "steward"])
 
     def test_api_configuration_updates_ores_thresholds(self):
         url = reverse("api_configuration", args=[self.wiki.pk])
