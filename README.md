@@ -195,11 +195,44 @@ open htmlcov/index.html  # On macOS
 # Or navigate to htmlcov/index.html in your browser
 ```
 
+## Code Quality & Security
+
+This project uses automated checks to catch bugs and security issues before they reach production.
+
+### Tools
+
+- **mypy** - Type checking to catch type errors before runtime
+- **Ruff (Bandit rules)** - Security scanning for common vulnerabilities
+- **pip-audit** - Dependency vulnerability scanning
+
+All checks run automatically in CI on every PR. You can also run them locally for faster feedback.
+
+### Running Checks Locally (Optional)
+
+**Option 1: Run all checks at once**
+```bash
+./scripts/run-checks.sh
+```
+
+**Option 2: Run individually**
+```bash
+# Type checking
+cd app && python -m mypy reviews --config-file=../pyproject.toml
+
+# Security scanning
+python -m ruff check --select S app/
+
+# Dependency scanning
+python -m pip_audit -r requirements.txt
+```
+
+The CI will run these same checks on every PR.
+
 ## Code Formatting and Linting
 
 This project uses [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting.
 
-**Note:** If you installed pre-commit hooks (step 5 above), formatting and linting happen automatically before each commit. You don't need to run these commands manually.
+**Note:** If you installed pre-commit hooks (step 6 above), formatting and linting happen automatically before each commit. You don't need to run these commands manually.
 
 ### Manual Commands
 
