@@ -43,6 +43,14 @@ createApp({
 
       // UI state
       lastUpdated: null,
+      focusedWiki: null,
+      filteredDate: null, // For filtering table by specific date
+      filteredWikiDate: null, // For filtering Wiki table by specific date
+
+      // YearMonth view controls
+      showGraph: true, // Show chart in YearMonth mode
+      showTable: true, // Show table in YearMonth mode
+      yearMonthChart: null, // Chart instance for YearMonth mode
     });
 
     // Initialize with default wiki if none selected
@@ -156,7 +164,13 @@ createApp({
       if (state.filterMode !== 'frs_key' || !state.tableData.length) return [];
 
       // Get unique dates and format them as YYYYMM
-      const dates = [...new Set(state.tableData.map(d => d.date))].sort();
+      let dates = [...new Set(state.tableData.map(d => d.date))].sort();
+
+      // If a specific date is filtered, show only that date
+      if (state.filteredDate) {
+        dates = dates.filter(date => date === state.filteredDate);
+      }
+
       return dates.map(date => {
         // Convert 2023-10-01 to 202310
         return date.replace('-', '').substring(0, 6);
@@ -168,9 +182,16 @@ createApp({
       if (state.filterMode !== 'wiki' || !state.tableData.length) return [];
 
       // Filter data for the selected wiki only
-      return state.tableData
+      let filteredData = state.tableData
         .filter(entry => entry.wiki === state.selectedWikiForTable)
         .sort((a, b) => a.date.localeCompare(b.date));
+
+      // If a specific date is filtered, show only that date
+      if (state.filteredWikiDate) {
+        filteredData = filteredData.filter(entry => entry.date === state.filteredWikiDate);
+      }
+
+      return filteredData;
     });
 
     // Formatted last updated timestamp
@@ -215,6 +236,314 @@ createApp({
       }
     }
 
+    // Method to get single date value for YearMonth-style table
+    function getSingleDateValue(wiki, field) {
+      if (!state.filteredDate) return null;
+
+      const entry = state.tableData.find(d => d.wiki === wiki && d.date === state.filteredDate);
+      if (!entry) return null;
+
+      return entry[field];
+    }
+
+    // Formatted filtered date for display
+    const filteredDateFormatted = computed(() => {
+      if (!state.filteredDate) return '';
+
+      // Convert 2023-10-01 to 2023-10 format
+      return state.filteredDate.substring(0, 7);
+    });
+
+    // Go to wiki page with specific wiki selected
+    function goToWikiPage(wiki) {
+      console.log('Going to wiki page for:', wiki);
+      // Navigate to the wiki page with the specific wiki selected
+      // Include current chart selections in URL to preserve them
+      const currentWikis = state.selectedWikis.map(w => `${w}wiki_p`).join(',');
+      window.location.href = `/flaggedrevs-statistics/?mode=wiki&wiki=${wiki}&db=${currentWikis}`;
+    }
+
+    // Filter table to show data for specific date clicked
+    function goToDatePage(date) {
+      console.log('Filtering table for date:', date);
+      // Convert YYYYMM to YYYY-MM-DD format for filtering
+      const year = date.substring(0, 4);
+      const month = date.substring(4, 6);
+      const dateParam = `${year}-${month}-01`;
+
+      // Filter the table data to show only this specific date
+      state.filteredDate = dateParam;
+
+      // Update URL to reflect the filtered date
+      updateUrl();
+    }
+
+    // Go to FRS Key with specific metric selected
+    function goToFrsKey(key) {
+      console.log('Switching to FRS Key:', key);
+
+      // Switch to FRS Key mode
+      state.filterMode = 'frs_key';
+
+      // Clear the filtered date to go back to normal table view
+      state.filteredDate = null;
+
+      // Set the selected FRS Key (this will trigger the watcher)
+      state.selectedFrsKey = key;
+
+      // Update URL to reflect the changes
+      updateUrl();
+    }
+
+    // Get data for a specific wiki and date
+    function getWikiDateData(wikiCode, date, metric) {
+      if (!state.tableData || !date) return null;
+
+      // Find the data entry for this wiki and date
+      const entry = state.tableData.find(d => d.wiki === wikiCode && d.date === date);
+      return entry ? entry[metric] : null;
+    }
+
+    // Go to Wiki mode showing data for specific wiki from date view
+    function goToWikiFromDateView(wikiCode) {
+      // Clear the filtered date to go back to normal Wiki table view
+      state.filteredWikiDate = null;
+
+      // Set the selected wiki for the table
+      state.selectedWikiForTable = wikiCode;
+
+      // Update URL to reflect the changes
+      updateUrl();
+    }
+
+    // Go to YearMonth metric (switches to FRS Key mode like goToFrsKey)
+    function goToYearMonthMetric(metric) {
+      console.log('Switching to FRS Key from YearMonth:', metric);
+
+      // Switch to FRS Key mode
+      state.filterMode = 'frs_key';
+
+      // Set the selected FRS Key (this will trigger the watcher)
+      state.selectedFrsKey = metric;
+
+      // Update URL to reflect the changes
+      updateUrl();
+    }
+
+    // Go to YearMonth wiki (redirects to Wiki page like goToWikiPage)
+    function goToYearMonthWiki(wiki) {
+      console.log('Going to wiki page from YearMonth for:', wiki);
+      // Navigate to the wiki page with the specific wiki selected
+      // Include current chart selections in URL to preserve them
+      const currentWikis = state.selectedWikis.map(w => `${w}wiki_p`).join(',');
+      window.location.href = `/flaggedrevs-statistics/?mode=wiki&wiki=${wiki}&db=${currentWikis}`;
+    }
+
+    // YearMonth now reuses the FRS Key chart - no separate chart needed
+    function updateYearMonthChart() {
+      console.log('=== YEARMONTH CHART UPDATE DEBUG ===');
+      console.log('updateYearMonthChart called, selectedFrsKey:', state.selectedFrsKey);
+      console.log('selectedWikis:', state.selectedWikis);
+      console.log('NOTE: Chart uses ALL data (not filtered by month), only table is filtered by month');
+
+      if (!state.tableData || state.tableData.length === 0) {
+        console.log('No table data, returning');
+        return;
+      }
+
+      // Destroy existing chart if it exists
+      if (state.yearMonthChart) {
+        try {
+          console.log('Destroying existing YearMonth chart...');
+          state.yearMonthChart.destroy();
+          console.log('YearMonth chart destroyed successfully');
+        } catch (error) {
+          console.log('Error destroying YearMonth chart:', error);
+        }
+        state.yearMonthChart = null;
+      }
+
+      // Also destroy any chart that Chart.js might have registered for this canvas
+      try {
+        const canvas = document.getElementById('yearMonthChart');
+        if (canvas) {
+          const existingChart = Chart.getChart(canvas);
+          if (existingChart) {
+            console.log('Found registered YearMonth chart, destroying it...');
+            existingChart.destroy();
+            console.log('Registered YearMonth chart destroyed successfully');
+          }
+        }
+      } catch (error) {
+        console.log('Error destroying registered YearMonth chart:', error);
+      }
+
+      // Wait for Chart.js to fully clean up the canvas
+      setTimeout(() => {
+        createYearMonthChart();
+      }, 300);
+    }
+
+    // Create the YearMonth chart
+    function createYearMonthChart() {
+      const ctx = document.getElementById('yearMonthChart');
+      if (!ctx) {
+        console.error('YearMonth chart canvas not found');
+        return;
+      }
+
+      console.log('Creating YearMonth chart with canvas:', ctx.id, 'dimensions:', ctx.offsetWidth, 'x', ctx.offsetHeight);
+
+      // Clear the canvas completely before creating new chart
+      const canvasContext = ctx.getContext('2d');
+      if (canvasContext) {
+        canvasContext.clearRect(0, 0, ctx.width, ctx.height);
+        console.log('YearMonth canvas cleared successfully');
+      }
+
+      const seriesConfig = {
+        pendingLag_average: "Pending Lag (Average)",
+        totalPages_ns0: "Total Pages (NS:0)",
+        reviewedPages_ns0: "Reviewed Pages (NS:0)",
+        syncedPages_ns0: "Synced Pages (NS:0)",
+        pendingChanges: "Pending Changes",
+        number_of_reviewers: "Number of Reviewers",
+        number_of_reviews: "Number of Reviews",
+        reviews_per_reviewer: "Reviews Per Reviewer",
+      };
+
+      const selectedLabel = seriesConfig[state.selectedFrsKey] || state.selectedFrsKey;
+
+      const data = JSON.parse(JSON.stringify(state.tableData));
+      const selectedWikis = [...state.selectedWikis];
+      const labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
+      const colors = ["#3273dc", "#48c774", "#ffdd57", "#f14668", "#00d1b2", "#ff3860", "#209cee", "#ff6348"];
+
+      const datasets = [];
+      let colorIndex = 0;
+
+      selectedWikis.forEach(wiki => {
+        const seriesData = labels.map(year => {
+          // Find all entries for this wiki and year, then take the latest one
+          const yearEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(year));
+          const latestEntry = yearEntries.sort((a, b) => b.date.localeCompare(a.date))[0];
+          return latestEntry ? (latestEntry[state.selectedFrsKey] || null) : null;
+        });
+
+        console.log(`${wiki}wiki_p ${state.selectedFrsKey} data:`, seriesData);
+        console.log(`${wiki}wiki_p non-null values:`, seriesData.filter(val => val !== null && val !== undefined));
+
+        if (seriesData.some(val => val !== null && val !== undefined)) {
+          datasets.push({
+            label: `${wiki}wiki_p`,
+            data: seriesData,
+            borderColor: colors[colorIndex % colors.length],
+            backgroundColor: colors[colorIndex % colors.length] + "20",
+            tension: 0.4,
+            borderWidth: 3,
+            pointRadius: 0,
+            fill: false,
+          });
+          colorIndex++;
+        }
+      });
+
+      if (datasets.length === 0) {
+        console.log('No data available for YearMonth chart');
+        return;
+      }
+
+      try {
+        state.yearMonthChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: datasets,
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+              title: {
+                display: true,
+                text: selectedLabel,
+                position: 'chartArea',
+                align: 'center',
+                font: {
+                  size: 16,
+                  weight: 'bold',
+                },
+                color: '#000',
+              },
+              legend: {
+                display: true,
+                position: 'chartArea',
+                align: 'start',
+                labels: {
+                  boxWidth: 8,
+                  padding: 8,
+                  font: {
+                    size: 10,
+                  },
+                },
+              },
+            },
+            scales: {
+              x: {
+                display: true,
+                title: {
+                  display: true,
+                  text: 'Year',
+                },
+                grid: {
+                  display: true,
+                  color: 'rgba(0, 0, 0, 0.05)',
+                },
+              },
+              y: {
+                display: true,
+                title: {
+                  display: true,
+                  text: selectedLabel,
+                },
+                grid: {
+                  display: true,
+                  color: 'rgba(0, 0, 0, 0.05)',
+                },
+                ticks: {
+                  callback: function(value) {
+                    return value.toLocaleString();
+                  },
+                },
+              },
+            },
+          },
+        });
+        console.log('YearMonth chart created successfully');
+      } catch (error) {
+        console.error('Error creating YearMonth chart:', error);
+        state.yearMonthChart = null;
+      }
+    }
+
+    // Format date from YYYY-MM-DD to YYYYMM
+    function formatDateToYearMonth(date) {
+      if (!date) return '';
+      // Convert 2023-10-01 to 202310
+      return date.replace('-', '').substring(0, 6);
+    }
+
+    // Filter Wiki table to show data for specific date clicked
+    function goToWikiDatePage(date) {
+      console.log('Filtering Wiki table for date:', date);
+      // Set the filtered date for Wiki mode
+      state.filteredWikiDate = date;
+
+      // Update URL to reflect the filtered date
+      updateUrl();
+    }
+
     // Chart management
     function initializeChart() {
       const ctx = document.getElementById("statisticsChart");
@@ -249,10 +578,28 @@ createApp({
             title: {
               display: true,
               text: "FlaggedRevs Statistics Over Time",
+              position: 'top',
+              align: 'center',
+              font: {
+                size: 16,
+                weight: 'bold'
+              },
+              padding: {
+                top: 10,
+                bottom: 10
+              }
             },
             legend: {
               display: true,
               position: "top",
+              align: "start",
+              labels: {
+                boxWidth: 8,
+                padding: 8,
+                font: {
+                  size: 10
+                }
+              }
             },
           },
           scales: {
@@ -452,10 +799,28 @@ createApp({
                 title: {
                   display: true,
                   text: series.label,
+                  position: 'top',
+                  align: 'center',
+                  font: {
+                    size: 16,
+                    weight: 'bold'
+                  },
+                  padding: {
+                    top: 10,
+                    bottom: 10
+                  }
                 },
                 legend: {
                   display: true,
-                  position: 'top',
+                  position: 'chartArea',
+                  align: 'center',
+                  labels: {
+                    boxWidth: 8,
+                    padding: 8,
+                    font: {
+                      size: 10
+                    }
+                  }
                 },
               },
               scales: {
@@ -553,6 +918,8 @@ createApp({
               title: {
                 display: true,
                 text: "FlaggedRevs Statistics Over Time",
+                position: 'top',
+                align: 'center'
               },
               legend: {
                 display: true,
@@ -657,10 +1024,28 @@ createApp({
                 title: {
                   display: true,
                   text: series.label,
+                  position: 'top',
+                  align: 'center',
+                  font: {
+                    size: 16,
+                    weight: 'bold'
+                  },
+                  padding: {
+                    top: 10,
+                    bottom: 10
+                  }
                 },
                 legend: {
                   display: true,
                   position: "top",
+                  align: "start",
+                  labels: {
+                    boxWidth: 8,
+                    padding: 8,
+                    font: {
+                      size: 10
+                    }
+                  }
                 },
               },
               scales: {
@@ -679,12 +1064,225 @@ createApp({
       });
     }
 
+    // Load full data for chart in YearMonth mode (without month filtering)
+    async function loadFullDataForChart() {
+      console.log('=== LOADING FULL DATA FOR CHART ===');
+
+      try {
+        const promises = [];
+
+        // Build URL parameters for API calls (without month filtering)
+        const apiParams = new URLSearchParams();
+        // Don't add month filtering for chart data
+        apiParams.append('wikis', state.selectedWikis.join(','));
+
+        // Load FlaggedRevs statistics
+        promises.push(
+          fetch(`/api/flaggedrevs-statistics/?${apiParams.toString()}`)
+            .then(response => response.json())
+            .then(data => ({ type: 'flaggedrevs', data }))
+        );
+
+        // Load review activity
+        promises.push(
+          fetch(`/api/flaggedrevs-activity/?${apiParams.toString()}`)
+            .then(response => response.json())
+            .then(data => ({ type: 'activity', data }))
+        );
+
+        const results = await Promise.all(promises);
+
+        // Process the data
+        let allData = [];
+        results.forEach(result => {
+          console.log('API result type:', result.type, 'data length:', result.data ? result.data.length : 'undefined');
+
+          // Use same check as working loadData function
+          if (result.data) {
+            if (result.type === 'flaggedrevs') {
+              allData = allData.concat(result.data);
+            } else if (result.type === 'activity') {
+              allData = allData.concat(result.data);
+            }
+          }
+        });
+
+        console.log('Full data loaded for chart:', allData.length, 'entries');
+        console.log('All data sample:', allData.slice(0, 3));
+
+        // Filter out empty objects
+        const validData = allData.filter(d => d && Object.keys(d).length > 0);
+        console.log('Valid data after filtering:', validData.length, 'entries');
+
+        if (validData.length === 0) {
+          console.error('No valid data found for chart');
+          return;
+        }
+
+        // Now create the chart with the valid data
+        createFrsKeyChartWithData(validData);
+
+      } catch (error) {
+        console.error('Error loading full data for chart:', error);
+        state.error = 'Failed to load chart data';
+      }
+    }
+
+    // Create FRS Key chart with provided data (for YearMonth mode)
+    function createFrsKeyChartWithData(data) {
+      console.log('=== CREATING CHART WITH PROVIDED DATA ===');
+      console.log('Data length:', data.length);
+
+      // Destroy existing chart first
+      if (state.singleChart) {
+        try {
+          state.singleChart.destroy();
+        } catch (error) {
+          console.log('Error destroying existing chart:', error);
+        }
+      }
+
+      // Wait for canvas to be ready
+      setTimeout(() => {
+        const ctx = document.getElementById('singleFrsKeyChart');
+        if (!ctx) {
+          console.error('singleFrsKeyChart canvas not found');
+          return;
+        }
+
+        // Clear canvas
+        const canvasContext = ctx.getContext('2d');
+        if (canvasContext) {
+          canvasContext.clearRect(0, 0, ctx.width, ctx.height);
+        }
+
+        // Create chart with the provided data
+        createFrsKeyChartWithDataAndCanvas(ctx, data);
+      }, 100);
+    }
+
+    // Create chart with data and canvas
+    function createFrsKeyChartWithDataAndCanvas(ctx, data) {
+      console.log('Creating chart with canvas and data...');
+      console.log('Raw data sample:', data.slice(0, 3)); // Log first 3 entries to see structure
+
+      // Get the label for the selected FRS key
+      const seriesConfig = {
+        pendingLag_average: "Pending Lag (Average)",
+        totalPages_ns0: "Total Pages (NS:0)",
+        reviewedPages_ns0: "Reviewed Pages (NS:0)",
+        syncedPages_ns0: "Synced Pages (NS:0)",
+        pendingChanges: "Pending Changes",
+        number_of_reviewers: "Number of Reviewers",
+        number_of_reviews: "Number of Reviews",
+        reviews_per_reviewer: "Reviews Per Reviewer",
+      };
+
+      const selectedLabel = seriesConfig[state.selectedFrsKey] || state.selectedFrsKey;
+      const selectedWikis = [...state.selectedWikis];
+      const labels = [...new Set(data.filter(d => d.yearmonth).map(d => d.yearmonth.toString().substring(0, 4)))].sort();
+      console.log('Labels created:', labels);
+      console.log('Selected wikis:', selectedWikis);
+      const colors = ["#3273dc", "#48c774", "#ffdd57", "#f14668", "#00d1b2", "#ff3860", "#209cee", "#ff6348"];
+
+      const datasets = [];
+      let colorIndex = 0;
+
+      selectedWikis.forEach(wiki => {
+        const seriesData = labels.map(year => {
+          const yearEntries = data.filter(d => d.wiki === wiki && d.yearmonth && d.yearmonth.toString().startsWith(year));
+          const latestEntry = yearEntries.sort((a, b) => b.yearmonth - a.yearmonth)[0];
+          return latestEntry ? (latestEntry[state.selectedFrsKey] || null) : null;
+        });
+
+        if (seriesData.some(val => val !== null && val !== undefined)) {
+          datasets.push({
+            label: `${wiki}wiki_p`,
+            data: seriesData,
+            borderColor: colors[colorIndex % colors.length],
+            backgroundColor: colors[colorIndex % colors.length] + "20",
+            tension: 0.4,
+            borderWidth: 3,
+            pointRadius: 0,
+            fill: false
+          });
+          colorIndex++;
+        }
+      });
+
+      if (datasets.length === 0) {
+        console.log('No data available for chart');
+        return;
+      }
+
+      // Create the chart
+      state.singleChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: {
+            duration: 0
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: selectedLabel,
+              position: 'chartArea',
+              align: 'center',
+              padding: { top: 0, bottom: 20 },
+              font: { size: 16, weight: 'bold' }
+            },
+            legend: {
+              display: true,
+              position: 'chartArea',
+              align: 'start',
+              labels: {
+                boxWidth: 8,
+                padding: 8,
+                font: { size: 10 }
+              }
+            }
+          },
+          scales: {
+            x: {
+              display: true,
+              title: {
+                display: true,
+                text: 'Year'
+              }
+            },
+            y: {
+              display: true,
+              title: {
+                display: true,
+                text: selectedLabel
+              }
+            }
+          }
+        }
+      });
+
+      console.log('Chart created successfully with provided data');
+    }
+
     // Update the single FRS Key chart based on selected metric
     function updateFrsKeyChart() {
       console.log('=== FRS KEY CHART UPDATE DEBUG ===');
       console.log('updateFrsKeyChart called, selectedFrsKey:', state.selectedFrsKey);
       console.log('selectedWikis:', state.selectedWikis);
       console.log('tableData length:', state.tableData.length);
+      console.log('filterMode:', state.filterMode);
+
+      // In YearMonth mode, we don't show charts - just redirect
+      if (state.filterMode === 'yearmonth') {
+        console.log('YearMonth mode - no chart needed');
+        return;
+      }
 
       if (state.tableData.length === 0) {
         console.log('No table data, returning');
@@ -693,14 +1291,92 @@ createApp({
 
       // Destroy existing single chart if it exists
       if (state.singleChart) {
-        state.singleChart.destroy();
+        try {
+          console.log('Destroying existing chart...');
+          state.singleChart.destroy();
+          console.log('Chart destroyed successfully');
+        } catch (error) {
+          console.log('Error destroying chart:', error);
+        }
         state.singleChart = null;
       }
 
-      const ctx = document.getElementById('singleFrsKeyChart');
+      // Also destroy any chart that Chart.js might have registered for this canvas
+      try {
+        const canvas = document.getElementById('singleFrsKeyChart');
+        if (canvas) {
+          // Get Chart.js instance from the canvas
+          const existingChart = Chart.getChart(canvas);
+          if (existingChart) {
+            console.log('Found registered chart, destroying it...');
+            existingChart.destroy();
+            console.log('Registered chart destroyed successfully');
+          }
+        }
+      } catch (error) {
+        console.log('Error destroying registered chart:', error);
+      }
+
+      // Wait longer for Chart.js to fully clean up the canvas
+      setTimeout(() => {
+        createChartAfterDestruction();
+      }, 300);
+    }
+
+    function createChartAfterDestruction() {
+      // Wait for DOM to be ready, especially when switching modes
+      setTimeout(() => {
+        const ctx = document.getElementById('singleFrsKeyChart');
+        if (!ctx) {
+          console.log('singleFrsKeyChart canvas not found, retrying...');
+          // Retry once more after a longer delay
+          setTimeout(() => {
+            const retryCtx = document.getElementById('singleFrsKeyChart');
+            if (!retryCtx) {
+              console.error('singleFrsKeyChart canvas still not found after retry');
+              return;
+            }
+            console.log('Canvas found on retry:', retryCtx);
+            createFrsKeyChart(retryCtx);
+          }, 200);
+          return;
+        }
+
+        // Additional check - ensure canvas is visible and has dimensions
+        if (ctx.offsetWidth === 0 || ctx.offsetHeight === 0) {
+          console.log('Canvas has no dimensions, waiting longer...');
+          setTimeout(() => {
+            const delayedCtx = document.getElementById('singleFrsKeyChart');
+            if (delayedCtx && delayedCtx.offsetWidth > 0 && delayedCtx.offsetHeight > 0) {
+              console.log('Canvas ready with dimensions:', delayedCtx.offsetWidth, 'x', delayedCtx.offsetHeight);
+              createFrsKeyChart(delayedCtx);
+            } else {
+              console.error('Canvas still not ready after delay');
+            }
+          }, 300);
+          return;
+        }
+
+        console.log('Canvas found and ready:', ctx.offsetWidth, 'x', ctx.offsetHeight);
+        createFrsKeyChart(ctx);
+      }, 150); // Increased delay to ensure chart destruction is complete
+    }
+
+    // Create the FRS Key chart
+    function createFrsKeyChart(ctx) {
+      // Final safety check - ensure canvas is valid
       if (!ctx) {
-        console.log('singleFrsKeyChart canvas not found');
+        console.error('Canvas context is null, cannot create chart');
         return;
+      }
+
+      console.log('Creating chart with canvas:', ctx.id, 'dimensions:', ctx.offsetWidth, 'x', ctx.offsetHeight);
+
+      // Clear the canvas completely before creating new chart
+      const canvasContext = ctx.getContext('2d');
+      if (canvasContext) {
+        canvasContext.clearRect(0, 0, ctx.width, ctx.height);
+        console.log('Canvas cleared successfully');
       }
 
       // Get the label for the selected FRS key
@@ -718,7 +1394,18 @@ createApp({
       const selectedLabel = seriesConfig[state.selectedFrsKey] || state.selectedFrsKey;
 
       // Prepare data
-      const data = JSON.parse(JSON.stringify(state.tableData));
+      let data;
+      if (state.filterMode === 'yearmonth') {
+
+        data = JSON.parse(JSON.stringify(state.tableData));
+
+        if (data.length === 0) {
+          console.log('No data available for YearMonth chart');
+          return;
+        }
+      } else {
+        data = JSON.parse(JSON.stringify(state.tableData));
+      }
       const selectedWikis = [...state.selectedWikis];
       const labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
       const colors = ["#3273dc", "#48c774", "#ffdd57", "#f14668", "#00d1b2", "#ff3860", "#209cee", "#ff6348"];
@@ -806,91 +1493,103 @@ createApp({
       ctx.style.display = 'block';
 
       // Create the chart
-      state.singleChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: datasets,
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: {
-            duration: 750,
+      try {
+        state.singleChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: datasets,
           },
-          interaction: {
-            mode: 'index',
-            intersect: false,
-          },
-          plugins: {
-            title: {
-              display: true,
-              text: selectedLabel,
-              font: {
-                size: 16,
-                weight: 'bold',
-              },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+              duration: 750,
             },
-            legend: {
-              display: true,
-              position: 'right',
-              align: 'center',
-              labels: {
-                boxWidth: 12,
-                padding: 10,
-                font: {
-                  size: 11,
-                },
-              },
+            interaction: {
+              mode: 'index',
+              intersect: false,
             },
-          },
-          scales: {
-            x: {
-              type: 'category',
-              grid: {
+            plugins: {
+              title: {
                 display: true,
-                color: 'rgba(0, 0, 0, 0.05)',
+                text: selectedLabel,
+                position: 'top',
+                align: 'center',
+                font: {
+                  size: 16,
+                  weight: 'bold'
+                },
+                padding: {
+                  top: 10,
+                  bottom: 10
+                }
               },
-              ticks: {
-                maxRotation: 0,
-                minRotation: 0,
-                autoSkip: true,
-                callback: function(value, index, ticks) {
-                  // Extract year from the date string
-                  const dateStr = this.getLabelForValue(value);
-                  if (dateStr) {
-                    const year = dateStr.split('-')[0];
-                    // Only show year for the first occurrence of each year
-                    if (index === 0) {
-                      return year;
-                    }
-                    // Check if this year is different from the previous tick's year
-                    const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
-                    const prevYear = prevDateStr ? prevDateStr.split('-')[0] : '';
-                    if (year !== prevYear) {
-                      return year;
+              legend: {
+                display: true,
+                position: 'chartArea',
+                align: 'center',
+                labels: {
+                  boxWidth: 8,
+                  padding: 8,
+                  font: {
+                    size: 10
+                  }
+                }
+              },
+            },
+            scales: {
+              x: {
+                type: 'category',
+                grid: {
+                  display: true,
+                  color: 'rgba(0, 0, 0, 0.05)',
+                },
+                ticks: {
+                  maxRotation: 0,
+                  minRotation: 0,
+                  autoSkip: true,
+                  callback: function(value, index, ticks) {
+                    // Extract year from the date string
+                    const dateStr = this.getLabelForValue(value);
+                    if (dateStr) {
+                      const year = dateStr.split('-')[0];
+                      // Only show year for the first occurrence of each year
+                      if (index === 0) {
+                        return year;
+                      }
+                      // Check if this year is different from the previous tick's year
+                      const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
+                      const prevYear = prevDateStr ? prevDateStr.split('-')[0] : '';
+                      if (year !== prevYear) {
+                        return year;
+                      }
+                      return '';
                     }
                     return '';
-                  }
-                  return '';
+                  },
                 },
               },
-            },
-            y: {
-              beginAtZero: true,
-              grid: {
-                display: true,
-                color: 'rgba(0, 0, 0, 0.05)',
-              },
-              ticks: {
-                callback: function(value) {
-                  return value.toLocaleString();
+              y: {
+                beginAtZero: true,
+                grid: {
+                  display: true,
+                  color: 'rgba(0, 0, 0, 0.05)',
+                },
+                ticks: {
+                  callback: function(value) {
+                    return value.toLocaleString();
+                  },
                 },
               },
             },
           },
-        },
-      });
+        });
+        console.log('Chart created successfully');
+      } catch (error) {
+        console.error('Error creating chart:', error);
+        state.singleChart = null;
+      }
     }
 
     // Data loading
@@ -1070,14 +1769,20 @@ createApp({
         );
       }
 
-      // Handle 'wiki' parameter (single wiki - overrides 'db') - format: fiwiki_p
+      // Handle 'wiki' parameter (single wiki for table) - format: fiwiki_p
       const wikiParam = params.get('wiki');
       if (wikiParam) {
         // Remove wiki_p suffix if present
         const wikiCode = wikiParam.endsWith('wiki_p') ? wikiParam.slice(0, -6) : wikiParam;
         const wiki = AVAILABLE_WIKIS.find(aw => aw.code === wikiCode);
         if (wiki) {
-          state.selectedWikis = [wikiCode];
+          // In Wiki mode, set the table wiki selection, not chart selection
+          if (state.filterMode === 'wiki') {
+            state.selectedWikiForTable = wikiCode;
+          } else {
+            // In other modes, set chart selection
+            state.selectedWikis = [wikiCode];
+          }
         }
       }
 
@@ -1160,6 +1865,10 @@ createApp({
       } else if (state.filterMode === 'frs_key') {
         await nextTick();
         updateFrsKeyChart();
+      } else if (state.filterMode === 'yearmonth') {
+        // YearMonth uses the same chart as FRS Key
+        await nextTick();
+        updateFrsKeyChart();
       } else {
         updateChart();
       }
@@ -1173,6 +1882,17 @@ createApp({
         updateFrsKeyChart();
       }
     });
+
+    // Watch for changes to FRS Key metric and update chart (works for both FRS Key and YearMonth)
+    watch(() => state.selectedFrsKey, async () => {
+      if ((state.filterMode === 'frs_key') || (state.filterMode === 'yearmonth' && state.showGraph)) {
+        updateUrl();
+        await nextTick();
+        updateFrsKeyChart();
+      }
+    });
+
+
 
     // Extract unique months from loaded data
     function updateAvailableMonthsFromData(data) {
@@ -1232,8 +1952,22 @@ createApp({
       frsKeyTableDates,
       wikiTableData,
       lastUpdatedFormatted,
-      getFrsKeyValue,
+      goToWikiPage,
+      goToDatePage,
+      goToFrsKey,
+      goToWikiDatePage,
+      goToWikiFromDateView,
+      goToYearMonthMetric,
+      goToYearMonthWiki,
+      updateYearMonthChart,
       filteredTableData,
+
+      // Table helper functions
+      getFrsKeyValue,
+      getSingleDateValue,
+      getWikiDateData,
+      filteredDateFormatted,
+      formatDateToYearMonth,
       loadData,
       refreshData,
       updateUrl,

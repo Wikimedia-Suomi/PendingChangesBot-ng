@@ -101,53 +101,70 @@ class Command(BaseCommand):
     def _load_flaggedrevs_statistics(self, wiki: Wiki, superset: SupersetQuery, full_refresh: bool):
         """Load core FlaggedRevs statistics from flaggedrevs_statistics table."""
 
-        sql_query = """
+        # Add date filtering for incremental loading
+        date_filter = ""
+        if not full_refresh:
+            # Load only data newer than 2020-08-01 to avoid partial days
+            date_filter = "WHERE total_ns0.d > 20200801"
+
+        sql_query = f"""
 SELECT
+    FLOOR(d/100) as yearmonth,
+    AVG(totalPages_ns0) AS totalPages_ns0_avg,
+    AVG(syncedPages_ns0) AS syncedPages_ns0_avg,
+    AVG(reviewedPages_ns0) AS reviewedPages_ns0_avg,
+    AVG(pendingLag_average) AS pendingLag_average_avg
+FROM
+(
+  SELECT
     total_ns0.d,
     totalPages_ns0,
     syncedPages_ns0,
     reviewedPages_ns0,
     pendingLag_average
-FROM
-(
-  SELECT
-    floor(frs_timestamp/1000000) as d,
-    AVG(frs_stat_val) AS totalPages_ns0
-  FROM flaggedrevs_statistics
-  WHERE frs_stat_key = "totalPages-NS:0"
-  GROUP BY d
-) AS total_ns0
-LEFT JOIN
-(
-  SELECT
-    floor(frs_timestamp/1000000) as d,
-    AVG(frs_stat_val) AS syncedPages_ns0
-  FROM flaggedrevs_statistics
-  WHERE frs_stat_key = "syncedPages-NS:0"
-  GROUP BY d
-) AS syncedpages_ns0
-ON total_ns0.d = syncedpages_ns0.d
-LEFT JOIN
-(
-  SELECT
-    floor(frs_timestamp/1000000) as d,
-    AVG(frs_stat_val) AS reviewedPages_ns0
-  FROM flaggedrevs_statistics
-  WHERE frs_stat_key = "reviewedPages-NS:0"
-  GROUP BY d
-) AS reviewedpages_ns0
-ON total_ns0.d = reviewedpages_ns0.d
-LEFT JOIN
-(
-  SELECT
-    floor(frs_timestamp/1000000) as d,
-    AVG(frs_stat_val) AS pendingLag_average
-  FROM flaggedrevs_statistics
-  WHERE frs_stat_key = "pendingLag-average"
-  GROUP BY d
-) AS pendinglag_average
-ON total_ns0.d = pendinglag_average.d
-ORDER BY total_ns0.d
+  FROM
+  (
+    SELECT
+      floor(frs_timestamp/1000000) as d,
+      AVG(frs_stat_val) AS totalPages_ns0
+    FROM flaggedrevs_statistics
+    WHERE frs_stat_key = "totalPages-NS:0"
+    GROUP BY d
+  ) AS total_ns0
+  LEFT JOIN
+  (
+    SELECT
+      floor(frs_timestamp/1000000) as d,
+      AVG(frs_stat_val) AS syncedPages_ns0
+    FROM flaggedrevs_statistics
+    WHERE frs_stat_key = "syncedPages-NS:0"
+    GROUP BY d
+  ) AS syncedpages_ns0
+  ON total_ns0.d = syncedpages_ns0.d
+  LEFT JOIN
+  (
+    SELECT
+      floor(frs_timestamp/1000000) as d,
+      AVG(frs_stat_val) AS reviewedPages_ns0
+    FROM flaggedrevs_statistics
+    WHERE frs_stat_key = "reviewedPages-NS:0"
+    GROUP BY d
+  ) AS reviewedpages_ns0
+  ON total_ns0.d = reviewedpages_ns0.d
+  LEFT JOIN
+  (
+    SELECT
+      floor(frs_timestamp/1000000) as d,
+      AVG(frs_stat_val) AS pendingLag_average
+    FROM flaggedrevs_statistics
+    WHERE frs_stat_key = "pendingLag-average"
+    GROUP BY d
+  ) AS pendinglag_average
+  ON total_ns0.d = pendinglag_average.d
+  {date_filter}
+) as t
+GROUP BY yearmonth
+ORDER BY yearmonth
 """
 
         try:
@@ -162,39 +179,37 @@ ORDER BY total_ns0.d
 
             with transaction.atomic():
                 for entry in payload:
-                    # Parse date - can be float (20111201.0) or string ("201112")
-                    raw_date = entry.get("d", "")
+                    # Parse yearmonth - can be float (201112.0) or string ("201112")
+                    raw_yearmonth = entry.get("yearmonth", "")
 
                     # Convert to string and remove decimal point if present
-                    date_str = str(int(float(raw_date))) if raw_date else ""
+                    yearmonth_str = str(int(float(raw_yearmonth))) if raw_yearmonth else ""
 
-                    # Extract YYYYMM from YYYYMMDD or YYYYMM format
-                    if len(date_str) >= 6:
-                        date_str = date_str[:6]  # Take first 6 chars (YYYYMM)
-
-                    if not date_str or len(date_str) != 6:
+                    if not yearmonth_str or len(yearmonth_str) != 6:
                         skipped_count += 1
                         continue
 
                     try:
-                        year = int(date_str[:4])
-                        month = int(date_str[4:6])
+                        year = int(yearmonth_str[:4])
+                        month = int(yearmonth_str[4:6])
                         date = datetime(year, month, 1).date()
                     except (ValueError, TypeError):
-                        logger.warning(f"Invalid date format: {date_str}")
+                        logger.warning(f"Invalid yearmonth format: {yearmonth_str}")
                         skipped_count += 1
                         continue
 
-                    # Update or create statistics record
+                    # Update or create statistics record with averaged values
                     obj, created = FlaggedRevsStatistics.objects.update_or_create(
                         wiki=wiki,
                         date=date,
                         defaults={
-                            "total_pages_ns0": self._parse_int(entry.get("totalPages_ns0")),
-                            "synced_pages_ns0": self._parse_int(entry.get("syncedPages_ns0")),
-                            "reviewed_pages_ns0": self._parse_int(entry.get("reviewedPages_ns0")),
+                            "total_pages_ns0": self._parse_int(entry.get("totalPages_ns0_avg")),
+                            "synced_pages_ns0": self._parse_int(entry.get("syncedPages_ns0_avg")),
+                            "reviewed_pages_ns0": self._parse_int(
+                                entry.get("reviewedPages_ns0_avg")
+                            ),
                             "pending_lag_average": self._parse_float(
-                                entry.get("pendingLag_average")
+                                entry.get("pendingLag_average_avg")
                             ),
                         },
                     )
@@ -215,26 +230,40 @@ ORDER BY total_ns0.d
     def _load_review_activity(self, wiki: Wiki, superset: SupersetQuery, full_refresh: bool):
         """Load review activity data from flaggedrevs table."""
 
-        self.stdout.write("  Querying review activity (from 2016 onwards, max 50,000 samples)...")
+        start_date = "20200101000000"  # Start from 2020 for all wikis
+        start_year = "2020"
 
-        sql_query = """
+        # Add incremental loading
+        date_filter = ""
+        if not full_refresh:
+            date_filter = "AND fr_timestamp >= 20200801000000"
+
+        sql_query = f"""
 SELECT
-    d,
-    COUNT(DISTINCT(fr_user)) AS number_of_reviewers,
-    COUNT(*) AS number_of_reviews,
-    COUNT(DISTINCT(fr_page_id)) AS number_of_pages
-FROM (
-    SELECT
-        FLOOR(fr_timestamp/1000000) AS d,
-        fr_user,
-        fr_page_id
-    FROM flaggedrevs
-    WHERE fr_flags NOT LIKE "%auto%"
-        AND fr_timestamp >= 20160101000000
-    LIMIT 50000
-) AS recent_sample
-GROUP BY d
+    FLOOR(d/100) as yearmonth,
+    AVG(number_of_reviewers) AS number_of_reviewers_avg,
+    AVG(number_of_reviews) AS number_of_reviews_avg,
+    AVG(number_of_pages) AS number_of_pages_avg
+FROM
+(
+  SELECT
+      FLOOR(fr_timestamp/1000000) AS d,
+      COUNT(DISTINCT(fr_user)) AS number_of_reviewers,
+      SUM(1) AS number_of_reviews,
+      COUNT(DISTINCT(fr_page_id)) AS number_of_pages
+  FROM
+      flaggedrevs
+  WHERE
+      fr_flags NOT LIKE "%auto%"
+      AND fr_timestamp >= {start_date}
+      {date_filter}
+  GROUP BY d
+) as t
+GROUP BY yearmonth
+ORDER BY yearmonth
 """
+
+        self.stdout.write(f"  Querying review activity (from {start_year} onwards)...")
 
         try:
             payload = superset.query(sql_query)
@@ -245,37 +274,35 @@ GROUP BY d
 
             with transaction.atomic():
                 for entry in payload:
-                    # Parse date - can be float (20111201.0) or string ("201112")
-                    raw_date = entry.get("d", "")
+                    # Parse yearmonth from the query
+                    raw_yearmonth = entry.get("yearmonth", "")
 
                     # Convert to string and remove decimal point if present
-                    date_str = str(int(float(raw_date))) if raw_date else ""
+                    yearmonth_str = str(int(float(raw_yearmonth))) if raw_yearmonth else ""
 
-                    # Extract YYYYMM from YYYYMMDD or YYYYMM format
-                    if len(date_str) >= 6:
-                        date_str = date_str[:6]  # Take first 6 chars (YYYYMM)
-
-                    if not date_str or len(date_str) != 6:
+                    if not yearmonth_str or len(yearmonth_str) != 6:
                         continue
 
                     try:
-                        year = int(date_str[:4])
-                        month = int(date_str[4:6])
+                        year = int(yearmonth_str[:4])
+                        month = int(yearmonth_str[4:6])
                         date = datetime(year, month, 1).date()
                     except (ValueError, TypeError):
-                        logger.warning(f"Invalid date format: {date_str}")
+                        logger.warning(f"Invalid yearmonth format: {yearmonth_str}")
                         continue
 
-                    # Update or create review activity record
+                    # Update or create review activity record with averaged values
                     ReviewActivity.objects.update_or_create(
                         wiki=wiki,
                         date=date,
                         defaults={
                             "number_of_reviewers": self._parse_int(
-                                entry.get("number_of_reviewers")
+                                entry.get("number_of_reviewers_avg")
                             ),
-                            "number_of_reviews": self._parse_int(entry.get("number_of_reviews")),
-                            "number_of_pages": self._parse_int(entry.get("number_of_pages")),
+                            "number_of_reviews": self._parse_int(
+                                entry.get("number_of_reviews_avg")
+                            ),
+                            "number_of_pages": self._parse_int(entry.get("number_of_pages_avg")),
                         },
                     )
 
