@@ -50,41 +50,19 @@ class WikiConfiguration(models.Model):
             "action=query&meta=siteinfo&siprop=magicwords)"
         ),
     )
-    # ML Model Configuration
-    ml_model_type = models.CharField(
-        max_length=50,
-        default='revertrisk',
-        choices=[
-            ('revertrisk', 'Revert Risk (language-agnostic)'),
-            ('damaging', 'Damaging Edit Detection'),
-            ('goodfaith', 'Good Faith Prediction'),
-            ('articlequality', 'Article Quality Assessment'),
-            ('articletopic', 'Article Topic Classification'),
-        ],
-        help_text="Which Wikimedia ML model to use for this wiki"
-    )
-
-    ml_model_threshold = models.FloatField(
-        default=0.0,
-        help_text=(
-            "Threshold for ML model score (0.0-1.0). "
-            "Edits with a score above this threshold will not be auto-approved. "
-            "Set to 0.0 to disable ML model checking."
-        ),
-    )
-
     # Lift Wing ML Model Configuration
     ml_model_type = models.CharField(
         max_length=50,
-        default='revertrisk',
+        default='revertrisk_language_agnostic',
         choices=[
-            ('revertrisk', 'Revert Risk (language-agnostic)'),
-            ('damaging', 'Damaging Edit Detection'),
-            ('goodfaith', 'Good Faith Prediction'),
-            ('articlequality', 'Article Quality Assessment'),
-            ('articletopic', 'Article Topic Classification'),
+            ('revertrisk_language_agnostic', 'Revert Risk (language-agnostic, 250+ languages)'),
+            ('revertrisk_multilingual', 'Revert Risk (multilingual, 47 languages, higher accuracy)'),
+            ('damaging', 'Damaging Edit Detection (47 languages)'),
+            ('goodfaith', 'Good Faith Prediction (47 languages)'),
+            ('articlequality', 'Article Quality Assessment (wiki-specific)'),
+            ('articletopic', 'Article Topic Classification (wiki-specific)'),
         ],
-        help_text="Which Wikimedia Lift Wing ML model to use for this wiki"
+        help_text="Which Wikimedia Lift Wing ML model to use for this wiki. Check compatibility with your wiki language!"
     )
 
     ml_model_threshold = models.FloatField(
