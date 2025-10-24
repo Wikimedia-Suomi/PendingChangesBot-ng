@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from http import HTTPStatus
+from urllib.parse import urlencode
+
 
 import requests
 from django.core.cache import cache
@@ -29,6 +32,10 @@ from .services import WikiClient
 
 logger = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 1
+
+# Constants for LiftWing feature
+VALIDATION_TIMEOUT = 8  # seconds
+USER_AGENT = "PendingChangesBot/1.0 (https://github.com/Wikimedia-Suomi/PendingChangesBot-ng)"
 
 
 def calculate_percentile(values: list[float], percentile: float) -> float:
@@ -262,10 +269,6 @@ def index(request: HttpRequest) -> HttpResponse:
                 "configuration": {
                     "blocking_categories": configuration.blocking_categories,
                     "auto_approved_groups": configuration.auto_approved_groups,
-                    "ores_damaging_threshold": configuration.ores_damaging_threshold,
-                    "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
-                    "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
-                    "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,  # noqa E501
                 },
             }
         )
@@ -295,18 +298,6 @@ def api_wikis(request: HttpRequest) -> JsonResponse:
                     ),
                     "auto_approved_groups": (
                         configuration.auto_approved_groups if configuration else []
-                    ),
-                    "ores_damaging_threshold": (
-                        configuration.ores_damaging_threshold if configuration else 0.0
-                    ),
-                    "ores_goodfaith_threshold": (
-                        configuration.ores_goodfaith_threshold if configuration else 0.0
-                    ),
-                    "ores_damaging_threshold_living": (
-                        configuration.ores_damaging_threshold_living if configuration else 0.0
-                    ),
-                    "ores_goodfaith_threshold_living": (
-                        configuration.ores_goodfaith_threshold_living if configuration else 0.0
                     ),
                 },
             }
@@ -482,85 +473,21 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             payload = json.loads(request.body.decode("utf-8")) if request.body else {}
         else:
             payload = request.POST.dict()
-
         blocking_categories = payload.get("blocking_categories", [])
         auto_groups = payload.get("auto_approved_groups", [])
         if isinstance(blocking_categories, str):
             blocking_categories = [blocking_categories]
         if isinstance(auto_groups, str):
             auto_groups = [auto_groups]
-
-        ores_damaging_threshold = payload.get("ores_damaging_threshold")
-        ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
-        ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
-        ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
-
-        def validate_threshold(value, name):
-            if value is not None:
-                try:
-                    float_value = float(value)
-                    if not (0.0 <= float_value <= 1.0):
-                        return JsonResponse(
-                            {"error": f"{name} must be between 0.0 and 1.0"},
-                            status=400,
-                        )
-                    return float_value
-                except (ValueError, TypeError):
-                    return JsonResponse(
-                        {"error": f"{name} must be a valid number"},
-                        status=400,
-                    )
-            return None
-
-        validated_damaging = validate_threshold(ores_damaging_threshold, "ores_damaging_threshold")
-        if isinstance(validated_damaging, JsonResponse):
-            return validated_damaging
-
-        validated_goodfaith = validate_threshold(
-            ores_goodfaith_threshold, "ores_goodfaith_threshold"
-        )
-        if isinstance(validated_goodfaith, JsonResponse):
-            return validated_goodfaith
-
-        validated_damaging_living = validate_threshold(
-            ores_damaging_threshold_living, "ores_damaging_threshold_living"
-        )
-        if isinstance(validated_damaging_living, JsonResponse):
-            return validated_damaging_living
-
-        validated_goodfaith_living = validate_threshold(
-            ores_goodfaith_threshold_living, "ores_goodfaith_threshold_living"
-        )
-        if isinstance(validated_goodfaith_living, JsonResponse):
-            return validated_goodfaith_living
-
         configuration.blocking_categories = blocking_categories
         configuration.auto_approved_groups = auto_groups
-        update_fields = ["blocking_categories", "auto_approved_groups", "updated_at"]
-
-        if validated_damaging is not None:
-            configuration.ores_damaging_threshold = validated_damaging
-            update_fields.append("ores_damaging_threshold")
-        if validated_goodfaith is not None:
-            configuration.ores_goodfaith_threshold = validated_goodfaith
-            update_fields.append("ores_goodfaith_threshold")
-        if validated_damaging_living is not None:
-            configuration.ores_damaging_threshold_living = validated_damaging_living
-            update_fields.append("ores_damaging_threshold_living")
-        if validated_goodfaith_living is not None:
-            configuration.ores_goodfaith_threshold_living = validated_goodfaith_living
-            update_fields.append("ores_goodfaith_threshold_living")
-
-        configuration.save(update_fields=update_fields)
-
+        configuration.save(
+            update_fields=["blocking_categories", "auto_approved_groups", "updated_at"]
+        )
     return JsonResponse(
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
-            "ores_damaging_threshold": configuration.ores_damaging_threshold,
-            "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
-            "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
-            "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,
         }
     )
 
@@ -622,10 +549,14 @@ def api_enabled_checks(request: HttpRequest, pk: int) -> JsonResponse:
     )
 
 
+>>>>>>> upstream/main
 def fetch_diff(request):
     url = request.GET.get("url")
     if not url:
-        return JsonResponse({"error": "Missing 'url' parameter"}, status=400)
+        return JsonResponse(
+            {
+                "error": "Missing 'url' parameter"
+            }, status=400)
 
     cached_html = cache.get(url)
     if cached_html:
@@ -647,6 +578,349 @@ def fetch_diff(request):
         return HttpResponse(html_content, content_type="text/html")
     except requests.RequestException as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+def liftwing_page(request):
+    return render(request, "reviews/lift.html")
+
+def test_endpoints_page(request):
+    return render(request, "reviews/test_endpoints.html")
+
+@csrf_exempt
+def validate_article(request):
+    """
+    POST JSON: { "wiki": <wiki id|code|{id:,code:}>, "article": "Page title" }
+    Response JSON: { "valid": bool, "exists": bool, "pageid": int|null,
+        "normalized_title": str|null, "missing": bool, "error": null|str }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    article = payload.get("article")
+    wiki_payload = payload.get("wiki")
+
+    if not article or not isinstance(article, str) or not article.strip():
+        return JsonResponse({"valid": False, "error": "Empty article title"}, status=200)
+
+    try:
+        wiki = _resolve_wiki_from_payload(wiki_payload)
+    except LookupError as e:
+        return JsonResponse({"valid": False, "error": str(e)}, status=400)
+
+    api_endpoint = wiki.api_endpoint
+    if not api_endpoint:
+        return JsonResponse(
+            {"valid": False, "error": "Wiki has no configured api_endpoint"}, status=500
+        )
+
+    params = {
+        "action": "query",
+        "format": "json",
+        "formatversion": 2,
+        "titles": article,
+        "redirects": 1,
+        "prop": "info",
+    }
+
+    # Build query URL safely
+    if "?" not in api_endpoint:
+        query_url = f"{api_endpoint}?{urlencode(params)}"
+    else:
+        query_url = f"{api_endpoint}&{urlencode(params)}"
+
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        resp = requests.get(query_url, headers=headers, timeout=VALIDATION_TIMEOUT)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.exception("Failed to call MediaWiki API for validation: %s", exc)
+        return JsonResponse(
+            {"valid": False, "error": f"API request failed: {str(exc)}"},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+
+    try:
+        data = resp.json()
+    except ValueError:
+        logger.error("MediaWiki API returned non-json for %s", query_url)
+        return JsonResponse(
+            {"valid": False, "error": "API returned invalid JSON"},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+
+    query = data.get("query", {})
+    pages = query.get("pages", [])
+    if not pages:
+        return JsonResponse({"valid": False, "error": "Unexpected API response"}, status=500)
+
+    page = pages[0]
+    missing = bool(page.get("missing", False))
+    normalized_title = page.get("title")
+    pageid = page.get("pageid")
+
+    result = {
+        "valid": True,
+        "exists": not missing,
+        "missing": missing,
+        "pageid": pageid if pageid is not None else None,
+        "normalized_title": normalized_title,
+        "error": None,
+    }
+    return JsonResponse(result, status=200)
+
+
+def _resolve_wiki_from_payload(wiki_value):
+    """
+    Accept either integer pk, string code, or dictionary with 'id'/'code'.
+    Returns Wiki instance or raises LookupError.
+    """
+    from .models import Wiki
+
+    if wiki_value is None:
+        raise LookupError("Missing wiki parameter")
+
+    # If a dict was passed (from frontend), try keys
+    if isinstance(wiki_value, dict):
+        if "id" in wiki_value:
+            try:
+                return Wiki.objects.get(pk=int(wiki_value["id"]))
+            except Exception:
+                raise LookupError(f"Unknown wiki id {wiki_value['id']}")
+        if "code" in wiki_value:
+            try:
+                return Wiki.objects.get(code=str(wiki_value["code"]))
+            except Exception:
+                raise LookupError(f"Unknown wiki code {wiki_value['code']}")
+
+    # If numeric string or int -> assume pk
+    try:
+        pk = int(wiki_value)
+        try:
+            return Wiki.objects.get(pk=pk)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # Otherwise assume code
+    try:
+        return Wiki.objects.get(code=str(wiki_value))
+    except Exception:
+        raise LookupError(f"Unknown wiki identifier: {wiki_value!r}")
+    
+@csrf_exempt
+def fetch_revisions(request):
+    if request.method != 'POST':
+        return JsonResponse({"error": "Invalid method"}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        wiki = data.get('wiki', 'en')
+        article = data.get('article', '')
+        
+        if not article:
+            return JsonResponse({"error": "Missing article parameter"}, status=400)
+        
+        base_url = f"https://{wiki}.wikipedia.org/w/api.php"
+        headers = {"User-Agent": USER_AGENT}
+
+        params = {
+            "action": "query",
+            "prop": "revisions",
+            "titles": article,
+            "rvlimit": "max",
+            "rvprop": "ids|timestamp|user|comment",
+            "format": "json"
+        }
+
+        revisions = []
+        cont = True
+        cont_token = None
+        max_iterations = 10  # Prevent infinite loops
+
+        while cont and max_iterations > 0:
+            if cont_token:
+                params['rvcontinue'] = cont_token
+
+            try:
+                response = requests.get(base_url, params=params, headers=headers, timeout=10)
+                response.raise_for_status()
+                api_data = response.json()
+            except requests.exceptions.Timeout:
+                return JsonResponse({"error": "Request to Wikipedia API timed out"}, status=504)
+            except requests.exceptions.JSONDecodeError as e:
+                return JsonResponse({"error": f"Invalid JSON from Wikipedia API: {str(e)}"}, status=500)
+            except requests.exceptions.RequestException as e:
+                return JsonResponse({"error": f"Wikipedia API error: {str(e)}"}, status=500)
+
+            pages = api_data.get("query", {}).get("pages", {})
+            for page_id, page_info in pages.items():
+                revs = page_info.get("revisions", [])
+                revisions.extend(revs)
+
+            cont_token = api_data.get("continue", {}).get("rvcontinue")
+            cont = bool(cont_token)
+            max_iterations -= 1
+
+        return JsonResponse({"title": article, "revisions": revisions})
+    
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON in request body"}, status=400)
+    except Exception as e:
+        return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
+    
+@csrf_exempt
+def fetch_liftwing_predictions(request):
+    """
+    POST JSON: { "wiki": "en", "model": "articlequality", "revisions": [12345, 67890] }
+    Response: { "predictions": { "12345": {...}, "67890": {...} } }
+    
+    Optimized to use concurrent requests with ThreadPoolExecutor for parallel processing.
+    Much faster than sequential requests.
+    """
+    data = json.loads(request.body)
+    wiki = data.get("wiki", "en")
+    model = data.get("model", "articlequality")
+    revisions = data.get("revisions", [])
+
+    if not revisions:
+        return JsonResponse({"error": "Missing revisions list"}, status=400)
+
+    # Base URL for LiftWing API
+    base_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+    headers = {"User-Agent": USER_AGENT}
+    
+    def fetch_single_prediction(rev_id):
+        """Fetch prediction for a single revision ID"""
+        try:
+            payload = {"rev_id": rev_id}
+            resp = requests.post(base_url, json=payload, headers=headers, timeout=15)
+            resp.raise_for_status()
+            result = resp.json()
+            return (rev_id, result.get("output", result))
+        except requests.exceptions.Timeout:
+            return (rev_id, {"error": "Request timed out"})
+        except requests.exceptions.HTTPError as e:
+            return (rev_id, {"error": f"HTTP {e.response.status_code}: {str(e)}"})
+        except Exception as e:
+            return (rev_id, {"error": str(e)})
+    
+    predictions = {}
+    
+    # Use ThreadPoolExecutor for parallel requests (max 10 concurrent)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit all tasks
+        future_to_rev = {executor.submit(fetch_single_prediction, rev_id): rev_id 
+                        for rev_id in revisions}
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_rev):
+            rev_id, prediction = future.result()
+            predictions[rev_id] = prediction
+
+    return JsonResponse({"predictions": predictions})
+
+@csrf_exempt
+def fetch_predictions(request):
+    """
+    POST JSON: { "wiki": "en", "article": "Allu Arjun", "model": "articlequality" }
+    Calls the LiftWing API to fetch predictions for an article.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    wiki = data.get("wiki", "en")
+    article = data.get("article", "")
+    model = data.get("model", "articlequality")
+
+    if not article:
+        return JsonResponse({"error": "Missing article title"}, status=400)
+
+    # LiftWing API endpoint for model inference
+    api_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+
+    # For simplicity, we fetch the latest revision ID of the article first
+    rev_api = f"https://{wiki}.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "titles": article,
+        "prop": "revisions",
+        "rvlimit": 1,
+        "rvprop": "ids",
+        "format": "json",
+    }
+    verify=False
+    response = requests.get(
+    "https://en.wikipedia.org/w/api.php",
+    headers=headers,
+    params=params
+    )
+    response.raise_for_status()
+    
+
+    try:
+        rev_resp = requests.get(rev_api, params=params, timeout=10)
+        rev_resp.raise_for_status()
+        rev_data = rev_resp.json()
+        pages = rev_data.get("query", {}).get("pages", {})
+        rev_id = None
+        for page_id, page_info in pages.items():
+            if "revisions" in page_info:
+                rev_id = page_info["revisions"][0]["revid"]
+                break
+    except Exception as e:
+        return JsonResponse({"error": f"Failed to fetch revision ID: {e}"}, status=500)
+
+    if not rev_id:
+        return JsonResponse({"error": "No revision found for this article"}, status=404)
+
+    # Call LiftWing API
+    payload = {"rev_id": rev_id}
+    headers = {"User-Agent": "PendingChangesBot/1.0 (LiftWingIntegration)"}
+
+    try:
+        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        prediction = response.json()
+        return JsonResponse({
+            "wiki": wiki,
+            "article": article,
+            "rev_id": rev_id,
+            "model": model,
+            "prediction": prediction
+        })
+    except requests.RequestException as e:
+        return JsonResponse({"error": f"LiftWing request failed: {str(e)}"}, status=500)
+
+    
+
+@require_GET
+def liftwing_models(request, wiki_code):
+    """Return available LiftWing models for the given wiki."""
+    # For now, return a static list of available models
+    models = [
+        {
+            "name": "articlequality",
+            "version": "1.0.0",
+            "description": "Predicts the quality class of Wikipedia articles"
+        },
+        {
+            "name": "draftquality",
+            "version": "1.0.0",
+            "description": "Predicts the quality of new article drafts"
+        }
+    ]
+    return JsonResponse({"models": models})
 
 
 @require_GET
