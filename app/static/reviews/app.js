@@ -145,6 +145,18 @@ createApp({
       loading: false,
       error: "",
       configurationOpen: loadConfigurationOpen(),
+      statisticsOpen: false,
+      statistics: {
+        loading: false,
+        error: "",
+        metadata: null,
+        topReviewers: [],
+        topReviewedUsers: [],
+        records: [],
+        timeFilter: "all",
+        excludeAutoReviewers: false,
+        chartData: null,
+      },
       reviewResults: {},
       runningReviews: {},
       runningBulkReview: false,
@@ -155,11 +167,17 @@ createApp({
         showDiffsByPage: {}
       },
       searchQuery: "",
+      availableChecks: [],
     });
 
     const forms = reactive({
       blockingCategories: "",
       autoApprovedGroups: "",
+      oresDamagingThreshold: 0.0,
+      oresGoodfaithThreshold: 0.0,
+      oresDamagingThresholdLiving: 0.0,
+      oresGoodfaithThresholdLiving: 0.0,
+      enabledChecks: [],
     });
 
     const currentWiki = computed(() =>
@@ -229,18 +247,35 @@ createApp({
 
     const hasMorePages = computed(() => filteredPages.value.length > pageDisplayLimit);
 
-    function saveDiffsToLocalStorage() {      
+    function saveDiffsToLocalStorage() {
       localStorage.setItem('showDiffsSetting', !state.diffs.showDiffs);
     }
 
-    function syncForms() {
+    async function syncForms() {
       if (!currentWiki.value) {
         forms.blockingCategories = "";
         forms.autoApprovedGroups = "";
+        forms.oresDamagingThreshold = 0.0;
+        forms.oresGoodfaithThreshold = 0.0;
+        forms.oresDamagingThresholdLiving = 0.0;
+        forms.oresGoodfaithThresholdLiving = 0.0;
+        forms.enabledChecks = [];
         return;
       }
       forms.blockingCategories = (currentWiki.value.configuration.blocking_categories || []).join("\n");
       forms.autoApprovedGroups = (currentWiki.value.configuration.auto_approved_groups || []).join("\n");
+      forms.oresDamagingThreshold = currentWiki.value.configuration.ores_damaging_threshold || 0.0;
+      forms.oresGoodfaithThreshold = currentWiki.value.configuration.ores_goodfaith_threshold || 0.0;
+      forms.oresDamagingThresholdLiving = currentWiki.value.configuration.ores_damaging_threshold_living || 0.0;
+      forms.oresGoodfaithThresholdLiving = currentWiki.value.configuration.ores_goodfaith_threshold_living || 0.0;
+
+      try {
+        const data = await apiRequest(`/api/wikis/${state.selectedWikiId}/checks/`);
+        forms.enabledChecks = data.enabled_checks || [];
+      } catch (error) {
+        console.error('Failed to load enabled checks:', error);
+        forms.enabledChecks = [];
+      }
     }
 
     async function apiRequest(url, options = {}) {
@@ -351,13 +386,50 @@ createApp({
       }
     }
 
+    function validateOresThreshold(value, name) {
+      if (value === null || value === undefined || value === "") {
+        return null;
+      }
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) {
+        return `${name} must be a valid number`;
+      }
+      if (numValue < 0.0 || numValue > 1.0) {
+        return `${name} must be between 0.0 and 1.0`;
+      }
+      return null;
+    }
+
     async function saveConfiguration() {
       if (!state.selectedWikiId) {
         return;
       }
+
+      const validationErrors = [];
+      const damagingError = validateOresThreshold(forms.oresDamagingThreshold, "Damaging threshold");
+      if (damagingError) validationErrors.push(damagingError);
+
+      const goodfaithError = validateOresThreshold(forms.oresGoodfaithThreshold, "Goodfaith threshold");
+      if (goodfaithError) validationErrors.push(goodfaithError);
+
+      const damagingLivingError = validateOresThreshold(forms.oresDamagingThresholdLiving, "Damaging threshold (Living persons)");
+      if (damagingLivingError) validationErrors.push(damagingLivingError);
+
+      const goodfaithLivingError = validateOresThreshold(forms.oresGoodfaithThresholdLiving, "Goodfaith threshold (Living persons)");
+      if (goodfaithLivingError) validationErrors.push(goodfaithLivingError);
+
+      if (validationErrors.length > 0) {
+        state.error = validationErrors.join(". ");
+        return;
+      }
+
       const payload = {
         blocking_categories: parseTextarea(forms.blockingCategories),
         auto_approved_groups: parseTextarea(forms.autoApprovedGroups),
+        ores_damaging_threshold: forms.oresDamagingThreshold,
+        ores_goodfaith_threshold: forms.oresGoodfaithThreshold,
+        ores_damaging_threshold_living: forms.oresDamagingThresholdLiving,
+        ores_goodfaith_threshold_living: forms.oresGoodfaithThresholdLiving,
       };
       try {
         const data = await apiRequest(`/api/wikis/${state.selectedWikiId}/configuration/`, {
@@ -371,7 +443,17 @@ createApp({
         if (wikiIndex >= 0) {
           state.wikis[wikiIndex].configuration = data;
         }
+
+        await apiRequest(`/api/wikis/${state.selectedWikiId}/checks/`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ enabled_checks: forms.enabledChecks }),
+        });
+
         syncForms();
+        state.configurationOpen = false;
       } catch (error) {
         // Error already handled in apiRequest.
       }
@@ -456,6 +538,337 @@ createApp({
 
     function toggleConfiguration() {
       state.configurationOpen = !state.configurationOpen;
+    }
+
+    function toggleStatistics() {
+      state.statisticsOpen = !state.statisticsOpen;
+      if (state.statisticsOpen && state.statistics.topReviewers.length === 0) {
+        loadStatistics();
+      }
+    }
+
+    async function loadStatistics() {
+      if (!state.selectedWikiId) {
+        return;
+      }
+      state.statistics.loading = true;
+      state.statistics.error = "";
+      try {
+        // Update URL parameters
+        updateStatisticsUrl();
+
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (state.statistics.timeFilter !== "all") {
+          params.append("time_filter", state.statistics.timeFilter);
+        }
+        if (state.statistics.excludeAutoReviewers) {
+          params.append("exclude_auto_reviewers", "true");
+        }
+
+        const url = `/api/wikis/${state.selectedWikiId}/statistics/?${params.toString()}`;
+        const data = await fetch(url);
+        if (!data.ok) {
+          throw new Error(data.statusText || "Failed to load statistics");
+        }
+        const json = await data.json();
+        state.statistics.metadata = json.metadata || null;
+        state.statistics.topReviewers = json.top_reviewers || [];
+        state.statistics.topReviewedUsers = json.top_reviewed_users || [];
+        state.statistics.records = json.records || [];
+
+        // Load chart data
+        await loadChartData();
+      } catch (error) {
+        state.statistics.error = error.message || "Failed to load statistics";
+        state.statistics.metadata = null;
+        state.statistics.topReviewers = [];
+        state.statistics.topReviewedUsers = [];
+        state.statistics.records = [];
+      } finally {
+        state.statistics.loading = false;
+      }
+    }
+
+    async function loadChartData() {
+      if (!state.selectedWikiId) {
+        return;
+      }
+      try {
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (state.statistics.timeFilter !== "all") {
+          params.append("time_filter", state.statistics.timeFilter);
+        }
+        if (state.statistics.excludeAutoReviewers) {
+          params.append("exclude_auto_reviewers", "true");
+        }
+
+        const url = `/api/wikis/${state.selectedWikiId}/statistics/charts/?${params.toString()}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(response.statusText || "Failed to load chart data");
+        }
+        const json = await response.json();
+        state.statistics.chartData = json;
+
+        // Render charts after Vue updates the DOM
+        setTimeout(() => renderCharts(), 100);
+      } catch (error) {
+        console.error("Failed to load chart data:", error);
+      }
+    }
+
+    function setTimeFilter(filter) {
+      state.statistics.timeFilter = filter;
+      updateStatisticsUrl();
+      loadStatistics();
+    }
+
+    function updateStatisticsUrl() {
+      // Update URL parameters without reloading the page
+      if (!window.location.pathname.includes('/statistics/')) {
+        return;
+      }
+      const params = new URLSearchParams(window.location.search);
+      params.set('wiki', state.selectedWikiId);
+      if (state.statistics.timeFilter !== 'all') {
+        params.set('time_filter', state.statistics.timeFilter);
+      } else {
+        params.delete('time_filter');
+      }
+      if (state.statistics.excludeAutoReviewers) {
+        params.set('exclude_auto_reviewers', 'true');
+      } else {
+        params.delete('exclude_auto_reviewers');
+      }
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+
+    function renderCharts() {
+      if (!state.statistics.chartData) {
+        return;
+      }
+
+      const chartData = state.statistics.chartData;
+
+      // Destroy existing charts
+      Chart.helpers.each(Chart.instances, (instance) => {
+        instance.destroy();
+      });
+
+      // Reviewers over time chart
+      const reviewersCtx = document.getElementById("reviewersOverTimeChart");
+      if (reviewersCtx) {
+        new Chart(reviewersCtx, {
+          type: "line",
+          data: {
+            labels: chartData.reviewers_over_time.map((d) => d.date),
+            datasets: [
+              {
+                label: "Number of Reviewers",
+                data: chartData.reviewers_over_time.map((d) => d.count),
+                borderColor: "rgb(54, 162, 235)",
+                backgroundColor: "rgba(54, 162, 235, 0.2)",
+                tension: 0.1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: "Reviewers Over Time",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+              },
+            },
+          },
+        });
+      }
+
+      // Pending reviews per day chart
+      const pendingCtx = document.getElementById("pendingReviewsChart");
+      if (pendingCtx) {
+        new Chart(pendingCtx, {
+          type: "bar",
+          data: {
+            labels: chartData.pending_reviews_per_day.map((d) => d.date),
+            datasets: [
+              {
+                label: "Reviews Per Day",
+                data: chartData.pending_reviews_per_day.map((d) => d.count),
+                borderColor: "rgb(75, 192, 192)",
+                backgroundColor: "rgba(75, 192, 192, 0.6)",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: "Pending Reviews Per Day",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+              },
+            },
+          },
+        });
+      }
+
+      // Average delay chart
+      const avgDelayCtx = document.getElementById("averageDelayChart");
+      if (avgDelayCtx) {
+        new Chart(avgDelayCtx, {
+          type: "line",
+          data: {
+            labels: chartData.average_delay_over_time.map((d) => d.date),
+            datasets: [
+              {
+                label: "Average Delay (days)",
+                data: chartData.average_delay_over_time.map((d) => d.avg_delay),
+                borderColor: "rgb(255, 159, 64)",
+                backgroundColor: "rgba(255, 159, 64, 0.2)",
+                fill: true,
+                tension: 0.1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: "Average Review Delay Over Time",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: "Days",
+                },
+              },
+            },
+          },
+        });
+      }
+
+      // Delay percentiles chart
+      const percentilesCtx = document.getElementById("delayPercentilesChart");
+      if (percentilesCtx) {
+        new Chart(percentilesCtx, {
+          type: "line",
+          data: {
+            labels: chartData.delay_percentiles.map((d) => d.date),
+            datasets: [
+              {
+                label: "P10 (Lower Bound)",
+                data: chartData.delay_percentiles.map((d) => d.p10),
+                borderColor: "rgb(153, 102, 255)",
+                backgroundColor: "rgba(153, 102, 255, 0.1)",
+                fill: false,
+                tension: 0.1,
+              },
+              {
+                label: "P50 (Median)",
+                data: chartData.delay_percentiles.map((d) => d.p50),
+                borderColor: "rgb(255, 99, 132)",
+                backgroundColor: "rgba(255, 99, 132, 0.2)",
+                fill: "-1",
+                tension: 0.1,
+              },
+              {
+                label: "P90 (Upper Bound)",
+                data: chartData.delay_percentiles.map((d) => d.p90),
+                borderColor: "rgb(255, 205, 86)",
+                backgroundColor: "rgba(255, 205, 86, 0.1)",
+                fill: false,
+                tension: 0.1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: "Review Delay Percentiles (P10, P50, P90)",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: "Days",
+                },
+              },
+            },
+          },
+        });
+      }
+    }
+
+    async function refreshStatistics() {
+      if (!state.selectedWikiId) {
+        return;
+      }
+      state.statistics.loading = true;
+      state.statistics.error = "";
+      try {
+        const response = await fetch(`/api/wikis/${state.selectedWikiId}/statistics/refresh/`, {
+          method: "POST",
+        });
+        if (!response.ok) {
+          throw new Error(response.statusText || "Failed to refresh statistics");
+        }
+        await loadStatistics();
+      } catch (error) {
+        state.statistics.error = error.message || "Failed to refresh statistics";
+      } finally {
+        state.statistics.loading = false;
+      }
+    }
+
+    function buildUserPageUrl(username) {
+      const origin = getWikiOrigin();
+      if (!origin || !username) {
+        return "";
+      }
+      const normalized = username.replace(/ /g, "_");
+      const encoded = encodeURIComponent(normalized);
+      return `${origin}/wiki/User:${encoded}`;
+    }
+
+    function buildPageUrl(pageTitle) {
+      const origin = getWikiOrigin();
+      if (!origin || !pageTitle) {
+        return "";
+      }
+      const normalized = pageTitle.replace(/ /g, "_");
+      const encoded = encodeURIComponent(normalized);
+      return `${origin}/wiki/${encoded}`;
+    }
+
+    function buildPageDiffUrl(pageTitle, revisionId) {
+      const origin = getWikiOrigin();
+      if (!origin || !pageTitle || !revisionId) {
+        return "";
+      }
+      const normalized = pageTitle.replace(/ /g, "_");
+      const encoded = encodeURIComponent(normalized);
+      return `${origin}/w/index.php?title=${encoded}&diff=prev&oldid=${revisionId}`;
     }
 
     async function runAutoreview(page, showDiffs=true) {
@@ -577,7 +990,7 @@ createApp({
      */
 
     async function showDiff(page) {
-      
+
       page.revisions.forEach(async (revision)=> {
         state.diffs.loadingDiff[revision.revid] = true;
         // when running autoreview all
@@ -609,13 +1022,13 @@ createApp({
           if (link) {
               const relativeHref = link.getAttribute('href');
               const domainUrl = "//fi.wikipedia.org";
-              
+
               if (relativeHref && relativeHref.startsWith('/w/')) {
                   link.setAttribute('href', `${domainUrl}${relativeHref}`);
               }
           }
-          
-          const updatedHtml = doc.body.innerHTML; 
+
+          const updatedHtml = doc.body.innerHTML;
           state.diffs.diffHtml[revision.revid] = updatedHtml;
 
         } catch (error) {
@@ -624,7 +1037,7 @@ createApp({
           state.diffs.loadingDiff[revision.revid] = false;
         }
 
-      })        
+      })
     }
 
     watch(
@@ -656,10 +1069,40 @@ createApp({
     watch(currentWiki, () => {
       syncForms();
       loadPending();
+      // Reload statistics if statistics panel is open
+      if (state.statisticsOpen) {
+        loadStatistics();
+      }
     }, { immediate: true });
+
+    async function loadAvailableChecks() {
+      try {
+        const data = await apiRequest('/api/checks/');
+        state.availableChecks = data.checks || [];
+      } catch (error) {
+        console.error('Failed to load available checks:', error);
+        state.availableChecks = [];
+      }
+    }
 
     onMounted(() => {
       syncForms();
+      loadAvailableChecks();
+      // If on statistics page, read URL params and load statistics
+      if (window.location.pathname.includes('/statistics/')) {
+        const params = new URLSearchParams(window.location.search);
+        const timeFilter = params.get('time_filter');
+        if (timeFilter && ['day', 'week', 'all'].includes(timeFilter)) {
+          state.statistics.timeFilter = timeFilter;
+        }
+        const excludeAutoReviewers = params.get('exclude_auto_reviewers');
+        if (excludeAutoReviewers === 'true') {
+          state.statistics.excludeAutoReviewers = true;
+        }
+        if (state.selectedWikiId) {
+          loadStatistics();
+        }
+      }
     });
 
     return {
@@ -675,11 +1118,19 @@ createApp({
       saveConfiguration,
       loadPending,
       formatDate,
+      formatDateTime,
       toggleConfiguration,
+      toggleStatistics,
+      loadStatistics,
+      refreshStatistics,
+      setTimeFilter,
       formatTitle,
       buildLatestRevisionUrl,
       buildRevisionDiffUrl,
       buildUserContributionsUrl,
+      buildUserPageUrl,
+      buildPageUrl,
+      buildPageDiffUrl,
       buildFlaggedRevsUrl,
       runAutoreview,
       runAutoreviewAllVisible,
