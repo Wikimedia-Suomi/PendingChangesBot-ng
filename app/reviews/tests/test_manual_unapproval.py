@@ -28,8 +28,9 @@ class ManualUnapprovalTests(TestCase):
         )
         self.config = WikiConfiguration.objects.create(wiki=self.wiki)
 
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.services.WikiClient.has_manual_unapproval")
-    def test_manually_unapproved_revision_should_be_blocked(self, mock_has_unapproval):
+    def test_manually_unapproved_revision_should_be_blocked(self, mock_has_unapproval, mock_html):
         """Bot should not auto-approve revisions that have been manually un-approved."""
         mock_has_unapproval.return_value = True
 
@@ -86,8 +87,9 @@ class ManualUnapprovalTests(TestCase):
         self.assertIsNotNone(manual_unapproval_test)
         self.assertEqual(manual_unapproval_test["status"], "fail")
 
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.services.WikiClient.has_manual_unapproval")
-    def test_not_manually_unapproved_revision_passes_check(self, mock_has_unapproval):
+    def test_not_manually_unapproved_revision_passes_check(self, mock_has_unapproval, mock_html):
         """Revisions without manual un-approval should pass the check."""
         mock_has_unapproval.return_value = False
 
@@ -137,8 +139,9 @@ class ManualUnapprovalTests(TestCase):
 
         self.assertEqual(result["decision"]["status"], "approve")
 
+    @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.services.WikiClient.has_manual_unapproval")
-    def test_manual_unapproval_overrides_autoreview_rights(self, mock_has_unapproval):
+    def test_manual_unapproval_overrides_autoreview_rights(self, mock_has_unapproval, mock_html):
         """Manual un-approval should block even users with autoreview rights."""
         mock_has_unapproval.return_value = True
 
@@ -189,7 +192,7 @@ class ManualUnapprovalTests(TestCase):
             "Manual un-approval should override autoreview rights",
         )
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_has_manual_unapproval_detects_unapproval(self, mock_site):
         """Test WikiClient.has_manual_unapproval correctly detects un-approvals."""
         from reviews.services import WikiClient
@@ -236,7 +239,7 @@ class ManualUnapprovalTests(TestCase):
 
         self.assertTrue(result, "Should detect manual un-approval")
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_has_manual_unapproval_returns_false_when_no_unapproval(self, mock_site):
         """Test WikiClient.has_manual_unapproval returns False when no un-approval exists."""
         from reviews.services import WikiClient
@@ -283,7 +286,7 @@ class ManualUnapprovalTests(TestCase):
 
         self.assertFalse(result, "Should return False when no un-approval exists")
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_has_manual_unapproval_checks_correct_revision(self, mock_site):
         """Test that has_manual_unapproval only returns True for the specific revision."""
         from reviews.services import WikiClient
@@ -324,7 +327,7 @@ class ManualUnapprovalTests(TestCase):
 
         self.assertFalse(result, "Should return False when un-approval is for a different revision")
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_later_approval_overrides_earlier_unapproval(self, mock_site):
         """If revision was un-approved then re-approved, should return False."""
         from reviews.services import WikiClient
@@ -379,7 +382,7 @@ class ManualUnapprovalTests(TestCase):
             result, "Should return False when most recent action is approval (not unapproval)"
         )
 
-    @mock.patch("reviews.models.pywikibot.Site")
+    @mock.patch("reviews.models.pending_revision.pywikibot.Site")
     def test_detects_quality_unapproval(self, mock_site):
         """Test that unapprove2 (quality un-approval) is also detected."""
         from reviews.services import WikiClient
