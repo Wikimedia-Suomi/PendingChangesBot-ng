@@ -60,42 +60,50 @@ Vue.js interface for reviewing the results.
    ```
    This will automatically format and lint your code before each commit.
 
-## Configuring Pywikibot Superset OAuth
+## Authentication Setup
+
+PendingChangesBot requires authentication to interact with Wikimedia APIs. For local development, the simplest method is using **BotPassword**.
 
 Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
 Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
 the steps below once per user account that will run PendingChangesBot:
 
+### Quick Start (BotPassword)
+
 1. **Move to app directory**
    All pywikibot and manage.py commands should be run in the app directory.
-
    ```bash
    cd app
    ```
 
-2. **Create a Pywikibot configuration**
+2. **Create a Bot Password** at <https://meta.wikimedia.org/wiki/Special:BotPasswords>
 
+3. **Copy configuration files:**
+   ```bash
+   cp user-config.py.example user-config.py
+   cp user-password.py.example user-password.py
+   ```
+
+4. **Create a Pywikibot configuration**
    ```bash
    echo "usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'" > user-config.py
    ```
 
-3. **Log in with Pywikibot**
+5. **Update credentials** in `user-password.py` with your BotPassword details
 
-   - Using management command
+6. **Log in with Pywikibot**
 
+   - Using management command:
    ```bash
    python manage.py auth_with_username_and_password
    ```
 
-
-   - On **Windows**:
-
+   - Or on **Windows**:
    ```bash
    python -m pywikibot.scripts.login -site:meta
    ```
 
-   - On **macOS / Linux**:
-
+   - Or on **macOS / Linux**:
    ```bash
    python3 -m pywikibot.scripts.login -site:meta
    ```
@@ -103,11 +111,13 @@ the steps below once per user account that will run PendingChangesBot:
    The command should report `Logged in on metawiki` and create a persistent login
    cookie at `~/.pywikibot/pywikibot.lwp`.
 
-4. **Approve Superset's OAuth client**
+7. **Approve Superset's OAuth client**
    - While still logged in to Meta-Wiki in your browser, open
      <https://superset.wmcloud.org/login/>.
    - Authorize the OAuth request for Superset. After approval you should be redirected
      to Superset's interface.
+
+**For complete setup instructions** (including OAuth 1.0a for production deployment and Django OAuth integration), see the [**Authentication Guide**](docs/AUTHENTICATION.md).
 
 ## Running the database migrations
 
