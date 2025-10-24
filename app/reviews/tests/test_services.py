@@ -22,6 +22,10 @@ class FakeSite:
         self.users_data: dict[str, dict] = {}
         self.requests: list[dict] = []
 
+    def logevents(self, **kwargs):
+        """Mock logevents for block checking."""
+        return []
+
     def simple_request(self, **kwargs):
         self.requests.append(kwargs)
         return FakeRequest(self.response)
@@ -47,12 +51,12 @@ class WikiClientTests(TestCase):
         )
         self.fake_site = FakeSite()
         self.site_patcher = mock.patch(
-            "reviews.services.pywikibot.Site",
+            "reviews.services.wiki_client.pywikibot.Site",
             return_value=self.fake_site,
         )
         self.site_patcher.start()
         self.addCleanup(self.site_patcher.stop)
-        self.superset_patcher = mock.patch("reviews.services.SupersetQuery")
+        self.superset_patcher = mock.patch("reviews.services.wiki_client.SupersetQuery")
         self.mock_superset_cls = self.superset_patcher.start()
         self.addCleanup(self.superset_patcher.stop)
         self.mock_superset = self.mock_superset_cls.return_value
@@ -60,8 +64,7 @@ class WikiClientTests(TestCase):
 
     def test_parse_categories_extracts_unique_names(self):
         wikitext = (
-            "Some text [[Category:Example]] and [[category:Second|label]] "
-            "and [[Category:Example]]"
+            "Some text [[Category:Example]] and [[category:Second|label]] and [[Category:Example]]"
         )
         categories = parse_categories(wikitext)
         self.assertEqual(categories, ["Example", "Second"])
@@ -142,9 +145,7 @@ class WikiClientTests(TestCase):
         client.fetch_pending_pages(limit=2)
 
         page = PendingPage.objects.get(pageid=555)
-        revisions = list(
-            PendingRevision.objects.filter(page=page).order_by("revid")
-        )
+        revisions = list(PendingRevision.objects.filter(page=page).order_by("revid"))
         self.assertEqual([30, 31], [revision.revid for revision in revisions])
         self.assertEqual(page.stable_revid, 30)
 
@@ -179,8 +180,8 @@ class WikiClientTests(TestCase):
 
 
 class RefreshWorkflowTests(TestCase):
-    @mock.patch("reviews.services.SupersetQuery")
-    @mock.patch("reviews.services.pywikibot.Site")
+    @mock.patch("reviews.services.wiki_client.SupersetQuery")
+    @mock.patch("reviews.services.wiki_client.pywikibot.Site")
     def test_refresh_handles_errors(self, mock_site, mock_superset):
         wiki = Wiki.objects.create(
             name="Test Wiki",
@@ -195,11 +196,9 @@ class RefreshWorkflowTests(TestCase):
         with self.assertRaises(RuntimeError):
             client.refresh()
 
-    @mock.patch("reviews.services.SupersetQuery")
-    @mock.patch("reviews.services.pywikibot.Site")
-    def test_refresh_does_not_call_pywikibot_requests(
-        self, mock_site, mock_superset
-    ):
+    @mock.patch("reviews.services.wiki_client.SupersetQuery")
+    @mock.patch("reviews.services.wiki_client.pywikibot.Site")
+    def test_refresh_does_not_call_pywikibot_requests(self, mock_site, mock_superset):
         wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",

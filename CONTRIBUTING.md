@@ -15,7 +15,7 @@ Of course\! Here is a table of contents for the provided guide.
     3.  [Running the database migrations](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-the-database-migrations)
     4.  [Running the application](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-the-application)
     5.  [Running unit tests](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-unit-tests)
-    6.  [Running Flake8](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-flake8)
+    6.  [Code Formatting and Linting](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#code-formatting-and-linting)
 5.  [Label Meanings](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#label-meanings)
     1.  [Status Labels](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#status-labels)
     2.  [Type Labels](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#type-labels)
@@ -75,7 +75,7 @@ Before installing or running the application, ensure you have:
    ```bash
    python --version
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 --version
    ```
@@ -85,17 +85,22 @@ Before installing or running the application, ensure you have:
    python3 -m venv venv
    source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
    ```
-4. **Install Python dependencies**
+5. **Install Python dependencies**
    * On **Windows**:
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    pip3 install --upgrade pip
    pip3 install -r requirements.txt
    ```
+6. **Install pre-commit hooks** (recommended for contributors)
+   ```bash
+   pre-commit install
+   ```
+   This will automatically format and lint your code before each commit.
 
 ### Configuring Authentication
 
@@ -121,6 +126,7 @@ PendingChangesBot requires authentication to interact with Wikimedia APIs. For *
 
    Copy the example template:
    ```bash
+<<<<<<< HEAD
    cp user-password.py.example user-password.py
    ```
 
@@ -132,7 +138,9 @@ PendingChangesBot requires authentication to interact with Wikimedia APIs. For *
 
    Copy and configure `user-config.py`:
    ```bash
+   cd app
    cp user-config.py.example user-config.py
+   echo "usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'" > user-config.py
    ```
 
    Edit `user-config.py`:
@@ -149,7 +157,12 @@ PendingChangesBot requires authentication to interact with Wikimedia APIs. For *
    password_file = "user-password.py"
    ```
 
-3. **Test your setup:**
+3. **Log in with Pywikibot**
+   * On **Windows**:
+   ```bash
+   python -m pywikibot.scripts.login -site:meta
+   ```
+   * On **macOS / Linux**:
    ```bash
    python3 -m pywikibot.scripts.login -site:meta
    ```
@@ -158,6 +171,12 @@ PendingChangesBot requires authentication to interact with Wikimedia APIs. For *
    ```
    Logged in on meta:meta as YourUsername@PendingChangesBot-Dev.
    ```
+
+4. **Approve Superset's OAuth client**
+   - While still logged in to Meta-Wiki in your browser, open
+     <https://superset.wmcloud.org/login/>.
+   - Authorize the OAuth request for Superset. After approval you should be redirected
+     to Superset's interface.
 
 #### Common Issues
 
@@ -177,7 +196,7 @@ PendingChangesBot requires authentication to interact with Wikimedia APIs. For *
    python manage.py makemigrations
    python manage.py migrate
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 manage.py makemigrations
    python3 manage.py migrate
@@ -194,7 +213,7 @@ The Django project serves both the API and the Vue.js frontend from the same cod
    ```bash
    python manage.py runserver
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 manage.py runserver
    ```
@@ -213,18 +232,26 @@ Unit tests live in the Django backend project. Run them from the `app/` director
    ```bash
    python manage.py test
    ```
-   * On **macOS**:
+   * On **macOS / Linux**:
    ```bash
    python3 manage.py test
    ```
 
-### Running Flake8
+### Code Formatting and Linting
 
-Run Flake8 from the repository root to lint the code according to the configuration provided in `.flake8`.
+This project uses [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting.
 
-   ```bash
-   flake8
-   ```
+**Note:** If you installed pre-commit hooks (step 6 above), formatting and linting happen automatically before each commit. You don't need to run these commands manually.
+
+### Manual Commands
+
+```bash
+# Format code
+ruff format app/
+
+# Check and fix linting issues
+ruff check app/ --fix
+```
 
 If you are working inside a virtual environment, ensure it is activated before executing the command.
 
