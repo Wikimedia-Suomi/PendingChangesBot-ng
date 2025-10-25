@@ -155,21 +155,25 @@ class StatisticsViewTests(TestCase):
     @mock.patch("reviews.views.WikiClient")
     def test_api_statistics_refresh_success(self, mock_client):
         """Test refreshing statistics successfully."""
-        mock_client.return_value.fetch_review_statistics.return_value = {
+        mock_client.return_value.refresh_review_statistics.return_value = {
             "total_records": 10,
             "oldest_timestamp": datetime(2025, 1, 1, tzinfo=timezone.utc),
             "newest_timestamp": datetime(2025, 1, 15, tzinfo=timezone.utc),
+            "is_incremental": True,
         }
         response = self.client.post(reverse("api_statistics_refresh", args=[self.wiki.pk]))
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["total_records"], 10)
+        self.assertEqual(data["is_incremental"], True)
 
     @mock.patch("reviews.views.logger")
     @mock.patch("reviews.views.WikiClient")
     def test_api_statistics_refresh_failure(self, mock_client, mock_logger):
         """Test statistics refresh error handling."""
-        mock_client.return_value.fetch_review_statistics.side_effect = RuntimeError("Network error")
+        mock_client.return_value.refresh_review_statistics.side_effect = RuntimeError(
+            "Network error"
+        )
         response = self.client.post(reverse("api_statistics_refresh", args=[self.wiki.pk]))
         self.assertEqual(response.status_code, 502)
         self.assertIn("error", response.json())
@@ -185,13 +189,14 @@ class StatisticsServiceTests(TestCase):
         )
         WikiConfiguration.objects.create(wiki=self.wiki)
 
-    @mock.patch("reviews.services.wiki_client.SupersetQuery")
+    @mock.patch("reviews.services.statistics.SupersetQuery")
     def test_fetch_review_statistics(self, mock_superset):
         """Test fetching review statistics from Superset."""
         from reviews.services import WikiClient
 
         mock_superset.return_value.query.return_value = [
             {
+                "log_id": 12345,
                 "reviewer_name": "Reviewer1",
                 "reviewed_user_name": "User1",
                 "page_title": "Test_Page",
@@ -205,11 +210,12 @@ class StatisticsServiceTests(TestCase):
         ]
 
         client = WikiClient(self.wiki)
-        result = client.fetch_review_statistics(limit=100)
+        result = client.fetch_review_statistics(days=1)
 
         self.assertEqual(result["total_records"], 1)
         self.assertIsNotNone(result["oldest_timestamp"])
         self.assertIsNotNone(result["newest_timestamp"])
+        self.assertIn("batches_fetched", result)
 
         # Check that cache was created
         cached = ReviewStatisticsCache.objects.filter(wiki=self.wiki)
@@ -222,13 +228,14 @@ class StatisticsServiceTests(TestCase):
         metadata = ReviewStatisticsMetadata.objects.get(wiki=self.wiki)
         self.assertEqual(metadata.total_records, 1)
 
-    @mock.patch("reviews.services.wiki_client.SupersetQuery")
+    @mock.patch("reviews.services.statistics.SupersetQuery")
     def test_fetch_review_statistics_with_invalid_timestamp(self, mock_superset):
         """Test handling of invalid timestamps in statistics."""
         from reviews.services import WikiClient
 
         mock_superset.return_value.query.return_value = [
             {
+                "log_id": 12345,
                 "reviewer_name": "Reviewer1",
                 "reviewed_user_name": "User1",
                 "page_title": "Test_Page",
@@ -242,7 +249,7 @@ class StatisticsServiceTests(TestCase):
         ]
 
         client = WikiClient(self.wiki)
-        result = client.fetch_review_statistics(limit=100)
+        result = client.fetch_review_statistics(days=1)
 
         # Should handle invalid timestamps gracefully
         self.assertEqual(result["total_records"], 0)

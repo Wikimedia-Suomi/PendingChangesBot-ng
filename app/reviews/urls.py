@@ -33,5 +33,10 @@ urlpatterns = [
         views.api_statistics_refresh,
         name="api_statistics_refresh",
     ),
+    path(
+        "api/wikis/<int:pk>/statistics/clear/",
+        views.api_statistics_clear_and_reload,
+        name="api_statistics_clear_and_reload",
+    ),
     path("api/wikis/fetch-diff/", views.fetch_diff, name="fetch_diff"),
 ]

@@ -864,15 +864,12 @@ def api_statistics_charts(request: HttpRequest, pk: int) -> JsonResponse:
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_statistics_refresh(request: HttpRequest, pk: int) -> JsonResponse:
-    """Refresh review statistics for a wiki."""
+    """Incrementally refresh review statistics for a wiki (fetch only new data)."""
     wiki = _get_wiki(pk)
     client = WikiClient(wiki)
 
-    # Get optional limit parameter
-    limit = int(request.POST.get("limit", 10000))
-
     try:
-        result = client.fetch_review_statistics(limit=limit)
+        result = client.refresh_review_statistics()
     except Exception as exc:  # pragma: no cover - network failures handled in UI
         logger.exception("Failed to refresh statistics for %s", wiki.code)
         return JsonResponse(
@@ -889,5 +886,46 @@ def api_statistics_refresh(request: HttpRequest, pk: int) -> JsonResponse:
             "newest_timestamp": (
                 result["newest_timestamp"].isoformat() if result["newest_timestamp"] else None
             ),
+            "is_incremental": result.get("is_incremental", False),
+        }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_statistics_clear_and_reload(request: HttpRequest, pk: int) -> JsonResponse:
+    """Clear statistics cache and reload fresh data for specified number of days."""
+    wiki = _get_wiki(pk)
+    client = WikiClient(wiki)
+
+    # Get optional days parameter (default: 30)
+    days = int(request.POST.get("days", 30))
+
+    if days < 1 or days > 365:
+        return JsonResponse(
+            {"error": "days parameter must be between 1 and 365"},
+            status=HTTPStatus.BAD_REQUEST,
+        )
+
+    try:
+        result = client.fetch_review_statistics(days=days)
+    except Exception as exc:  # pragma: no cover - network failures handled in UI
+        logger.exception("Failed to clear and reload statistics for %s", wiki.code)
+        return JsonResponse(
+            {"error": str(exc)},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+
+    return JsonResponse(
+        {
+            "total_records": result["total_records"],
+            "oldest_timestamp": (
+                result["oldest_timestamp"].isoformat() if result["oldest_timestamp"] else None
+            ),
+            "newest_timestamp": (
+                result["newest_timestamp"].isoformat() if result["newest_timestamp"] else None
+            ),
+            "batches_fetched": result.get("batches_fetched", 0),
+            "days": days,
         }
     )
