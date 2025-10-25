@@ -13,6 +13,9 @@ class ReviewStatisticsMetadata(models.Model):
     total_records = models.IntegerField(default=0)
     oldest_review_timestamp = models.DateTimeField(null=True, blank=True)
     newest_review_timestamp = models.DateTimeField(null=True, blank=True)
+    max_log_id = models.BigIntegerField(
+        null=True, blank=True, help_text="Maximum log_id fetched (for incremental updates)"
+    )
 
     class Meta:
         verbose_name_plural = "Review statistics metadata"

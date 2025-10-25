@@ -148,6 +148,8 @@ createApp({
       statisticsOpen: false,
       statistics: {
         loading: false,
+        refreshing: false,
+        clearing: false,
         error: "",
         metadata: null,
         topReviewers: [],
@@ -824,7 +826,7 @@ createApp({
       if (!state.selectedWikiId) {
         return;
       }
-      state.statistics.loading = true;
+      state.statistics.refreshing = true;
       state.statistics.error = "";
       try {
         const response = await fetch(`/api/wikis/${state.selectedWikiId}/statistics/refresh/`, {
@@ -833,11 +835,47 @@ createApp({
         if (!response.ok) {
           throw new Error(response.statusText || "Failed to refresh statistics");
         }
+        const result = await response.json();
+        if (result.is_incremental) {
+          console.log(`Incremental refresh: fetched ${result.total_records} new records`);
+        } else {
+          console.log(`Full refresh: fetched ${result.total_records} records`);
+        }
         await loadStatistics();
       } catch (error) {
         state.statistics.error = error.message || "Failed to refresh statistics";
       } finally {
-        state.statistics.loading = false;
+        state.statistics.refreshing = false;
+      }
+    }
+
+    async function clearAndReloadStatistics() {
+      if (!state.selectedWikiId) {
+        return;
+      }
+      if (!confirm("This will clear all cached statistics and reload fresh data. This may take 1-2 minutes. Continue?")) {
+        return;
+      }
+      state.statistics.clearing = true;
+      state.statistics.error = "";
+      try {
+        const response = await fetch(`/api/wikis/${state.selectedWikiId}/statistics/clear/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: "days=30", // Load 30 days of data
+        });
+        if (!response.ok) {
+          throw new Error(response.statusText || "Failed to clear and reload statistics");
+        }
+        const result = await response.json();
+        console.log(`Cleared and reloaded: ${result.total_records} records in ${result.batches_fetched} batches`);
+        await loadStatistics();
+      } catch (error) {
+        state.statistics.error = error.message || "Failed to clear and reload statistics";
+      } finally {
+        state.statistics.clearing = false;
       }
     }
 
@@ -1123,6 +1161,7 @@ createApp({
       toggleStatistics,
       loadStatistics,
       refreshStatistics,
+      clearAndReloadStatistics,
       setTimeFilter,
       formatTitle,
       buildLatestRevisionUrl,

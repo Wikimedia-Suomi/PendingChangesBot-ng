@@ -55,15 +55,32 @@
           <button
             class="button is-primary"
             @click="refreshStatistics"
-            :class="{ 'is-loading': state.statistics.loading }"
-            :disabled="state.statistics.loading"
+            :class="{ 'is-loading': state.statistics.refreshing }"
+            :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading"
+            title="Fetch only new review data since last refresh"
           >
-            Refresh statistics
+            <span class="icon">
+              <i class="fas fa-sync"></i>
+            </span>
+            <span>Refresh (incremental)</span>
+          </button>
+          <button
+            class="button is-warning"
+            @click="clearAndReloadStatistics"
+            :class="{ 'is-loading': state.statistics.clearing }"
+            :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading"
+            title="Clear cache and reload all data for selected time period"
+          >
+            <span class="icon">
+              <i class="fas fa-trash-restore"></i>
+            </span>
+            <span>Clear & Reload</span>
           </button>
           <button
             class="button is-info is-light"
             @click="loadStatistics"
-            :disabled="state.statistics.loading"
+            :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading"
+            title="Reload charts from locally cached data"
           >
             Reload from cache
           </button>
