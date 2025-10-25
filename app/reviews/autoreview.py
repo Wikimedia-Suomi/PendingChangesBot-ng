@@ -421,6 +421,74 @@ def _evaluate_revision(
         }
     )
 
+    # Test 9: Domain verification for new external links
+    domain_check = _check_domain_verification(revision, client)
+    if domain_check["status"] == "manual":
+        tests.append(
+            {
+                "id": "domain-verification",
+                "title": "Domain verification for external links",
+                "status": "fail",
+                "message": domain_check["message"],
+            }
+        )
+        return {
+            "tests": tests,
+            "decision": AutoreviewDecision(
+                status="blocked",
+                label="Cannot be auto-approved",
+                reason="The edit contains external links with potentially invalid domains.",
+            ),
+        }
+    elif domain_check["status"] == "error":
+        tests.append(
+            {
+                "id": "domain-verification",
+                "title": "Domain verification for external links",
+                "status": "error",
+                "message": domain_check["message"],
+            }
+        )
+    else:
+        tests.append(
+            {
+                "id": "domain-verification",
+                "title": "Domain verification for external links",
+                "status": "ok",
+                "message": domain_check["message"],
+            }
+        )
+
+    # Test 10: Reference-only changes detection
+    ref_check = _check_reference_only_changes(revision, client)
+    if ref_check["status"] == "manual":
+        tests.append(
+            {
+                "id": "reference-only-changes",
+                "title": "Reference-only changes detection",
+                "status": "info",
+                "message": ref_check["message"],
+            }
+        )
+    elif ref_check["status"] == "error":
+        tests.append(
+            {
+                "id": "reference-only-changes",
+                "title": "Reference-only changes detection",
+                "status": "error",
+                "message": ref_check["message"],
+            }
+        )
+    else:
+        tests.append(
+            {
+                "id": "reference-only-changes",
+                "title": "Reference-only changes detection",
+                "status": "ok",
+                "message": ref_check["message"],
+            }
+        )
+
     return {
         "tests": tests,
         "decision": AutoreviewDecision(
@@ -911,3 +979,105 @@ def _find_reviewed_revisions_by_sha1(client, page, reverted_rev_ids: list[int]) 
     except Exception as e:
         logger.error(f"Error finding reviewed revisions for page {page.pageid}: {e}")
         return []
+
+
+def _check_reference_only_changes(revision: PendingRevision, client: WikiClient) -> dict:
+    """
+    Check if the edit contains only reference changes.
+    
+    This implements reference-only change detection as requested in Issue #24.
+    Identifies edits that only modify references without changing article content.
+    
+    Args:
+        revision: PendingRevision to check
+        client: WikiClient instance
+        
+    Returns:
+        dict: Test result with status and details
+    """
+    try:
+        # Get current and parent wikitext
+        current_wikitext = revision.wikitext or ""
+        parent_wikitext = _get_parent_wikitext(revision)
+        
+        # Extract references from both versions
+        current_refs = _extract_references(current_wikitext)
+        parent_refs = _extract_references(parent_wikitext)
+        
+        # Check if only references changed
+        if _is_reference_only_change(current_wikitext, parent_wikitext, current_refs, parent_refs):
+            return {
+                "status": "manual",
+                "message": "Edit contains only reference changes - no content modifications detected",
+                "details": {
+                    "reference_changes": len(current_refs) - len(parent_refs),
+                    "content_unchanged": True
+                }
+            }
+        
+        return {
+            "status": "ok",
+            "message": "Edit contains content changes beyond references"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking reference-only changes for revision {revision.revid}: {e}")
+        return {
+            "status": "error",
+            "message": f"Reference-only check failed: {str(e)}"
+        }
+
+
+def _extract_references(wikitext: str) -> list[str]:
+    """Extract all references from wikitext."""
+    # Pattern to match <ref>...</ref> tags
+    ref_pattern = r'<ref[^>]*>.*?</ref>'
+    references = re.findall(ref_pattern, wikitext, re.DOTALL | re.IGNORECASE)
+    return references
+
+
+def _is_reference_only_change(current_wikitext: str, parent_wikitext: str, 
+                            current_refs: list[str], parent_refs: list[str]) -> bool:
+    """
+    Determine if the edit contains only reference changes.
+    
+    This checks if:
+    1. The number of references changed
+    2. No other content was modified (excluding whitespace and reference changes)
+    """
+    # Remove all references from both versions for content comparison
+    current_content = _remove_references(current_wikitext)
+    parent_content = _remove_references(parent_wikitext)
+    
+    # Normalize whitespace for comparison
+    current_normalized = _normalize_whitespace(current_content)
+    parent_normalized = _normalize_whitespace(parent_content)
+    
+    # Check if content is the same (excluding references)
+    content_unchanged = current_normalized == parent_normalized
+    
+    # Check if references actually changed
+    refs_changed = current_refs != parent_refs
+    
+    return content_unchanged and refs_changed
+
+
+def _remove_references(wikitext: str) -> str:
+    """Remove all reference tags from wikitext."""
+    # Remove <ref>...</ref> tags
+    ref_pattern = r'<ref[^>]*>.*?</ref>'
+    content_without_refs = re.sub(ref_pattern, '', wikitext, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Remove standalone <ref/> tags
+    standalone_ref_pattern = r'<ref[^>]*/>'
+    content_without_refs = re.sub(standalone_ref_pattern, '', content_without_refs, flags=re.IGNORECASE)
+    
+    return content_without_refs
+
+
+def _normalize_whitespace(text: str) -> str:
+    """Normalize whitespace for comparison."""
+    # Replace multiple whitespace with single space
+    normalized = re.sub(r'\s+', ' ', text)
+    # Strip leading/trailing whitespace
+    return normalized.strip()
