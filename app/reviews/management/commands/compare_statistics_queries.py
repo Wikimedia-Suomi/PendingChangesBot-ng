@@ -22,14 +22,25 @@ class Command(BaseCommand):
             help="Wiki code (e.g., 'fi' for Finnish Wikipedia)",
         )
         parser.add_argument(
+            "--days",
+            type=int,
+            default=7,
+            help="Number of days to compare (default: 7)",
+        )
+        parser.add_argument(
             "--limit",
             type=int,
-            default=1000,
-            help="Number of records to fetch (default: 1000)",
+            default=5000,
+            help="Max records per query to fetch (default: 5000)",
         )
 
     def handle(self, *args, **options):
+        from datetime import timedelta
+
+        from django.utils import timezone as dj_timezone
+
         wiki_code = options["wiki"]
+        days = options["days"]
         limit = options["limit"]
 
         # Get the wiki
@@ -40,28 +51,62 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(
-            self.style.SUCCESS(f"\n=== Comparing Statistics Queries for {wiki.name} ===\n")
+            self.style.SUCCESS(
+                f"\n=== Comparing Statistics Queries for {wiki.name} ===\n"
+                f"Time period: Last {days} days\n"
+                f"Max records: {limit} per query\n"
+            )
         )
 
         # Create Pywikibot site and StatisticsClient
         site = pywikibot.Site(code=wiki.code, fam=wiki.family)
         stats_client = StatisticsClient(wiki=wiki, site=site)
 
+        # Calculate timestamp for filtering
+        min_date = dj_timezone.now() - timedelta(days=days)
+        min_timestamp = min_date.strftime("%Y%m%d%H%M%S")
+
         # Fetch using old query (flaggedrevs table)
         self.stdout.write("Fetching using flaggedrevs table (old query)...")
         old_result = stats_client.fetch_review_statistics(limit=limit, save_to_db=False)
         old_records = old_result.get("records", [])
+
+        # Filter old records to same time period for fair comparison
+        min_date_obj = min_date  # Already calculated above
+        old_records_filtered = [
+            r
+            for r in old_records
+            if r.get("reviewed_timestamp") and r["reviewed_timestamp"] >= min_date_obj
+        ]
+
+        oldest_filtered = (
+            min(r["reviewed_timestamp"] for r in old_records_filtered)
+            if old_records_filtered
+            else "N/A"
+        )
+        newest_filtered = (
+            max(r["reviewed_timestamp"] for r in old_records_filtered)
+            if old_records_filtered
+            else "N/A"
+        )
+
         self.stdout.write(
             self.style.SUCCESS(
-                f"  ✓ Fetched {old_result['total_records']} records\n"
-                f"    Oldest: {old_result['oldest_timestamp']}\n"
-                f"    Newest: {old_result['newest_timestamp']}\n"
+                f"  ✓ Fetched {len(old_records)} records total\n"
+                f"    Filtered to {len(old_records_filtered)} records in last {days} days\n"
+                f"    Oldest (filtered): {oldest_filtered}\n"
+                f"    Newest (filtered): {newest_filtered}\n"
             )
         )
 
+        # Use filtered records for comparison
+        old_records = old_records_filtered
+
         # Fetch using new query (logging table)
         self.stdout.write("Fetching using logging table (new query)...")
-        new_result = stats_client._fetch_statistics_batch(limit=limit, save_to_db=False)
+        new_result = stats_client._fetch_statistics_batch(
+            limit=limit, min_timestamp=min_timestamp, save_to_db=False
+        )
         new_records = new_result.get("records", [])
         self.stdout.write(
             self.style.SUCCESS(
@@ -74,14 +119,12 @@ class Command(BaseCommand):
 
         # Compare counts
         self.stdout.write("\n=== Record Count Comparison ===")
-        count_diff = abs(old_result["total_records"] - new_result["total_records"])
-        count_diff_pct = (
-            (count_diff / max(old_result["total_records"], 1)) * 100
-            if old_result["total_records"] > 0
-            else 0
-        )
-        self.stdout.write(f"  Old query (flaggedrevs): {old_result['total_records']} records")
-        self.stdout.write(f"  New query (logging):     {new_result['total_records']} records")
+        old_count = len(old_records)
+        new_count = len(new_records)
+        count_diff = abs(old_count - new_count)
+        count_diff_pct = (count_diff / max(old_count, 1)) * 100 if old_count > 0 else 0
+        self.stdout.write(f"  Old query (flaggedrevs): {old_count} records")
+        self.stdout.write(f"  New query (logging):     {new_count} records")
         self.stdout.write(
             f"  Difference:              {count_diff} records ({count_diff_pct:.1f}%)"
         )

@@ -102,7 +102,7 @@ class StatisticsClient:
                 "total_records": result["total_records"],
                 "oldest_timestamp": result["oldest_timestamp"],
                 "newest_timestamp": result["newest_timestamp"],
-                "max_log_id": result["max_log_id"],
+                "max_log_id": result["max_log_id"] if result["max_log_id"] else last_log_id,
                 "is_incremental": True,
             }
 
@@ -152,7 +152,8 @@ class StatisticsClient:
                 ReviewStatisticsCache.objects.filter(wiki=self.wiki).delete()
                 logger.info("Cleared existing statistics cache for %s", self.wiki.code)
 
-        # Fetch in batches until we get less than 10k records
+        # Fetch in batches until no more data
+        previous_max_log_id = None
         while True:
             batches_fetched += 1
             logger.info(
@@ -181,15 +182,24 @@ class StatisticsClient:
                     newest_timestamp = result["newest_timestamp"]
 
             # Update max_log_id
-            if result["max_log_id"]:
-                max_log_id = result["max_log_id"]
-                last_batch_log_id = result["max_log_id"]
+            current_max_log_id = result["max_log_id"]
+            if current_max_log_id:
+                max_log_id = current_max_log_id
+                last_batch_log_id = current_max_log_id
 
-            logger.info("Batch %d: fetched %d records", batches_fetched, batch_count)
+            logger.info(
+                "Batch %d: fetched %d records (max_log_id: %s)",
+                batches_fetched,
+                batch_count,
+                current_max_log_id,
+            )
 
-            # If we got less than 10k records, we've reached the end
-            if batch_count < 10000:
+            # Stop if no records were fetched or max_log_id didn't advance
+            if batch_count == 0 or current_max_log_id == previous_max_log_id:
+                logger.info("No more data available, stopping pagination")
                 break
+
+            previous_max_log_id = current_max_log_id
 
             # Safety limit: don't fetch more than 10 batches (100k records)
             if batches_fetched >= 10:
@@ -313,7 +323,7 @@ FROM (
       ON lg.log_actor = a1.actor_id
     WHERE
         {where_clause}
-    ORDER BY lg.log_id DESC
+    ORDER BY lg.log_id ASC
     LIMIT {limit}
 ) AS l
 INNER JOIN flaggedrevs AS fr
@@ -330,7 +340,7 @@ JOIN revision AS r
    )
 JOIN actor_revision AS a2
   ON a2.actor_id = r.rev_actor
-ORDER BY l.log_id DESC
+ORDER BY l.log_id ASC
 """
 
         try:
