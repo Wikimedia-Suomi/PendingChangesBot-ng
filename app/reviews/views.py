@@ -118,6 +118,86 @@ def statistics_page(request: HttpRequest) -> HttpResponse:
     )
 
 
+def calculate_percentile(values: list[float], percentile: float) -> float:
+    """
+    Calculate the percentile of a list of values using linear interpolation.
+
+    This function implements the standard percentile calculation method:
+    1. Sort the values in ascending order
+    2. Calculate the index position: (n-1) * (percentile/100)
+    3. If the index is not a whole number, interpolate between the floor and ceiling values
+
+    For median (P50), this returns the middle value for odd-length lists,
+    or the average of the two middle values for even-length lists.
+
+    Args:
+        values: List of numeric values to calculate percentile from
+        percentile: The percentile to calculate (0-100), e.g., 50 for median
+
+    Returns:
+        The calculated percentile value, or 0.0 if the list is empty
+
+    Examples:
+        >>> calculate_percentile([1, 2, 3, 4, 5], 50)  # Median
+        3.0
+        >>> calculate_percentile([1, 2, 3, 4], 50)  # Median of even list
+        2.5
+        >>> calculate_percentile([1, 5, 10, 20], 90)  # P90
+        17.0
+    """
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    index = (len(sorted_values) - 1) * (percentile / 100.0)
+    floor = int(index)
+    ceil = floor + 1
+    if ceil >= len(sorted_values):
+        return sorted_values[floor]
+    # Linear interpolation between floor and ceil
+    return sorted_values[floor] + (sorted_values[ceil] - sorted_values[floor]) * (index - floor)
+
+
+def get_time_filter_cutoff(time_filter: str) -> datetime | None:
+    """Get the cutoff datetime for a time filter."""
+    now = timezone.now()
+    if time_filter == "day":
+        return now - timedelta(days=1)
+    elif time_filter == "week":
+        return now - timedelta(days=7)
+    return None
+
+
+def statistics_page(request: HttpRequest) -> HttpResponse:
+    """Render the standalone statistics page."""
+    wikis = Wiki.objects.all().order_by("code")
+    if not wikis.exists():
+        # If no wikis, redirect to main page to populate them
+        return index(request)
+
+    payload = []
+    for wiki in wikis:
+        configuration, _ = WikiConfiguration.objects.get_or_create(wiki=wiki)
+        payload.append(
+            {
+                "id": wiki.id,
+                "name": wiki.name,
+                "code": wiki.code,
+                "api_endpoint": wiki.api_endpoint,
+                "configuration": {
+                    "blocking_categories": configuration.blocking_categories,
+                    "auto_approved_groups": configuration.auto_approved_groups,
+                },
+            }
+        )
+    return render(
+        request,
+        "reviews/statistics.html",
+        {
+            "initial_wikis": json.dumps(payload),
+        },
+    )
+
+
 def index(request: HttpRequest) -> HttpResponse:
     """Render the Vue.js application shell."""
 
@@ -269,6 +349,10 @@ def index(request: HttpRequest) -> HttpResponse:
                 "configuration": {
                     "blocking_categories": configuration.blocking_categories,
                     "auto_approved_groups": configuration.auto_approved_groups,
+                    "ores_damaging_threshold": configuration.ores_damaging_threshold,
+                    "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
+                    "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
+                    "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,  # noqa E501
                 },
             }
         )
@@ -298,6 +382,18 @@ def api_wikis(request: HttpRequest) -> JsonResponse:
                     ),
                     "auto_approved_groups": (
                         configuration.auto_approved_groups if configuration else []
+                    ),
+                    "ores_damaging_threshold": (
+                        configuration.ores_damaging_threshold if configuration else 0.0
+                    ),
+                    "ores_goodfaith_threshold": (
+                        configuration.ores_goodfaith_threshold if configuration else 0.0
+                    ),
+                    "ores_damaging_threshold_living": (
+                        configuration.ores_damaging_threshold_living if configuration else 0.0
+                    ),
+                    "ores_goodfaith_threshold_living": (
+                        configuration.ores_goodfaith_threshold_living if configuration else 0.0
                     ),
                 },
             }
@@ -473,21 +569,85 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             payload = json.loads(request.body.decode("utf-8")) if request.body else {}
         else:
             payload = request.POST.dict()
+
         blocking_categories = payload.get("blocking_categories", [])
         auto_groups = payload.get("auto_approved_groups", [])
         if isinstance(blocking_categories, str):
             blocking_categories = [blocking_categories]
         if isinstance(auto_groups, str):
             auto_groups = [auto_groups]
+
+        ores_damaging_threshold = payload.get("ores_damaging_threshold")
+        ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
+        ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
+        ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
+
+        def validate_threshold(value, name):
+            if value is not None:
+                try:
+                    float_value = float(value)
+                    if not (0.0 <= float_value <= 1.0):
+                        return JsonResponse(
+                            {"error": f"{name} must be between 0.0 and 1.0"},
+                            status=400,
+                        )
+                    return float_value
+                except (ValueError, TypeError):
+                    return JsonResponse(
+                        {"error": f"{name} must be a valid number"},
+                        status=400,
+                    )
+            return None
+
+        validated_damaging = validate_threshold(ores_damaging_threshold, "ores_damaging_threshold")
+        if isinstance(validated_damaging, JsonResponse):
+            return validated_damaging
+
+        validated_goodfaith = validate_threshold(
+            ores_goodfaith_threshold, "ores_goodfaith_threshold"
+        )
+        if isinstance(validated_goodfaith, JsonResponse):
+            return validated_goodfaith
+
+        validated_damaging_living = validate_threshold(
+            ores_damaging_threshold_living, "ores_damaging_threshold_living"
+        )
+        if isinstance(validated_damaging_living, JsonResponse):
+            return validated_damaging_living
+
+        validated_goodfaith_living = validate_threshold(
+            ores_goodfaith_threshold_living, "ores_goodfaith_threshold_living"
+        )
+        if isinstance(validated_goodfaith_living, JsonResponse):
+            return validated_goodfaith_living
+
         configuration.blocking_categories = blocking_categories
         configuration.auto_approved_groups = auto_groups
-        configuration.save(
-            update_fields=["blocking_categories", "auto_approved_groups", "updated_at"]
-        )
+        update_fields = ["blocking_categories", "auto_approved_groups", "updated_at"]
+
+        if validated_damaging is not None:
+            configuration.ores_damaging_threshold = validated_damaging
+            update_fields.append("ores_damaging_threshold")
+        if validated_goodfaith is not None:
+            configuration.ores_goodfaith_threshold = validated_goodfaith
+            update_fields.append("ores_goodfaith_threshold")
+        if validated_damaging_living is not None:
+            configuration.ores_damaging_threshold_living = validated_damaging_living
+            update_fields.append("ores_damaging_threshold_living")
+        if validated_goodfaith_living is not None:
+            configuration.ores_goodfaith_threshold_living = validated_goodfaith_living
+            update_fields.append("ores_goodfaith_threshold_living")
+
+        configuration.save(update_fields=update_fields)
+
     return JsonResponse(
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
+            "ores_damaging_threshold": configuration.ores_damaging_threshold,
+            "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
+            "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
+            "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,
         }
     )
 
@@ -552,10 +712,7 @@ def api_enabled_checks(request: HttpRequest, pk: int) -> JsonResponse:
 def fetch_diff(request):
     url = request.GET.get("url")
     if not url:
-        return JsonResponse(
-            {
-                "error": "Missing 'url' parameter"
-            }, status=400)
+        return JsonResponse({"error": "Missing 'url' parameter"}, status=400)
 
     cached_html = cache.get(url)
     if cached_html:
@@ -581,9 +738,6 @@ def fetch_diff(request):
 
 def liftwing_page(request):
     return render(request, "reviews/lift.html")
-
-def test_endpoints_page(request):
-    return render(request, "reviews/test_endpoints.html")
 
 @csrf_exempt
 def validate_article(request):

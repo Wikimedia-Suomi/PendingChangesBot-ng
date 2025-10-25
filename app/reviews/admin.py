@@ -47,18 +47,18 @@ class EditorProfileAdmin(admin.ModelAdmin):
 
 @admin.register(LiftWingPrediction)
 class LiftWingPredictionAdmin(admin.ModelAdmin):
-    list_display = ("revid", "wiki", "model_name", "prediction_class", "fetched_at")
+    list_display = ("revid", "wiki", "model_name", "fetched_at")
     search_fields = ("revid", "model_name")
     list_filter = ("wiki", "model_name", "fetched_at")
-    readonly_fields = ("fetched_at", "updated_at")
+    readonly_fields = ("fetched_at",)
 
 
 @admin.register(ArticleRevisionHistory)
 class ArticleRevisionHistoryAdmin(admin.ModelAdmin):
-    list_display = ("title", "revid", "wiki", "user", "timestamp", "fetched_at")
-    search_fields = ("title", "revid", "user")
-    list_filter = ("wiki", "timestamp")
-    readonly_fields = ("fetched_at",)
+    list_display = ("page_title", "wiki", "created_at")
+    search_fields = ("page_title",)
+    list_filter = ("wiki", "created_at")
+    readonly_fields = ("created_at",)
 
 
 @admin.register(ModelScores)

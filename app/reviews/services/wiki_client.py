@@ -422,30 +422,9 @@ WHERE
                     if newest_timestamp is None or reviewed_ts > newest_timestamp:
                         newest_timestamp = reviewed_ts
 
-<<<<<<< HEAD:app/reviews/services.py
-def _prepare_superset_metadata(entry: dict) -> dict:
-    metadata = dict(entry)
-    for key in (
-        "change_tags",
-        "change_tags_params",
-        "user_groups",
-        "user_former_groups",
-        "page_categories",
-    ):
-        if key in metadata and isinstance(metadata[key], str):
-            metadata[key] = parse_superset_list(metadata[key])
-    if "actor_user" in metadata:
-        metadata["actor_user"] = _parse_optional_int(metadata.get("actor_user"))
-    if "rc_bot" in metadata:
-        metadata["rc_bot"] = _parse_superset_bool(metadata.get("rc_bot"))
-    if "rc_patrolled" in metadata:
-        metadata["rc_patrolled"] = _parse_superset_bool(metadata.get("rc_patrolled"))
-    return metadata
-=======
                     # Extract revision IDs directly from query results
                     reviewed_revid = int(entry.get("reviewed_revision_id") or 0)
                     pending_revid = int(entry.get("pending_revision_id") or 0)
->>>>>>> 95449e05985381da1bf38438c2c5e8f225c8fb18:app/reviews/services/wiki_client.py
 
                     # Use update_or_create to handle potential duplicates
                     _, created = ReviewStatisticsCache.objects.update_or_create(
