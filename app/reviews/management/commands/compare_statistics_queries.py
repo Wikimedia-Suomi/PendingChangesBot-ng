@@ -66,43 +66,7 @@ class Command(BaseCommand):
         min_date = dj_timezone.now() - timedelta(days=days)
         min_timestamp = min_date.strftime("%Y%m%d%H%M%S")
 
-        # Fetch using old query (flaggedrevs table)
-        self.stdout.write("Fetching using flaggedrevs table (old query)...")
-        old_result = stats_client.fetch_review_statistics(limit=limit, save_to_db=False)
-        old_records = old_result.get("records", [])
-
-        # Filter old records to same time period for fair comparison
-        min_date_obj = min_date  # Already calculated above
-        old_records_filtered = [
-            r
-            for r in old_records
-            if r.get("reviewed_timestamp") and r["reviewed_timestamp"] >= min_date_obj
-        ]
-
-        oldest_filtered = (
-            min(r["reviewed_timestamp"] for r in old_records_filtered)
-            if old_records_filtered
-            else "N/A"
-        )
-        newest_filtered = (
-            max(r["reviewed_timestamp"] for r in old_records_filtered)
-            if old_records_filtered
-            else "N/A"
-        )
-
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"  ✓ Fetched {len(old_records)} records total\n"
-                f"    Filtered to {len(old_records_filtered)} records in last {days} days\n"
-                f"    Oldest (filtered): {oldest_filtered}\n"
-                f"    Newest (filtered): {newest_filtered}\n"
-            )
-        )
-
-        # Use filtered records for comparison
-        old_records = old_records_filtered
-
-        # Fetch using new query (logging table)
+        # Fetch using new query (logging table) first to get the timestamp range
         self.stdout.write("Fetching using logging table (new query)...")
         new_result = stats_client._fetch_statistics_batch(
             limit=limit, min_timestamp=min_timestamp, save_to_db=False
@@ -114,6 +78,37 @@ class Command(BaseCommand):
                 f"    Oldest: {new_result['oldest_timestamp']}\n"
                 f"    Newest: {new_result['newest_timestamp']}\n"
                 f"    Max log_id: {new_result['max_log_id']}\n"
+            )
+        )
+
+        # Get min/max timestamps from new query for fair comparison
+        new_oldest_ts = new_result["oldest_timestamp"]
+        new_newest_ts = new_result["newest_timestamp"]
+
+        if new_oldest_ts is None or new_newest_ts is None:
+            self.stdout.write(self.style.ERROR("No data returned from new query"))
+            return
+
+        # Convert to MediaWiki timestamp format (YYYYMMDDHHMMSS)
+        min_timestamp_for_old = new_oldest_ts.strftime("%Y%m%d%H%M%S")
+        max_timestamp_for_old = new_newest_ts.strftime("%Y%m%d%H%M%S")
+
+        # Fetch using old query (flaggedrevs table) with same timestamp range
+        self.stdout.write(
+            "\nFetching using flaggedrevs table (old query) with same timestamp range..."
+        )
+        old_result = stats_client._fetch_review_statistics_flaggedrevs(
+            limit=limit,
+            min_timestamp=min_timestamp_for_old,
+            max_timestamp=max_timestamp_for_old,
+            save_to_db=False,
+        )
+        old_records = old_result.get("records", [])
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"  ✓ Fetched {old_result['total_records']} records\n"
+                f"    Oldest: {old_result['oldest_timestamp']}\n"
+                f"    Newest: {old_result['newest_timestamp']}\n"
             )
         )
 

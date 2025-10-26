@@ -9,7 +9,7 @@ from http import HTTPStatus
 import requests
 from django.core.cache import cache
 from django.db.models import Count
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -478,22 +478,30 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
     wiki = _get_wiki(pk)
     configuration = wiki.configuration
     if request.method == "PUT":
-        if request.content_type == "application/json":
+        content_type = request.content_type or ""
+        if content_type.startswith("application/json"):
             payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+            blocking_categories = payload.get("blocking_categories", [])
+            auto_groups = payload.get("auto_approved_groups", [])
+            ores_damaging_threshold = payload.get("ores_damaging_threshold")
+            ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
+            ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
+            ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
         else:
-            payload = request.POST.dict()
+            encoding = request.encoding or "utf-8"
+            raw_body = request.body.decode(encoding) if request.body else ""
+            form_payload = QueryDict(raw_body, mutable=False)
+            blocking_categories = form_payload.getlist("blocking_categories")
+            auto_groups = form_payload.getlist("auto_approved_groups")
+            ores_damaging_threshold = form_payload.get("ores_damaging_threshold")
+            ores_goodfaith_threshold = form_payload.get("ores_goodfaith_threshold")
+            ores_damaging_threshold_living = form_payload.get("ores_damaging_threshold_living")
+            ores_goodfaith_threshold_living = form_payload.get("ores_goodfaith_threshold_living")
 
-        blocking_categories = payload.get("blocking_categories", [])
-        auto_groups = payload.get("auto_approved_groups", [])
         if isinstance(blocking_categories, str):
             blocking_categories = [blocking_categories]
         if isinstance(auto_groups, str):
             auto_groups = [auto_groups]
-
-        ores_damaging_threshold = payload.get("ores_damaging_threshold")
-        ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
-        ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
-        ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
 
         def validate_threshold(value, name):
             if value is not None:
