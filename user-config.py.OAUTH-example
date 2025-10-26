@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 # Pywikibot configuration file for PendingChangesBot
 #
 # SETUP INSTRUCTIONS:
 # 1. Copy this file to user-config.py in the same directory:
-#    cp user-config.py.example user-config.py
+#    cp user-config.py.OAUTH-example user-config.py
 # 2. Replace all placeholder values with your actual credentials
 # 3. Never commit user-config.py to git (it's already in .gitignore)
 #
-# For detailed OAuth setup instructions, see CONTRIBUTING.md section:
-# "Configuring Pywikibot with OAuth"
+# For detailed OAuth setup instructions, see docs/AUTHENTICATION.md
 
 from collections import defaultdict as _defaultdict
 

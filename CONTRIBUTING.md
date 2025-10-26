@@ -11,7 +11,7 @@ Of course\! Here is a table of contents for the provided guide.
 3.  [Prerequisites](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#prerequisites)
 4.  [Setup Instructions](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#setup-instructions)
     1.  [Installation](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#installation)
-    2.  [Configuring Authentication](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#configuring-authentication)
+    2.  [Configuring Pywikibot Superset OAuth](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#configuring-pywikibot-superset-oauth)
     3.  [Running the database migrations](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-the-database-migrations)
     4.  [Running the application](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-the-application)
     5.  [Running unit tests](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md#running-unit-tests)
@@ -48,8 +48,12 @@ Mentor's Details:
 ## Prerequisites
 Before installing or running the application, ensure you have:
 * Python 3
-* Git installed
-* A Wikimedia account (for BotPassword authentication)
+* Pip
+* Virtual environment support (venv)
+* Git
+* Django-compatible environment
+* Pywikibot configured with your Wikimedia username
+* Browser access to Meta-Wiki and Superset for OAuth approval
 
 ## Setup Instructions
 
@@ -102,62 +106,19 @@ Before installing or running the application, ensure you have:
    ```
    This will automatically format and lint your code before each commit.
 
-### Configuring Authentication
+### Configuring Pywikibot Superset OAuth
 
-PendingChangesBot requires authentication to interact with Wikimedia APIs. For **local development**, we recommend using **BotPassword** for simplicity.
+Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
+Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
+the steps below once per user account that will run PendingChangesBot:
 
-> **For complete authentication setup** (including production environment, Django OAuth, and advanced configurations), see our comprehensive [Authentication Guide](docs/AUTHENTICATION.md).
-
-#### Quick Setup with BotPassword (Recommended for Local Development)
-
-1. **Create a Bot Password:**
-   - Visit: <https://meta.wikimedia.org/wiki/Special:BotPasswords>
-   - Click **Create a new bot password**
-   - **Bot name**: `PendingChangesBot-Dev` (or any name you choose)
-   - **Grants**: Check:
-     - ☑ Basic rights
-     - ☑ High-volume editing
-     - ☑ Edit existing pages
-     - ☑ Patrol changes to pages
-   - Click **Create**
-   - **Save your credentials** (you won't see them again!)
-
-2. **Configure Pywikibot:**
-
-   Copy the example template:
-   ```bash
-<<<<<<< HEAD
-   cp user-password.py.example user-password.py
-   ```
-
-   Edit `user-password.py`:
-   ```python
-   # Format: (username@botname, password)
-   ('YourUsername@PendingChangesBot-Dev', 'your_generated_password_here')
-   ```
-
-   Copy and configure `user-config.py`:
+1. **Create a Pywikibot configuration**
    ```bash
    cd app
-   cp user-config.py.example user-config.py
    echo "usernames['meta']['meta'] = 'WIKIMEDIA_USERNAME'" > user-config.py
    ```
 
-   Edit `user-config.py`:
-   ```python
-   from collections import defaultdict as _defaultdict
-
-   family = 'wikipedia'
-   mylang = 'en'
-
-   usernames = _defaultdict(dict)
-   usernames['wikipedia']['en'] = 'YourUsername@PendingChangesBot-Dev'
-   usernames['meta']['meta'] = 'YourUsername@PendingChangesBot-Dev'
-
-   password_file = "user-password.py"
-   ```
-
-3. **Log in with Pywikibot**
+2. **Log in with Pywikibot**
    * On **Windows**:
    ```bash
    python -m pywikibot.scripts.login -site:meta
@@ -166,26 +127,14 @@ PendingChangesBot requires authentication to interact with Wikimedia APIs. For *
    ```bash
    python3 -m pywikibot.scripts.login -site:meta
    ```
+   The command should report `Logged in on metawiki` and create a persistent login
+   cookie at `~/.pywikibot/pywikibot.lwp`.
 
-   Expected output:
-   ```
-   Logged in on meta:meta as YourUsername@PendingChangesBot-Dev.
-   ```
-
-4. **Approve Superset's OAuth client**
+3. **Approve Superset's OAuth client**
    - While still logged in to Meta-Wiki in your browser, open
      <https://superset.wmcloud.org/login/>.
    - Authorize the OAuth request for Superset. After approval you should be redirected
      to Superset's interface.
-
-#### Common Issues
-
-- **`NoUsernameError`**: Ensure username format is `Username@BotName`
-- **`Authentication failed`**: Double-check your password in `user-password.py`
-- **`SyntaxError: null bytes`**: Recreate config files from scratch
-- **More help?** See the [Troubleshooting section](docs/AUTHENTICATION.md#troubleshooting) in the full guide
-
----
 
 ### Running the database migrations
    ```bash

@@ -1,10 +1,41 @@
-# Django OAuth Authentication for Production
+# Authentication Setup for PendingChangesBot
 
-## Purpose
+## Overview
+
+This guide covers authentication configuration for PendingChangesBot, including:
+- **OAuth 1.0a** for Django web UI (production deployment)
+- **Username/Password** for local development and Superset access
+- **Superset third-party authentication workaround**
+
+---
+
+## Important: Superset Authentication
+
+**Known Issue:** Both OAuth 1.0a and BotPassword authentication methods **do not work** with Superset (superset.toolforge.org) third-party login. See [T408286](https://phabricator.wikimedia.org/T408286) for details.
+
+**Workaround for Local Development:**
+To query Wikimedia database replicas via Superset, you must use **plain username/password authentication** for meta.wikimedia.org in your `user-config.py`:
+
+```python
+usernames['meta']['meta'] = 'YourWikimediaUsername'
+password_file = "user-password.py"
+```
+
+Then create `user-password.py`:
+```python
+# Format: (username, password)
+('YourWikimediaUsername', 'your_wikimedia_password')
+```
+
+**Note:** In production (Toolforge), Superset is not needed as you can use direct SQL connections to database replicas.
+
+---
+
+## Django OAuth Authentication for Production
+
+### Purpose
 
 This guide shows how to implement **Django OAuth login** for the PendingChangesBot web interface in production environments (Toolforge). This allows users to authenticate using their Wikimedia accounts, similar to [Wikikysely](https://wikikysely-dev.toolforge.org/en/).
-
-> **For local development setup**, see the [BotPassword section in CONTRIBUTING.md](../CONTRIBUTING.md#configuring-authentication).
 
 ---
 
