@@ -1012,17 +1012,9 @@ def fetch_predictions(request):
         "rvprop": "ids",
         "format": "json",
     }
-    verify=False
-    response = requests.get(
-    "https://en.wikipedia.org/w/api.php",
-    headers=headers,
-    params=params
-    )
-    response.raise_for_status()
-    
-
+    headers = {"User-Agent": USER_AGENT}
     try:
-        rev_resp = requests.get(rev_api, params=params, timeout=10)
+        rev_resp = requests.get(rev_api, params=params, headers=headers, timeout=10)
         rev_resp.raise_for_status()
         rev_data = rev_resp.json()
         pages = rev_data.get("query", {}).get("pages", {})
@@ -1039,7 +1031,7 @@ def fetch_predictions(request):
 
     # Call LiftWing API
     payload = {"rev_id": rev_id}
-    headers = {"User-Agent": "PendingChangesBot/1.0 (LiftWingIntegration)"}
+    headers = {"User-Agent": USER_AGENT}
 
     try:
         response = requests.post(api_url, headers=headers, json=payload, timeout=10)
@@ -1654,3 +1646,91 @@ def api_statistics_refresh(request: HttpRequest, pk: int) -> JsonResponse:
             ),
         }
     )
+
+
+# Word-Level Annotation Views
+
+@require_GET
+def word_annotation_page(request: HttpRequest) -> HttpResponse:
+    """Render the word-level annotation visualization page."""
+    return render(request, "reviews/word_annotation.html")
+
+
+@require_GET
+def api_get_revisions(request: HttpRequest) -> JsonResponse:
+    """Get list of revisions for a page."""
+    from .models import PendingPage, PendingRevision
+
+    page_id = request.GET.get("page_id")
+    if not page_id:
+        return JsonResponse({"error": "page_id is required"}, status=400)
+
+    try:
+        page = PendingPage.objects.get(pageid=page_id)
+    except PendingPage.DoesNotExist:
+        return JsonResponse({"error": "Page not found"}, status=404)
+
+    revisions = PendingRevision.objects.filter(page=page).order_by("-timestamp")
+
+    data = [
+        {
+            "revision_id": rev.revid,
+            "timestamp": rev.timestamp.isoformat() if rev.timestamp else None,
+            "user": rev.user_name,
+            "comment": rev.comment or "",
+        }
+        for rev in revisions[:100]  # Limit to 100 latest revisions
+    ]
+
+    return JsonResponse({"revisions": data})
+
+
+@require_GET
+def api_get_annotations(request: HttpRequest) -> JsonResponse:
+    """Get word annotations for a specific revision."""
+    from .models import PendingPage, WordAnnotation
+
+    page_id = request.GET.get("page_id")
+    revision_id = request.GET.get("revision_id")
+
+    if not page_id or not revision_id:
+        return JsonResponse({"error": "page_id and revision_id are required"}, status=400)
+
+    try:
+        page = PendingPage.objects.get(pageid=page_id)
+    except PendingPage.DoesNotExist:
+        return JsonResponse({"error": "Page not found"}, status=404)
+
+    annotations = WordAnnotation.objects.filter(
+        page=page, revision_id=int(revision_id)
+    ).order_by("position")
+
+    # Filter by author if specified
+    author = request.GET.get("author")
+    if author:
+        annotations = annotations.filter(author_user_name=author)
+
+    # Get unique authors for filter dropdown
+    all_authors = (
+        WordAnnotation.objects.filter(page=page, revision_id=int(revision_id))
+        .values_list("author_user_name", flat=True)
+        .distinct()
+    )
+
+    data = {
+        "annotations": [
+            {
+                "word": ann.word,
+                "author": ann.author_user_name or "Anonymous",
+                "position": ann.position,
+                "is_moved": ann.is_moved,
+                "is_modified": ann.is_modified,
+                "is_deleted": ann.is_deleted,
+                "stable_word_id": ann.stable_word_id,
+            }
+            for ann in annotations
+        ],
+        "authors": list(all_authors),
+    }
+
+    return JsonResponse(data)

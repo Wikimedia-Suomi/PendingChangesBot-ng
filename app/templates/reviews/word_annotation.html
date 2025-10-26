@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word-Level Annotation Visualization</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .control-group input,
+        .control-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .btn {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 24px;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .info-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .info-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .word-display {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 20px;
+            min-height: 200px;
+            line-height: 1.8;
+            font-size: 16px;
+        }
+        .word {
+            display: inline-block;
+            padding: 2px 4px;
+            margin: 2px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .word:hover {
+            transform: scale(1.1);
+            z-index: 10;
+        }
+        .legend {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .stat-item {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Word-Level Annotation Visualization</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="pageId">Page ID:</label>
+                <input type="number" id="pageId" placeholder="Enter page ID">
+            </div>
+            <div class="control-group">
+                <label for="revisionId">Revision ID:</label>
+                <input type="number" id="revisionId" placeholder="Auto-filled or manual">
+            </div>
+            <div class="control-group">
+                <label for="authorFilter">Filter by Author:</label>
+                <select id="authorFilter">
+                    <option value="">All Authors</option>
+                </select>
+            </div>
+            <button class="btn" onclick="loadAnnotations()">Load Annotations</button>
+        </div>
+
+        <div class="info-section">
+            <h3>Page & Revision Information</h3>
+            <div id="revisionInfo" style="display: none;">
+                <strong>Revision:</strong> <span id="revisionDetails"></span><br>
+                <strong>User:</strong> <span id="revisionUser"></span><br>
+                <strong>Timestamp:</strong> <span id="revisionTimestamp"></span><br>
+                <strong>Comment:</strong> <span id="revisionComment"></span>
+            </div>
+            <div class="stats" id="statsSection" style="display: none;">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalWords">0</div>
+                    <div class="stat-label">Total Words</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="uniqueAuthors">0</div>
+                    <div class="stat-label">Unique Authors</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="addedWords">0</div>
+                    <div class="stat-label">New Words</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #d4edda;"></div>
+                <span>Current Author (New Words)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #f8f9fa; border: 2px solid #007bff;"></div>
+                <span>Original Author (Kept Words)</span>
+            </div>
+        </div>
+
+        <div id="wordDisplay" class="word-display">
+            <div class="loading">Enter a Page ID and click "Load Annotations" to view word-level authorship visualization.</div>
+        </div>
+    </div>
+
+    <script>
+        let authors = [];
+        let currentAnnotations = [];
+
+        async function loadAnnotations() {
+            const pageId = document.getElementById('pageId').value;
+            const revisionId = document.getElementById('revisionId').value;
+
+            if (!pageId) {
+                alert('Please enter a page ID');
+                return;
+            }
+
+            const wordDisplay = document.getElementById('wordDisplay');
+            wordDisplay.innerHTML = '<div class="loading">Loading annotations...</div>';
+
+            try {
+                let url = `/api/annotations/words/?page_id=${pageId}`;
+                if (revisionId) {
+                    url += `&revision_id=${revisionId}`;
+                }
+
+                const authorFilter = document.getElementById('authorFilter').value;
+                if (authorFilter) {
+                    url += `&author=${encodeURIComponent(authorFilter)}`;
+                }
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.error) {
+                    wordDisplay.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                    return;
+                }
+
+                currentAnnotations = data.annotations;
+                authors = data.authors;
+
+                // Populate author filter
+                const authorFilterSelect = document.getElementById('authorFilter');
+                authorFilterSelect.innerHTML = '<option value="">All Authors</option>';
+                authors.forEach(author => {
+                    const option = document.createElement('option');
+                    option.value = author;
+                    option.textContent = author || 'Anonymous';
+                    authorFilterSelect.appendChild(option);
+                });
+
+                displayWords(data.annotations);
+                updateStats(data.annotations);
+
+                // Load revision info if we have a revision ID
+                if (revisionId) {
+                    loadRevisionInfo(pageId, revisionId);
+                }
+
+            } catch (error) {
+                console.error('Error loading annotations:', error);
+                wordDisplay.innerHTML = `<div class="error">Error loading annotations: ${error.message}</div>`;
+            }
+        }
+
+        function displayWords(annotations) {
+            const wordDisplay = document.getElementById('wordDisplay');
+            
+            if (!annotations || annotations.length === 0) {
+                wordDisplay.innerHTML = '<div class="loading">No annotations found for this revision.</div>';
+                return;
+            }
+
+            wordDisplay.innerHTML = '';
+
+            annotations.forEach(ann => {
+                const wordSpan = document.createElement('span');
+                wordSpan.className = 'word';
+                wordSpan.textContent = ann.word;
+                wordSpan.title = `Author: ${ann.author || 'Anonymous'}`;
+
+                // Color code by author
+                const authorHash = hashAuthor(ann.author);
+                const color = getColorForAuthor(authorHash);
+                wordSpan.style.backgroundColor = color.background;
+                wordSpan.style.color = color.text;
+
+                wordDisplay.appendChild(wordSpan);
+            });
+        }
+
+        function hashAuthor(author) {
+            if (!author) return 0;
+            let hash = 0;
+            for (let i = 0; i < author.length; i++) {
+                hash = author.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return hash;
+        }
+
+        function getColorForAuthor(hash) {
+            // Generate consistent colors for authors
+            const hue = Math.abs(hash) % 360;
+            const lightness = hash % 2 === 0 ? 85 : 90;
+            return {
+                background: `hsl(${hue}, 50%, ${lightness}%)`,
+                text: '#333'
+            };
+        }
+
+        function updateStats(annotations) {
+            const uniqueAuthors = new Set(annotations.map(a => a.author || 'Anonymous'));
+            const addedWords = annotations.filter(a => !a.is_deleted && !a.is_moved).length;
+
+            document.getElementById('totalWords').textContent = annotations.length;
+            document.getElementById('uniqueAuthors').textContent = uniqueAuthors.size;
+            document.getElementById('addedWords').textContent = addedWords;
+
+            document.getElementById('statsSection').style.display = 'grid';
+        }
+
+        async function loadRevisionInfo(pageId, revisionId) {
+            try {
+                const response = await fetch(`/api/annotations/revisions/?page_id=${pageId}`);
+                const data = await response.json();
+
+                if (data.revisions) {
+                    const revision = data.revisions.find(r => r.revision_id == revisionId);
+                    if (revision) {
+                        document.getElementById('revisionDetails').textContent = revisionId;
+                        document.getElementById('revisionUser').textContent = revision.user || 'Unknown';
+                        document.getElementById('revisionTimestamp').textContent = revision.timestamp || 'Unknown';
+                        document.getElementById('revisionComment').textContent = revision.comment || '(no comment)';
+                        document.getElementById('revisionInfo').style.display = 'block';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading revision info:', error);
+            }
+        }
+
+        // Load revisions when page ID is entered
+        document.getElementById('pageId').addEventListener('change', async function() {
+            const pageId = this.value;
+            if (!pageId) return;
+
+            try {
+                const response = await fetch(`/api/annotations/revisions/?page_id=${pageId}`);
+                const data = await response.json();
+
+                if (data.revisions && data.revisions.length > 0) {
+                    // Auto-fill with latest revision
+                    document.getElementById('revisionId').value = data.revisions[0].revision_id;
+                }
+            } catch (error) {
+                console.error('Error loading revisions:', error);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -8,6 +8,7 @@ from .review_statistics_cache import ReviewStatisticsCache
 from .review_statistics_metadata import ReviewStatisticsMetadata
 from .wiki import Wiki
 from .wiki_configuration import WikiConfiguration
+from .word_annotation import RevisionAnnotation, WordAnnotation
 
 __all__ = [
     "Wiki",
@@ -18,4 +19,6 @@ __all__ = [
     "EditorProfile",
     "ReviewStatisticsCache",
     "ReviewStatisticsMetadata",
+    "WordAnnotation",
+    "RevisionAnnotation",
 ]
