@@ -1,9 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    ArticleRevisionHistory,
     EditorProfile,
-    LiftWingPrediction,
     ModelScores,
     PendingPage,
     PendingRevision,
@@ -43,22 +41,6 @@ class EditorProfileAdmin(admin.ModelAdmin):
     list_display = ("username", "wiki", "is_blocked", "is_bot")
     search_fields = ("username",)
     list_filter = ("wiki", "is_blocked", "is_bot")
-
-
-@admin.register(LiftWingPrediction)
-class LiftWingPredictionAdmin(admin.ModelAdmin):
-    list_display = ("revid", "wiki", "model_name", "fetched_at")
-    search_fields = ("revid", "model_name")
-    list_filter = ("wiki", "model_name", "fetched_at")
-    readonly_fields = ("fetched_at",)
-
-
-@admin.register(ArticleRevisionHistory)
-class ArticleRevisionHistoryAdmin(admin.ModelAdmin):
-    list_display = ("page_title", "wiki", "created_at")
-    search_fields = ("page_title",)
-    list_filter = ("wiki", "created_at")
-    readonly_fields = ("created_at",)
 
 
 @admin.register(ModelScores)
