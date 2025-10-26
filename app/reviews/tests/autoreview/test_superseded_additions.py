@@ -61,7 +61,7 @@ class SupersededAdditionsTests(TestCase):
 
         result = is_addition_superseded(mock_revision, current_stable, threshold)
 
-        self.assertTrue(result)
+            self.assertTrue(result)
 
     def test_is_addition_superseded_partially_removed(self):
         """Test case 2: Addition was partially removed (majority removed)."""
@@ -79,7 +79,7 @@ class SupersededAdditionsTests(TestCase):
 
         result = is_addition_superseded(mock_revision, current_stable, threshold)
 
-        self.assertTrue(result)
+            self.assertTrue(result)
 
     def test_is_addition_superseded_content_still_present(self):
         """Test case 4: Addition content is still largely present (not superseded)."""

@@ -1,0 +1,4 @@
+[33m3b70756[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mliftwing-clean[m[33m, [m[1;31morigin/liftwing-clean[m[33m)[m Merge upstream/main into liftwing-clean - Resolve conflicts in views, admin, services, and settings
+[33m098fb08[m Fix views.py - Add complete LiftWing functionality
+[33m99281c5[m Add LiftWing model visualization feature (clean implementation)
+[33m96bd0c5[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/feature/approval-comment-generation-final[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mresolve-pr-20-conflicts[m[33m, [m[1;32mmain[m[33m)[m Implement revert detection for already-reviewed edits
