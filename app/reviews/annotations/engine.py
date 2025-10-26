@@ -185,23 +185,24 @@ class WordAnnotationEngine:
                         )
                     position += 1
 
-            elif line_type == 2:  # Deleted text
-                # Mark as deleted
-                words = self._tokenize(text)
-                for word in words:
-                    annotations.append(
-                        {
-                            "word": word,
-                            "stable_word_id": "",
-                            "author_user_name": revision.user_name,
-                            "author_user_id": revision.user_id,
-                            "position": position,
-                            "is_moved": False,
-                            "is_modified": False,
-                            "is_deleted": True,
-                        }
-                    )
-                    position += 1
+                            elif line_type == 2:  # Deleted text
+                    # Mark as deleted
+                    words = self._tokenize(text)
+                    for word in words:
+                        word_id = self._generate_word_id(revision.revid, position, f"DELETED-{word}")
+                        annotations.append(
+                            {
+                                "word": word,
+                                "stable_word_id": word_id,
+                                "author_user_name": revision.user_name,
+                                "author_user_id": revision.user_id,
+                                "position": position,
+                                "is_moved": False,
+                                "is_modified": False,
+                                "is_deleted": True,
+                            }
+                        )
+                        position += 1
 
         return annotations
 
