@@ -229,16 +229,30 @@ class ViewTests(TestCase):
         self.assertEqual(config.blocking_categories, ["SingleCat"])
         self.assertEqual(config.auto_approved_groups, ["admin"])
 
-    def test_api_configuration_updates_with_urlencoded_data(self):
-        """Test api_configuration with URL-encoded form data."""
+    def test_api_configuration_updates_settings_from_form_payload(self):
+        """Test api_configuration handles form-encoded PUT with multi-value fields."""
+        from urllib.parse import urlencode
+
         url = reverse("api_configuration", args=[self.wiki.pk])
-        # Send as URL-encoded form data (not JSON) to hit the else branch
+        # Properly encode form data with repeated keys for lists
+        form_data = urlencode(
+            [
+                ("blocking_categories", "Foo"),
+                ("blocking_categories", "Bar"),
+                ("auto_approved_groups", "sysop"),
+                ("auto_approved_groups", "steward"),
+            ]
+        )
         response = self.client.put(
             url,
-            data="blocking_categories=FormCat&auto_approved_groups=formadmin",
+            data=form_data,
             content_type="application/x-www-form-urlencoded",
         )
         self.assertEqual(response.status_code, 200)
+        config = self.wiki.configuration
+        config.refresh_from_db()
+        self.assertEqual(config.blocking_categories, ["Foo", "Bar"])
+        self.assertEqual(config.auto_approved_groups, ["sysop", "steward"])
 
     def test_api_configuration_updates_ores_thresholds(self):
         url = reverse("api_configuration", args=[self.wiki.pk])
@@ -1242,17 +1256,17 @@ class ViewTests(TestCase):
 
     @mock.patch("reviews.views.WikiClient")
     def test_api_statistics_refresh_with_limit(self, mock_client):
-        """Test api_statistics_refresh with custom limit."""
-        mock_client.return_value.fetch_review_statistics.return_value = {
+        """Test api_statistics_refresh (now incremental refresh)."""
+        mock_client.return_value.refresh_review_statistics.return_value = {
             "total_records": 100,
             "oldest_timestamp": datetime.now(timezone.utc) - timedelta(days=30),
             "newest_timestamp": datetime.now(timezone.utc),
+            "is_incremental": True,
         }
 
-        response = self.client.post(
-            reverse("api_statistics_refresh", args=[self.wiki.pk]), {"limit": "100"}
-        )
+        response = self.client.post(reverse("api_statistics_refresh", args=[self.wiki.pk]))
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["total_records"], 100)
-        mock_client.return_value.fetch_review_statistics.assert_called_once_with(limit=100)
+        self.assertEqual(data["is_incremental"], True)
+        mock_client.return_value.refresh_review_statistics.assert_called_once()

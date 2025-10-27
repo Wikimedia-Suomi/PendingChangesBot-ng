@@ -9,7 +9,7 @@ from http import HTTPStatus
 import requests
 from django.core.cache import cache
 from django.db.models import Count
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -479,22 +479,30 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
     wiki = _get_wiki(pk)
     configuration = wiki.configuration
     if request.method == "PUT":
-        if request.content_type == "application/json":
+        content_type = request.content_type or ""
+        if content_type.startswith("application/json"):
             payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+            blocking_categories = payload.get("blocking_categories", [])
+            auto_groups = payload.get("auto_approved_groups", [])
+            ores_damaging_threshold = payload.get("ores_damaging_threshold")
+            ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
+            ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
+            ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
         else:
-            payload = request.POST.dict()
+            encoding = request.encoding or "utf-8"
+            raw_body = request.body.decode(encoding) if request.body else ""
+            form_payload = QueryDict(raw_body, mutable=False)
+            blocking_categories = form_payload.getlist("blocking_categories")
+            auto_groups = form_payload.getlist("auto_approved_groups")
+            ores_damaging_threshold = form_payload.get("ores_damaging_threshold")
+            ores_goodfaith_threshold = form_payload.get("ores_goodfaith_threshold")
+            ores_damaging_threshold_living = form_payload.get("ores_damaging_threshold_living")
+            ores_goodfaith_threshold_living = form_payload.get("ores_goodfaith_threshold_living")
 
-        blocking_categories = payload.get("blocking_categories", [])
-        auto_groups = payload.get("auto_approved_groups", [])
         if isinstance(blocking_categories, str):
             blocking_categories = [blocking_categories]
         if isinstance(auto_groups, str):
             auto_groups = [auto_groups]
-
-        ores_damaging_threshold = payload.get("ores_damaging_threshold")
-        ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
-        ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
-        ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
 
         def validate_threshold(value, name):
             if value is not None:
@@ -865,15 +873,12 @@ def api_statistics_charts(request: HttpRequest, pk: int) -> JsonResponse:
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_statistics_refresh(request: HttpRequest, pk: int) -> JsonResponse:
-    """Refresh review statistics for a wiki."""
+    """Incrementally refresh review statistics for a wiki (fetch only new data)."""
     wiki = _get_wiki(pk)
     client = WikiClient(wiki)
 
-    # Get optional limit parameter
-    limit = int(request.POST.get("limit", 10000))
-
     try:
-        result = client.fetch_review_statistics(limit=limit)
+        result = client.refresh_review_statistics()
     except Exception as exc:  # pragma: no cover - network failures handled in UI
         logger.exception("Failed to refresh statistics for %s", wiki.code)
         return JsonResponse(
@@ -890,6 +895,47 @@ def api_statistics_refresh(request: HttpRequest, pk: int) -> JsonResponse:
             "newest_timestamp": (
                 result["newest_timestamp"].isoformat() if result["newest_timestamp"] else None
             ),
+            "is_incremental": result.get("is_incremental", False),
+        }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_statistics_clear_and_reload(request: HttpRequest, pk: int) -> JsonResponse:
+    """Clear statistics cache and reload fresh data for specified number of days."""
+    wiki = _get_wiki(pk)
+    client = WikiClient(wiki)
+
+    # Get optional days parameter (default: 30)
+    days = int(request.POST.get("days", 30))
+
+    if days < 1 or days > 365:
+        return JsonResponse(
+            {"error": "days parameter must be between 1 and 365"},
+            status=HTTPStatus.BAD_REQUEST,
+        )
+
+    try:
+        result = client.fetch_review_statistics(days=days)
+    except Exception as exc:  # pragma: no cover - network failures handled in UI
+        logger.exception("Failed to clear and reload statistics for %s", wiki.code)
+        return JsonResponse(
+            {"error": str(exc)},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+
+    return JsonResponse(
+        {
+            "total_records": result["total_records"],
+            "oldest_timestamp": (
+                result["oldest_timestamp"].isoformat() if result["oldest_timestamp"] else None
+            ),
+            "newest_timestamp": (
+                result["newest_timestamp"].isoformat() if result["newest_timestamp"] else None
+            ),
+            "batches_fetched": result.get("batches_fetched", 0),
+            "days": days,
         }
     )
 
