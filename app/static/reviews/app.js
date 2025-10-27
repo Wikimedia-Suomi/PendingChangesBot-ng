@@ -151,6 +151,8 @@ createApp({
         refreshing: false,
         clearing: false,
         error: "",
+        successMessage: "",
+        reloadDays: 30,
         metadata: null,
         topReviewers: [],
         topReviewedUsers: [],
@@ -648,6 +650,31 @@ createApp({
       window.history.replaceState({}, '', newUrl);
     }
 
+    // Helper function to calculate linear regression for trend line
+    function calculateTrendline(data) {
+      const n = data.length;
+      if (n < 2) return data.map(() => null);
+
+      let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+
+      for (let i = 0; i < n; i++) {
+        sumX += i;
+        sumY += data[i];
+        sumXY += i * data[i];
+        sumX2 += i * i;
+      }
+
+      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+      const intercept = (sumY - slope * sumX) / n;
+
+      return data.map((_, i) => slope * i + intercept);
+    }
+
+    // Check if we should show trend line (for 30+ days of data)
+    function shouldShowTrendline(dataPoints) {
+      return dataPoints && dataPoints.length >= 30;
+    }
+
     function renderCharts() {
       if (!state.statistics.chartData) {
         return;
@@ -663,19 +690,37 @@ createApp({
       // Reviewers over time chart
       const reviewersCtx = document.getElementById("reviewersOverTimeChart");
       if (reviewersCtx) {
+        const reviewersData = chartData.reviewers_over_time.map((d) => d.count);
+        const datasets = [
+          {
+            label: "Number of Reviewers",
+            data: reviewersData,
+            borderColor: "rgb(54, 162, 235)",
+            backgroundColor: "rgba(54, 162, 235, 0.2)",
+            tension: 0.1,
+          },
+        ];
+
+        // Add trend line if we have enough data points
+        if (shouldShowTrendline(chartData.reviewers_over_time)) {
+          const trendlineData = calculateTrendline(reviewersData);
+          datasets.push({
+            label: "Trend",
+            data: trendlineData,
+            borderColor: "rgba(54, 162, 235, 0.5)",
+            borderWidth: 2,
+            borderDash: [5, 5],
+            pointRadius: 0,
+            fill: false,
+            tension: 0,
+          });
+        }
+
         new Chart(reviewersCtx, {
           type: "line",
           data: {
             labels: chartData.reviewers_over_time.map((d) => d.date),
-            datasets: [
-              {
-                label: "Number of Reviewers",
-                data: chartData.reviewers_over_time.map((d) => d.count),
-                borderColor: "rgb(54, 162, 235)",
-                backgroundColor: "rgba(54, 162, 235, 0.2)",
-                tension: 0.1,
-              },
-            ],
+            datasets: datasets,
           },
           options: {
             responsive: true,
@@ -730,20 +775,38 @@ createApp({
       // Average delay chart
       const avgDelayCtx = document.getElementById("averageDelayChart");
       if (avgDelayCtx) {
+        const avgDelayData = chartData.average_delay_over_time.map((d) => d.avg_delay);
+        const datasets = [
+          {
+            label: "Average Delay (days)",
+            data: avgDelayData,
+            borderColor: "rgb(255, 159, 64)",
+            backgroundColor: "rgba(255, 159, 64, 0.2)",
+            fill: true,
+            tension: 0.1,
+          },
+        ];
+
+        // Add trend line if we have enough data points
+        if (shouldShowTrendline(chartData.average_delay_over_time)) {
+          const trendlineData = calculateTrendline(avgDelayData);
+          datasets.push({
+            label: "Trend",
+            data: trendlineData,
+            borderColor: "rgba(255, 159, 64, 0.6)",
+            borderWidth: 2,
+            borderDash: [5, 5],
+            pointRadius: 0,
+            fill: false,
+            tension: 0,
+          });
+        }
+
         new Chart(avgDelayCtx, {
           type: "line",
           data: {
             labels: chartData.average_delay_over_time.map((d) => d.date),
-            datasets: [
-              {
-                label: "Average Delay (days)",
-                data: chartData.average_delay_over_time.map((d) => d.avg_delay),
-                borderColor: "rgb(255, 159, 64)",
-                backgroundColor: "rgba(255, 159, 64, 0.2)",
-                fill: true,
-                tension: 0.1,
-              },
-            ],
+            datasets: datasets,
           },
           options: {
             responsive: true,
@@ -836,11 +899,20 @@ createApp({
           throw new Error(response.statusText || "Failed to refresh statistics");
         }
         const result = await response.json();
-        if (result.is_incremental) {
-          console.log(`Incremental refresh: fetched ${result.total_records} new records`);
-        } else {
-          console.log(`Full refresh: fetched ${result.total_records} records`);
+
+        // Show success message with batch info
+        let message = result.is_incremental
+          ? `✓ Incremental refresh: fetched ${result.total_records} new records`
+          : `✓ Full refresh: fetched ${result.total_records} records in ${result.batches_fetched} batches`;
+
+        if (result.batch_limit_reached) {
+          message += ` ⚠ Batch limit reached - some data may be missing`;
         }
+
+        console.log(message);
+        state.statistics.successMessage = message;
+        setTimeout(() => { state.statistics.successMessage = ""; }, 5000);
+
         await loadStatistics();
       } catch (error) {
         state.statistics.error = error.message || "Failed to refresh statistics";
@@ -853,7 +925,8 @@ createApp({
       if (!state.selectedWikiId) {
         return;
       }
-      if (!confirm("This will clear all cached statistics and reload fresh data. This may take 1-2 minutes. Continue?")) {
+      const days = state.statistics.reloadDays || 30;
+      if (!confirm(`This will clear all cached statistics and reload ${days} days of fresh data. This may take 1-2 minutes. Continue?`)) {
         return;
       }
       state.statistics.clearing = true;
@@ -864,13 +937,24 @@ createApp({
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
           },
-          body: "days=30", // Load 30 days of data
+          body: `days=${days}`,
         });
         if (!response.ok) {
           throw new Error(response.statusText || "Failed to clear and reload statistics");
         }
         const result = await response.json();
-        console.log(`Cleared and reloaded: ${result.total_records} records in ${result.batches_fetched} batches`);
+
+        // Show success message with batch info
+        let message = `✓ Loaded ${result.total_records} records in ${result.batches_fetched} batches (${result.days} days)`;
+
+        if (result.batch_limit_reached) {
+          message += ` ⚠ Batch limit reached - some data may be missing`;
+        }
+
+        console.log(message);
+        state.statistics.successMessage = message;
+        setTimeout(() => { state.statistics.successMessage = ""; }, 5000);
+
         await loadStatistics();
       } catch (error) {
         state.statistics.error = error.message || "Failed to clear and reload statistics";
@@ -1130,7 +1214,7 @@ createApp({
       if (window.location.pathname.includes('/statistics/')) {
         const params = new URLSearchParams(window.location.search);
         const timeFilter = params.get('time_filter');
-        if (timeFilter && ['day', 'week', 'all'].includes(timeFilter)) {
+        if (timeFilter && ['day', 'week', '30', '90', '365', 'all'].includes(timeFilter)) {
           state.statistics.timeFilter = timeFilter;
         }
         const excludeAutoReviewers = params.get('exclude_auto_reviewers');
