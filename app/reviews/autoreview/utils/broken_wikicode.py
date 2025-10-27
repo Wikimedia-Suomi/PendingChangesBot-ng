@@ -210,21 +210,16 @@ def check_broken_wikicode(
 
 def get_parent_html(revision: PendingRevision) -> str:
     """Get parent revision rendered HTML from local database."""
-    cached_parent = getattr(revision, "parent_html", None)
-    if isinstance(cached_parent, str) and cached_parent:
-        return cached_parent
-
-    parentid = getattr(revision, "parentid", None)
-    if not isinstance(parentid, (int, str)) or not parentid:
+    if not revision.parentid:
         return ""
 
     try:
         from reviews.models import PendingRevision as PR
 
-        parent_revision = PR.objects.get(page=revision.page, revid=parentid)
+        parent_revision = PR.objects.get(page=revision.page, revid=revision.parentid)
         return parent_revision.get_rendered_html()
-    except Exception:
-        logger.warning(
+    except PR.DoesNotExist:
+        logger.debug(
             "Parent revision %s not found in local database for revision %s",
             revision.parentid,
             revision.revid,
