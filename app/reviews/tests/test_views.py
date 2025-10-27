@@ -1262,6 +1262,8 @@ class ViewTests(TestCase):
             "oldest_timestamp": datetime.now(timezone.utc) - timedelta(days=30),
             "newest_timestamp": datetime.now(timezone.utc),
             "is_incremental": True,
+            "batches_fetched": 1,
+            "batch_limit_reached": False,
         }
 
         response = self.client.post(reverse("api_statistics_refresh", args=[self.wiki.pk]))
@@ -1269,4 +1271,6 @@ class ViewTests(TestCase):
         data = response.json()
         self.assertEqual(data["total_records"], 100)
         self.assertEqual(data["is_incremental"], True)
+        self.assertIn("batches_fetched", data)
+        self.assertIn("batch_limit_reached", data)
         mock_client.return_value.refresh_review_statistics.assert_called_once()

@@ -895,6 +895,8 @@ def api_statistics_refresh(request: HttpRequest, pk: int) -> JsonResponse:
                 result["newest_timestamp"].isoformat() if result["newest_timestamp"] else None
             ),
             "is_incremental": result.get("is_incremental", False),
+            "batches_fetched": result.get("batches_fetched", 0),
+            "batch_limit_reached": result.get("batch_limit_reached", False),
         }
     )
 
@@ -934,6 +936,7 @@ def api_statistics_clear_and_reload(request: HttpRequest, pk: int) -> JsonRespon
                 result["newest_timestamp"].isoformat() if result["newest_timestamp"] else None
             ),
             "batches_fetched": result.get("batches_fetched", 0),
+            "batch_limit_reached": result.get("batch_limit_reached", False),
             "days": days,
         }
     )
