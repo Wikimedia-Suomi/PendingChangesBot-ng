@@ -22,6 +22,30 @@
             <div class="column is-4">
               <h1 class="title is-4">Pending Changes Review</h1>
             </div>
+            {% endverbatim %}
+            {% if request.user.is_authenticated %}
+            <div class="column is-narrow">
+              <div class="buttons">
+                <span class="button is-static is-small">
+                  <span class="icon"><i class="fas fa-user"></i></span>
+                  <span>{{ request.user.username }}</span>
+                </span>
+                <a href="{% url 'logout' %}" class="button is-small is-danger is-light">
+                  Logout
+                </a>
+              </div>
+            </div>
+            {% else %}
+            {% if OAUTH_ENABLED %}
+            <div class="column is-narrow">
+              <a href="{% url 'social:begin' 'mediawiki' %}" class="button is-small is-primary">
+                <span class="icon"><i class="fas fa-sign-in-alt"></i></span>
+                <span>Login with Wikimedia</span>
+              </a>
+            </div>
+            {% endif %}
+            {% endif %}
+            {% verbatim %}
             <div class="column">
               <div class="field has-addons">
                 <div class="control is-expanded">
