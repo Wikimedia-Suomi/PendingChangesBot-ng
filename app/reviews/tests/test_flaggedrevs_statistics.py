@@ -296,11 +296,11 @@ class LoadStatisticsCommandTests(TestCase):
         mock_superset = MagicMock()
         mock_superset.query.return_value = [
             {
-                "d": "202401",
-                "totalPages_ns0": 1000,
-                "syncedPages_ns0": 800,
-                "reviewedPages_ns0": 900,
-                "pendingLag_average": 2.5,
+                "yearmonth": "202401",
+                "totalPages_ns0_avg": 1000,
+                "syncedPages_ns0_avg": 800,
+                "reviewedPages_ns0_avg": 900,
+                "pendingLag_average_avg": 2.5,
             }
         ]
         mock_superset_query.return_value = mock_superset
