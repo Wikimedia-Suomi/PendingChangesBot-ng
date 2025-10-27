@@ -287,9 +287,9 @@ class LoadStatisticsCommandTests(TestCase):
             api_endpoint="https://test.wikipedia.org/w/api.php",
         )
 
-    @patch("reviews.management.commands.load_statistics.logger")
-    @patch("reviews.management.commands.load_statistics.SupersetQuery")
-    @patch("reviews.management.commands.load_statistics.pywikibot.Site")
+    @patch("reviews.management.commands.load_flaggedrevs_statistics.logger")
+    @patch("reviews.management.commands.load_flaggedrevs_statistics.SupersetQuery")
+    @patch("reviews.management.commands.load_flaggedrevs_statistics.pywikibot.Site")
     def test_load_statistics_command(self, mock_site, mock_superset_query, mock_logger):
         """Test load_statistics management command."""
         # Mock the Superset response
@@ -306,7 +306,7 @@ class LoadStatisticsCommandTests(TestCase):
         mock_superset_query.return_value = mock_superset
 
         out = StringIO()
-        call_command("load_statistics", "--wiki", "test", stdout=out, stderr=StringIO())
+        call_command("load_flaggedrevs_statistics", "--wiki", "test", stdout=out, stderr=StringIO())
 
         stats = FlaggedRevsStatistics.objects.filter(wiki=self.wiki)
         self.assertEqual(stats.count(), 1)
@@ -318,8 +318,8 @@ class LoadStatisticsCommandTests(TestCase):
         self.assertEqual(stat.pending_lag_average, 2.5)
         self.assertEqual(stat.date, date(2024, 1, 1))
 
-    @patch("reviews.management.commands.load_statistics.SupersetQuery")
-    @patch("reviews.management.commands.load_statistics.pywikibot.Site")
+    @patch("reviews.management.commands.load_flaggedrevs_statistics.SupersetQuery")
+    @patch("reviews.management.commands.load_flaggedrevs_statistics.pywikibot.Site")
     def test_load_statistics_clear_command(self, mock_site, mock_superset_query):
         """Test load_statistics --clear command."""
         FlaggedRevsStatistics.objects.create(
@@ -328,7 +328,7 @@ class LoadStatisticsCommandTests(TestCase):
             total_pages_ns0=1000,
         )
 
-        call_command("load_statistics", "--clear", stdout=StringIO(), stderr=StringIO())
+        call_command("load_flaggedrevs_statistics", "--clear", stdout=StringIO(), stderr=StringIO())
 
         self.assertEqual(FlaggedRevsStatistics.objects.count(), 0)
 

@@ -15,10 +15,11 @@ logger = logging.getLogger(__name__)
 
 """
 USAGE:
-    python manage.py load_statistics                    # Incremental update (recommended)
-    python manage.py load_statistics --wiki fi          # Update specific wiki only
-    python manage.py load_statistics --full-refresh     # Delete and reload all data
-    python manage.py load_statistics --clear            # Clear all data without loading
+    python manage.py load_flaggedrevs_statistics  # Incremental update (recommended)
+    python manage.py load_flaggedrevs_statistics --wiki fi
+    # Update specific wiki only
+    python manage.py load_flaggedrevs_statistics --full-refresh  # Delete and reload all data
+    python manage.py load_flaggedrevs_statistics --clear  # Clear all data without loading
 
 """
 
