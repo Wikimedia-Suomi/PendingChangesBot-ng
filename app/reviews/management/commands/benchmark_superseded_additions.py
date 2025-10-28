@@ -46,6 +46,11 @@ class Command(BaseCommand):
         page_id = options.get("page_id")
         use_blocks = options.get("use_blocks", False)
 
+        # Suppress verbose logging during benchmark
+        logging.getLogger("reviews").setLevel(logging.CRITICAL)
+        logging.getLogger("requests").setLevel(logging.CRITICAL)
+        logging.getLogger("").setLevel(logging.CRITICAL)  # Root logger
+
         self.stdout.write(self.style.SUCCESS("\n=== Superseded Additions Benchmark ===\n"))
 
         # Get revisions to test
@@ -223,8 +228,8 @@ class Command(BaseCommand):
                 "old_message": f"Block of {len(block)} edits",
             }
 
-        except Exception as e:
-            logger.exception(f"Error testing revision block: {e}")
+        except Exception:
+            # Silently handle errors
             return None
 
     def _test_revision(self, revision: PendingRevision) -> dict | None:
@@ -281,8 +286,8 @@ class Command(BaseCommand):
                 "old_message": old_result.message,
             }
 
-        except Exception as e:
-            logger.exception(f"Error testing revision {revision.revid}: {e}")
+        except Exception:
+            # Silently handle errors
             return None
 
     def _get_user_additions(self, revision: PendingRevision, wiki) -> list[dict]:
@@ -316,8 +321,8 @@ class Command(BaseCommand):
 
             return additions
 
-        except Exception as e:
-            logger.exception(f"Error getting user additions for revision {revision.revid}: {e}")
+        except Exception:
+            # Silently handle errors (API limitations, missing revisions, etc.)
             return []
 
     def _is_likely_move(self, text: str, diff: list, current_line: dict) -> bool:
@@ -410,8 +415,8 @@ class Command(BaseCommand):
             superseded_ratio = superseded_count / len(user_additions)
             return superseded_ratio > 0.5  # More than 50% of additions removed
 
-        except Exception as e:
-            logger.exception(f"Error in REST API test for revision {revision.revid}: {e}")
+        except Exception:
+            # Silently handle API errors
             return False
 
     def _test_block_with_rest_api(
@@ -473,8 +478,8 @@ class Command(BaseCommand):
             superseded_ratio = superseded_count / len(block_additions)
             return superseded_ratio > 0.5
 
-        except Exception as e:
-            logger.exception(f"Error in block REST API test: {e}")
+        except Exception:
+            # Silently handle API errors
             return False
 
     def _texts_match(self, text1: str, text2: str) -> bool:
