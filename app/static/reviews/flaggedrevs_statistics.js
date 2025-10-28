@@ -20,9 +20,10 @@ createApp({
 
       // Filters
       selectedWikis: [],
-      filterMode: 'wiki', // 'wiki', 'frs_key', 'yearmonth'
+      filterMode: 'wiki', // 'wiki', 'frs_key', 'single_wiki', 'yearmonth'
       selectedFrsKey: 'pendingLag_average', // Default FRS key selection
       selectedWikiForTable: 'fi', // Default wiki for table display
+      selectedSingleWiki: 'fi', // Selected wiki for single wiki mode
       series: {
         pendingLag_average: true,
         totalPages_ns0: true,
@@ -1622,6 +1623,151 @@ createApp({
       }
     }
 
+    // Update single wiki chart with customizable metrics
+    function updateSingleWikiChart() {
+      console.log('=== SINGLE WIKI CHART UPDATE DEBUG ===');
+      console.log('selectedSingleWiki:', state.selectedSingleWiki);
+      console.log('selected metrics:', state.series);
+
+      if (!state.selectedSingleWiki || state.tableData.length === 0) {
+        console.log('No wiki selected or no data available');
+        return;
+      }
+
+      // Destroy existing chart if it exists
+      const canvas = document.getElementById('singleWikiChart');
+      if (!canvas) {
+        console.log('singleWikiChart canvas not found');
+        return;
+      }
+
+      try {
+        const existingChart = Chart.getChart(canvas);
+        if (existingChart) {
+          existingChart.destroy();
+        }
+      } catch (error) {
+        console.log('Error destroying existing chart:', error);
+      }
+
+      // Get all possible metrics
+      const allMetrics = [
+        { key: 'pendingChanges', label: 'Pending Changes' },
+        { key: 'pendingLag_average', label: 'Pending Lag (Average)' },
+        { key: 'totalPages_ns0', label: 'Total Pages (NS:0)' },
+        { key: 'reviewedPages_ns0', label: 'Reviewed Pages (NS:0)' },
+        { key: 'syncedPages_ns0', label: 'Synced Pages (NS:0)' },
+        { key: 'number_of_reviewers', label: 'Number of Reviewers' },
+        { key: 'number_of_reviews', label: 'Number of Reviews' },
+        { key: 'reviews_per_reviewer', label: 'Reviews Per Reviewer' },
+      ];
+
+      // Fixed color mapping for each metric key
+      const colorMap = {
+        'pendingChanges': '#FF0000',        // Red
+        'pendingLag_average': '#00FF00',     // Green
+        'totalPages_ns0': '#0000FF',         // Blue
+        'reviewedPages_ns0': '#FF00FF',      // Magenta
+        'syncedPages_ns0': '#FFFF00',        // Yellow
+        'number_of_reviewers': '#FFA500',    // Orange
+        'number_of_reviews': '#800080',      // Purple
+        'reviews_per_reviewer': '#00FFFF'    // Cyan
+      };
+
+      // Get the selected metrics
+      const selectedMetrics = allMetrics
+        .map(m => ({ ...m, enabled: state.series[m.key] }))
+        .filter(m => m.enabled);
+
+      if (selectedMetrics.length === 0) {
+        console.log('No metrics selected');
+        return;
+      }
+
+      // Get data for the selected wiki
+      const wikiData = state.tableData.filter(d => d.wiki === state.selectedSingleWiki);
+      if (wikiData.length === 0) {
+        console.log('No data for selected wiki');
+        return;
+      }
+
+      // Get unique years as labels
+      const labels = [...new Set(wikiData.map(d => d.date.substring(0, 4)))].sort();
+
+      // Separate large and small scale metrics
+      const largeScaleMetrics = ['pendingLag_average', 'totalPages_ns0', 'reviewedPages_ns0', 'syncedPages_ns0', 'pendingChanges'];
+
+      const datasets = selectedMetrics.map((metric) => {
+        const data = labels.map(year => {
+          const yearData = wikiData.filter(d => d.date.startsWith(year));
+          const latest = yearData.sort((a, b) => b.date.localeCompare(a.date))[0];
+          return latest ? (latest[metric.key] || null) : null;
+        });
+
+        const config = {
+          label: metric.label,
+          data: data,
+          borderColor: colorMap[metric.key],
+          backgroundColor: colorMap[metric.key] + "20",
+          tension: 0.4,
+          pointRadius: 0,
+          fill: false,
+        };
+
+        // Assign to appropriate Y-axis
+        if (largeScaleMetrics.includes(metric.key)) {
+          config.yAxisID = 'y';
+        } else {
+          config.yAxisID = 'y1';
+        }
+
+        return config;
+      });
+
+      // Create the chart
+      try {
+        state.singleChart = new Chart(canvas, {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              title: {
+                display: true,
+                text: `${state.selectedSingleWiki}wiki_p Metrics`,
+                position: 'top',
+              },
+              legend: {
+                display: true,
+                position: 'bottom',
+              },
+            },
+            scales: {
+              y: {
+                type: 'linear',
+                position: 'left',
+                beginAtZero: true,
+              },
+              y1: {
+                type: 'linear',
+                position: 'right',
+                beginAtZero: true,
+                grid: {
+                  drawOnChartArea: false,
+                },
+                ticks: {
+                  display: false, // Hide the numbers on the right side
+                },
+              },
+            },
+          },
+        });
+      } catch (error) {
+        console.error('Error creating single wiki chart:', error);
+      }
+    }
+
     // Data loading
     async function loadData() {
       if (state.loading) return;
@@ -1648,15 +1794,20 @@ createApp({
         }
         const queryString = apiParams.toString();
 
+        // Determine which wikis to load data for
+        const wikisToLoad = state.filterMode === 'single_wiki' && state.selectedSingleWiki
+          ? [state.selectedSingleWiki]
+          : state.selectedWikis;
+
         // Load statistics for each selected wiki
-        for (const wiki of state.selectedWikis) {
+        for (const wiki of wikisToLoad) {
           const statsUrl = `/api/flaggedrevs-statistics/?wiki=${wiki}${queryString ? '&' + queryString : ''}`;
           promises.push(
             fetch(statsUrl)
               .then(response => response.json())
           );
 
-          // Load review activity (stretch goal)
+          // Load review activity
           const activityUrl = `/api/flaggedrevs-activity/?wiki=${wiki}${queryString ? '&' + queryString : ''}`;
           promises.push(
             fetch(activityUrl)
@@ -1718,6 +1869,10 @@ createApp({
             setTimeout(() => {
               updateChart();
             }, 200);
+          } else if (state.filterMode === 'single_wiki') {
+            // For single wiki mode, call updateSingleWikiChart
+            await nextTick();
+            updateSingleWikiChart();
           } else if (state.filterMode === 'frs_key') {
             // For FRS Key mode, call updateFrsKeyChart
             await nextTick();
@@ -1766,6 +1921,11 @@ createApp({
         params.set('frs_key', frsKeyParam);
       }
 
+      // Handle selected wiki for single_wiki mode
+      if (state.filterMode === 'single_wiki' && state.selectedSingleWiki) {
+        params.set('selectedWiki', `${state.selectedSingleWiki}wiki_p`);
+      }
+
       // Handle month selection (only in yearmonth mode)
       if (state.filterMode === 'yearmonth' && state.selectedMonth) {
         // Convert YYYYMM to YYYY-MM format
@@ -1784,7 +1944,7 @@ createApp({
 
       // Handle 'mode' parameter (filter mode)
       const modeParam = params.get('mode');
-      if (modeParam && ['wiki', 'frs_key', 'yearmonth'].includes(modeParam)) {
+      if (modeParam && ['wiki', 'frs_key', 'single_wiki', 'yearmonth'].includes(modeParam)) {
         state.filterMode = modeParam;
       }
 
@@ -1809,6 +1969,9 @@ createApp({
           // In Wiki mode, set the table wiki selection, not chart selection
           if (state.filterMode === 'wiki') {
             state.selectedWikiForTable = wikiCode;
+          } else if (state.filterMode === 'single_wiki') {
+            // In single_wiki mode, set the selected single wiki
+            state.selectedSingleWiki = wikiCode;
           } else {
             // In other modes, set chart selection
             state.selectedWikis = [wikiCode];
@@ -1823,6 +1986,18 @@ createApp({
         const frsKey = frsKeyParam.replace(/-/g, '_');
         if (state.series.hasOwnProperty(frsKey)) {
           state.selectedFrsKey = frsKey;
+        }
+      }
+
+      // Handle 'selectedWiki' parameter for single_wiki mode
+      if (state.filterMode === 'single_wiki') {
+        const selectedWikiParam = params.get('selectedWiki');
+        if (selectedWikiParam) {
+          const wikiCode = selectedWikiParam.endsWith('wiki_p') ? selectedWikiParam.slice(0, -6) : selectedWikiParam;
+          const wiki = AVAILABLE_WIKIS.find(aw => aw.code === wikiCode);
+          if (wiki) {
+            state.selectedSingleWiki = wikiCode;
+          }
         }
       }
 
@@ -1870,6 +2045,12 @@ createApp({
         setTimeout(() => {
           updateChart();
         }, 50);
+      } else if (state.filterMode === 'single_wiki') {
+        // Update single wiki chart when metrics change
+        await nextTick();
+        setTimeout(() => {
+          updateSingleWikiChart();
+        }, 50);
       }
     }, { deep: true });
 
@@ -1908,6 +2089,12 @@ createApp({
         // YearMonth uses the same chart as FRS Key
         await nextTick();
         updateFrsKeyChart();
+      } else if (state.filterMode === 'single_wiki') {
+        // Single wiki mode - add delay to ensure data is loaded
+        await nextTick();
+        setTimeout(() => {
+          updateSingleWikiChart();
+        }, 100);
       } else {
         updateChart();
       }
@@ -1931,7 +2118,15 @@ createApp({
       }
     });
 
-
+    // Watch for changes to selectedSingleWiki and reload data
+    watch(() => state.selectedSingleWiki, async () => {
+      if (state.filterMode === 'single_wiki') {
+        updateUrl();
+        await loadData();
+        await nextTick();
+        updateSingleWikiChart();
+      }
+    });
 
     // Extract unique months from loaded data
     function updateAvailableMonthsFromData(data) {
@@ -2008,6 +2203,7 @@ createApp({
       filteredDateFormatted,
       formatDateToYearMonth,
       getSeriesLabel,
+      updateSingleWikiChart,
       loadData,
       refreshData,
       updateUrl,

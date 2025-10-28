@@ -168,6 +168,7 @@
                     <select v-model="state.filterMode" @change="updateUrl">
                       <option value="wiki">Wiki</option>
                       <option value="frs_key">FRS Key</option>
+                      <option value="single_wiki">Single Wiki</option>
                       <option value="yearmonth">YearMonth</option>
                     </select>
                   </div>
@@ -182,6 +183,22 @@
                 <div class="control">
                   <div class="select is-small">
                     <select v-model="state.selectedWikiForTable" @change="updateUrl">
+                      <option v-for="wiki in availableWikis" :key="wiki.code" :value="wiki.code">
+                        {{ wiki.code }}wiki_p
+                      </option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Single Wiki Selection (only shown when Single Wiki mode is selected) -->
+            <div class="column is-narrow" v-if="state.filterMode === 'single_wiki'">
+              <div class="field">
+                <label class="label is-small">Select Wiki</label>
+                <div class="control">
+                  <div class="select is-small">
+                    <select v-model="state.selectedSingleWiki" @change="updateUrl">
                       <option v-for="wiki in availableWikis" :key="wiki.code" :value="wiki.code">
                         {{ wiki.code }}wiki_p
                       </option>
@@ -265,6 +282,70 @@
                 <label class="checkbox">
                   <input type="checkbox" :value="wiki.code" v-model="state.selectedWikis" @change="updateUrl">
                   {{ wiki.code }}wiki_p
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Single Wiki Mode: Customizable Chart Display -->
+      <section class="section" v-show="state.filterMode === 'single_wiki'" style="padding-top: 0;">
+        <div class="columns">
+          <div class="column is-8">
+            <div style="width: 90%; height: 500px; margin: 0; border: 2px solid #000; display: inline-block;">
+              <canvas id="singleWikiChart" style="width: 100%; height: 100%;"></canvas>
+            </div>
+          </div>
+          <div class="column is-4">
+            <div class="field">
+              <label class="label is-small">Select Metrics to Display</label>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.pendingChanges">
+                  Pending Changes
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.pendingLag_average">
+                  Pending Lag (Average)
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.totalPages_ns0">
+                  Total Pages (NS:0)
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.reviewedPages_ns0">
+                  Reviewed Pages (NS:0)
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.syncedPages_ns0">
+                  Synced Pages (NS:0)
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.number_of_reviewers">
+                  Number of Reviewers
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.number_of_reviews">
+                  Number of Reviews
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.reviews_per_reviewer">
+                  Reviews Per Reviewer
                 </label>
               </div>
             </div>
@@ -527,6 +608,45 @@
         <div class="notification is-warning">
           <p><strong>No data available.</strong></p>
           <p>Please select at least one wiki and ensure statistics data has been loaded.</p>
+        </div>
+      </section>
+
+      <!-- SQL Queries Information Box -->
+      <section class="section" style="margin-top: 2rem; border-top: 2px solid #ddd;">
+        <div class="box" style="background-color: #f5f5f5; border: 1px solid #ddd;">
+          <h3 class="title is-5">Data Source Information</h3>
+          <div class="content">
+            <p class="is-size-7">
+              <strong>How data is acquired:</strong> This dashboard fetches data from Wikimedia's Superset databases
+              using the following SQL queries. These queries aggregate data by year/month and calculate various
+              statistics for FlaggedRevs (FlaggedRevisions) systems.
+            </p>
+            <div class="notification is-light is-small" style="margin-top: 1rem;">
+              <p class="is-size-7"><strong>Statistics Query (load_flaggedrevs_statistics command):</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT FLOOR(d/100) as yearmonth,
+  AVG(totalPages_ns0) AS totalPages_ns0_avg,
+  AVG(syncedPages_ns0) AS syncedPages_ns0_avg,
+  AVG(reviewedPages_ns0) AS reviewedPages_ns0_avg,
+  AVG(pendingLag_average) AS pendingLag_average_avg
+FROM (
+  -- Aggregates data from flaggedrevs_statistics table
+  -- Groups by month and averages multiple statistics
+) as t
+GROUP BY yearmonth</pre>
+            </div>
+            <div class="notification is-light is-small" style="margin-top: 0.5rem;">
+              <p class="is-size-7"><strong>Review Activity Query:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT FLOOR(d/100) as yearmonth,
+  AVG(number_of_reviewers) AS number_of_reviewers_avg,
+  AVG(number_of_reviews) AS number_of_reviews_avg,
+  AVG(number_of_pages) AS number_of_pages_avg
+FROM (
+  -- Aggregates data from flaggedrevs table
+  -- Groups by month and calculates reviewer activity metrics
+) as t
+GROUP BY yearmonth</pre>
+            </div>
+          </div>
         </div>
       </section>
     </div>
