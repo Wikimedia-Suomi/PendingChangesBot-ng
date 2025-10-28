@@ -83,8 +83,8 @@ createApp({
         { key: "reviews_per_reviewer", label: "Reviews Per Reviewer" },
       ];
 
-      // Always show all series
-      return seriesConfig;
+      // Filter by state.series to show/hide graphs based on toggles
+      return seriesConfig.filter(series => state.series[series.key]);
     });
 
     const isSingleMonthView = computed(() => {
@@ -534,6 +534,21 @@ createApp({
       return date.replace('-', '').substring(0, 6);
     }
 
+    // Get series label for display
+    function getSeriesLabel(key) {
+      const labels = {
+        pendingLag_average: "Pending Lag (Average)",
+        totalPages_ns0: "Total Pages (NS:0)",
+        reviewedPages_ns0: "Reviewed Pages (NS:0)",
+        syncedPages_ns0: "Synced Pages (NS:0)",
+        pendingChanges: "Pending Changes",
+        number_of_reviewers: "Number of Reviewers",
+        number_of_reviews: "Number of Reviews",
+        reviews_per_reviewer: "Reviews Per Reviewer",
+      };
+      return labels[key] || key;
+    }
+
     // Filter Wiki table to show data for specific date clicked
     function goToWikiDatePage(date) {
       console.log('Filtering Wiki table for date:', date);
@@ -685,7 +700,11 @@ createApp({
             existingMessage.remove();
           }
         }
-        seriesConfig.forEach((series, seriesIndex) => {
+
+        // Only create charts for enabled series
+        const seriesToRender = seriesConfig.filter(series => state.series[series.key]);
+
+        seriesToRender.forEach((series, seriesIndex) => {
           const canvasId = `chart-${series.key}`;
           const ctx = document.getElementById(canvasId);
           console.log(`Looking for canvas: ${canvasId}, found:`, ctx);
@@ -779,13 +798,20 @@ createApp({
           }
           ctx.style.display = 'block';
 
-          state.charts[series.key] = new Chart(ctx, {
-            type: 'line',
-            data: {
-              labels: labels,
-              datasets: datasets,
-            },
-            options: {
+          // Double-check canvas is still valid before creating chart
+          if (!ctx || !ctx.parentElement || ctx.offsetWidth === 0 || ctx.offsetHeight === 0) {
+            console.log(`Canvas ${canvasId} is not ready, skipping chart creation`);
+            return;
+          }
+
+          try {
+            state.charts[series.key] = new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: labels,
+                datasets: datasets,
+              },
+              options: {
               responsive: true,
               maintainAspectRatio: false,
               animation: {
@@ -880,6 +906,10 @@ createApp({
               },
             },
           });
+          } catch (error) {
+            console.error(`Error creating chart for ${series.label}:`, error);
+            // Skip this chart if there's an error
+          }
         });
       }
 
@@ -1832,7 +1862,16 @@ createApp({
       }, 100);
     });
 
-    // Removed series watcher
+    // Watch for series changes to update charts
+    watch(() => state.series, async () => {
+      if (state.filterMode === 'wiki') {
+        // Wait for DOM to update, then rebuild charts
+        await nextTick();
+        setTimeout(() => {
+          updateChart();
+        }, 50);
+      }
+    }, { deep: true });
 
     watch(() => state.filterMode, async () => {
       updateUrl();
@@ -1968,6 +2007,7 @@ createApp({
       getWikiDateData,
       filteredDateFormatted,
       formatDateToYearMonth,
+      getSeriesLabel,
       loadData,
       refreshData,
       updateUrl,

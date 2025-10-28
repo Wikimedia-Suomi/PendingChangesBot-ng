@@ -231,6 +231,25 @@
           </div>
       </section>
 
+      <!-- Graph Visibility Controls -->
+      <section class="section" v-show="state.filterMode === 'wiki'" style="padding: 0.5rem 0; border-bottom: 1px solid #ddd;">
+        <div class="columns is-vcentered">
+          <div class="column is-narrow">
+            <label class="label is-small">Show/Hide Graphs:</label>
+          </div>
+          <div class="column">
+            <div class="field is-grouped is-grouped-multiline">
+              <div class="control" v-for="(enabled, key) in state.series" :key="key">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series[key]" @change="updateUrl">
+                  {{ getSeriesLabel(key) }}
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- FRS Key Mode: Single Chart Display -->
       <section class="section" v-show="state.filterMode === 'frs_key'" style="padding-top: 0;">
         <div class="columns">
