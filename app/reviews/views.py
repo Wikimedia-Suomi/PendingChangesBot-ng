@@ -1734,3 +1734,76 @@ def api_get_annotations(request: HttpRequest) -> JsonResponse:
     }
 
     return JsonResponse(data)
+
+
+@require_GET
+def api_flaggedrevs_statistics(request: HttpRequest) -> JsonResponse:
+    """Get FlaggedRevs statistics."""
+    from .models import FlaggedRevsStatistics
+    
+    wiki_code = request.GET.get("wiki")
+    data_series = request.GET.get("series")
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+
+    queryset = FlaggedRevsStatistics.objects.select_related("wiki")
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    if start_date:
+        queryset = queryset.filter(date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(date__lte=end_date)
+
+    queryset = queryset.order_by("date")
+
+    data = [
+        {
+            "wiki": stat.wiki.code,
+            "date": stat.date.isoformat(),
+            "total_pages_ns0": stat.total_pages_ns0,
+            "reviewed_pages_ns0": stat.reviewed_pages_ns0,
+            "synced_pages_ns0": stat.synced_pages_ns0,
+            "pending_changes": stat.pending_changes,
+            "pending_lag_average": float(stat.pending_lag_average) if stat.pending_lag_average else None,
+        }
+        for stat in queryset
+    ]
+
+    return JsonResponse({"data": data})
+
+
+@require_GET
+def api_flaggedrevs_months(request: HttpRequest) -> JsonResponse:
+    """Get available months for FlaggedRevs statistics."""
+    from .models import FlaggedRevsStatistics
+    
+    wiki_code = request.GET.get("wiki")
+
+    queryset = FlaggedRevsStatistics.objects.all()
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    dates = queryset.values_list("date", flat=True).distinct().order_by("-date")
+
+    return JsonResponse({"months": [d.isoformat() for d in dates]})
+
+
+@csrf_exempt
+@require_POST
+def api_statistics_clear_and_reload(request: HttpRequest, pk: int) -> JsonResponse:
+    """Clear and reload statistics cache."""
+    from .models import ReviewStatisticsCache, Wiki
+    
+    try:
+        wiki = Wiki.objects.get(pk=pk)
+    except Wiki.DoesNotExist:
+        return JsonResponse({"error": "Wiki not found"}, status=404)
+
+    # Clear cache
+    ReviewStatisticsCache.objects.filter(wiki=wiki).delete()
+
+    return JsonResponse({"success": True, "message": "Statistics cache cleared"})
