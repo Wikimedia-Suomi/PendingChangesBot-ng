@@ -48,6 +48,16 @@ urlpatterns = [
         views.api_flaggedrevs_months,
         name="api_flaggedrevs_months",
     ),
+    path(
+        "api/flaggedrevs-activity/",
+        views.api_flaggedrevs_activity,
+        name="api_flaggedrevs_activity",
+    ),
+    path(
+        "flaggedrevs-statistics/",
+        views.flaggedrevs_statistics_page,
+        name="flaggedrevs_statistics_page",
+    ),
     
     # Word-level annotation endpoints
     path("word-annotation/", views.word_annotation_page, name="word_annotation_page"),

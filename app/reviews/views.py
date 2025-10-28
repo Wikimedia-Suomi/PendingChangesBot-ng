@@ -1807,3 +1807,46 @@ def api_statistics_clear_and_reload(request: HttpRequest, pk: int) -> JsonRespon
     ReviewStatisticsCache.objects.filter(wiki=wiki).delete()
 
     return JsonResponse({"success": True, "message": "Statistics cache cleared"})
+
+
+@require_GET
+def api_flaggedrevs_activity(request: HttpRequest) -> JsonResponse:
+    """Get FlaggedRevs review activity statistics."""
+    from .models import ReviewActivity
+    
+    wiki_code = request.GET.get("wiki")
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+
+    queryset = ReviewActivity.objects.select_related("wiki")
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    if start_date:
+        queryset = queryset.filter(date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(date__lte=end_date)
+
+    queryset = queryset.order_by("date")
+
+    data = [
+        {
+            "wiki": activity.wiki.code,
+            "date": activity.date.isoformat(),
+            "number_of_reviewers": activity.number_of_reviewers,
+            "number_of_reviews": activity.number_of_reviews,
+            "number_of_pages": activity.number_of_pages,
+            "reviews_per_reviewer": float(activity.reviews_per_reviewer) if activity.reviews_per_reviewer else None,
+        }
+        for activity in queryset
+    ]
+
+    return JsonResponse({"data": data})
+
+
+@require_GET
+def flaggedrevs_statistics_page(request: HttpRequest) -> HttpResponse:
+    """Render FlaggedRevs statistics page."""
+    return render(request, "reviews/flaggedrevs_statistics.html")
