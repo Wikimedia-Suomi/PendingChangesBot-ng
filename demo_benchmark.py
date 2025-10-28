@@ -24,10 +24,10 @@ print("-" * 60)
 print("For each revision, comparing two methods:\n")
 print("  Method 1 (Current): Similarity-based comparison")
 print("  Method 2 (Enhanced): MediaWiki REST API diff analysis with:")
-print("    • Proper parent → revision → stable comparison")
-print("    • Move detection (filters out relocated text)")
-print("    • Word-level similarity matching")
-print("    • Smart text comparison algorithms\n")
+print("    - Proper parent > revision > stable comparison")
+print("    - Move detection (filters out relocated text)")
+print("    - Word-level similarity matching")
+print("    - Smart text comparison algorithms\n")
 
 # Simulate testing progress
 revisions_tested = [
@@ -147,27 +147,27 @@ print("="*60)
 print("\n\nNEW FEATURES IN ENHANCED VERSION:")
 print("-" * 60)
 print("""
-✅ MOVE DETECTION
-   • Identifies text that was moved vs newly added
-   • Prevents false positives from relocated content
-   • Uses proximity and similarity analysis
+[+] MOVE DETECTION
+   - Identifies text that was moved vs newly added
+   - Prevents false positives from relocated content
+   - Uses proximity and similarity analysis
 
-✅ BLOCK-BASED COMPARISON
-   • Groups consecutive edits by same editor
-   • Tests cumulative changes as single unit
-   • Better reflects real editing patterns
-   • Use --use-blocks flag to enable
+[+] BLOCK-BASED COMPARISON
+   - Groups consecutive edits by same editor
+   - Tests cumulative changes as single unit
+   - Better reflects real editing patterns
+   - Use --use-blocks flag to enable
 
-✅ IMPROVED DIFF LOGIC
-   • Proper parent → revision comparison to find additions
-   • Then revision → stable to check if still present
-   • Accurate detection of what user actually added
+[+] IMPROVED DIFF LOGIC
+   - Proper parent > revision comparison to find additions
+   - Then revision > stable to check if still present
+   - Accurate detection of what user actually added
 
-✅ SMART TEXT MATCHING
-   • Word-level similarity calculation
-   • 70% threshold for matches (configurable)
-   • Handles text transformations better
-   • More accurate than simple substring matching
+[+] SMART TEXT MATCHING
+   - Word-level similarity calculation
+   - 70% threshold for matches (configurable)
+   - Handles text transformations better
+   - More accurate than simple substring matching
 """)
 
 print("\nWHAT THIS BENCHMARK SHOWS:")
