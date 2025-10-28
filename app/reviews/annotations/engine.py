@@ -210,11 +210,22 @@ class WordAnnotationEngine:
         return annotations
 
     def _tokenize(self, text: str) -> list[str]:
-        """Tokenize text into words."""
-        # Simple tokenization: split on whitespace
-        # This can be enhanced with better logic
-        words = re.split(r"(\s+)", text)
-        # Filter out empty strings
+        """Tokenize text into words with basic wikitext handling."""
+        # Remove templates {{...}}
+        text = re.sub(r'\{\{[^}]+\}\}', '', text)
+        # Extract link text [[Article|text]] -> text or [[Article]] -> Article
+        text = re.sub(r'\[\[(?:[^|\]]+\|)?([^\]]+)\]\]', r'\1', text)
+        # Remove references
+        text = re.sub(r'<ref[^>]*>.*?</ref>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<ref[^>]*/?>', '', text, flags=re.IGNORECASE)
+        # Remove HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
+        # Remove category tags
+        text = re.sub(r'\[\[Category:[^\]]+\]\]', '', text, flags=re.IGNORECASE)
+        
+        # Tokenize on whitespace
+        words = re.split(r'(\s+)', text)
+        # Filter out empty strings but keep whitespace for formatting
         return [w for w in words if w.strip() or w in ["\n", "\t", " "]]
 
     def _generate_word_id(self, revision_id: int, position: int, word: str) -> str:
@@ -250,8 +261,12 @@ class WordAnnotationEngine:
 
     def _check_if_moved(self, word: str, parent_annotations: list[dict]) -> dict | None:
         """Check if word was moved from another location."""
-        # Simple check - look for word in deleted sections of parent
-        # This is a simplified version - full implementation would be more complex
+        # Look for exact word match in parent annotations
+        # If the word exists in parent but in a different position, it might be moved
+        for ann in parent_annotations:
+            if ann["word"] == word:
+                # Found matching word in parent - preserve original authorship
+                return ann
         return None
 
     def _save_annotations(self, annotations: list[dict], revision: PendingRevision) -> None:
