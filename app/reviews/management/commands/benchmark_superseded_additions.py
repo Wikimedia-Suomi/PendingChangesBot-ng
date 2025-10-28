@@ -506,6 +506,14 @@ class Command(BaseCommand):
             f"title={revision.page.title}&diff={stable_rev.revid}&oldid={revision.revid}"
         )
 
+    def _safe_str(self, text: str) -> str:
+        """Convert text to ASCII-safe string for console output."""
+        try:
+            # Try to encode/decode to catch encoding issues
+            return str(text).encode('ascii', errors='replace').decode('ascii')
+        except Exception:
+            return str(text)
+
     def _print_summary(self, results: dict) -> None:
         """Print summary of results."""
         self.stdout.write(self.style.SUCCESS("\n=== Results Summary ===\n"))
@@ -524,14 +532,19 @@ class Command(BaseCommand):
             for disc in results["discrepancies"]:
                 old_status = "SUPERSEDED" if disc["old_method"] else "NOT SUPERSEDED"
                 new_status = "SUPERSEDED" if disc["new_method"] else "NOT SUPERSEDED"
+                
+                # Use ASCII-safe versions for console output
+                page_title = self._safe_str(disc['page_title'])
+                message = self._safe_str(disc['old_message'])
+                diff_url = self._safe_str(disc['diff_url'])
 
                 self.stdout.write(
-                    f"\nRevision: {disc['revision_id']} on {disc['page_title']} ({disc['wiki']})"
+                    f"\nRevision: {disc['revision_id']} on {page_title} ({disc['wiki']})"
                 )
                 self.stdout.write(f"  Old method: {old_status}")
                 self.stdout.write(f"  New method: {new_status}")
-                self.stdout.write(f"  Message: {disc['old_message']}")
-                self.stdout.write(f"  Diff URL: {disc['diff_url']}")
+                self.stdout.write(f"  Message: {message}")
+                self.stdout.write(f"  Diff URL: {diff_url}")
 
         agreement_rate = (
             (results["both_agree"] / results["total"] * 100) if results["total"] > 0 else 0
