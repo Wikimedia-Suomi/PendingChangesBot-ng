@@ -1,0 +1,12 @@
+# Pre-commit config
+.pre-commit-config.yaml  @zache-fi @ad-an-26 @ Ademola @ ipr
+
+# GitHub workflows
+.github/workflows/*      @zache-fi @ad-an-26 @ Ademola @ ipr
+
+# Dependency files
+requirements*.txt        @zache-fi @ad-an-26 @ Ademola @ ipr
+pyproject.toml           @zache-fi @ad-an-26 @ ademola @ ipr
+
+# other scripts
+scripts/run-checks.sh    @zache-fi @ad-an-26 @ ademola @ ipr

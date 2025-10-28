@@ -12,6 +12,7 @@ from .models import (
     WikiConfiguration,
     WordAnnotation,
 )
+from .models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
 
 
 @admin.register(Wiki)
