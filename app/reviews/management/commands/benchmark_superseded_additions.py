@@ -121,7 +121,7 @@ class Command(BaseCommand):
         revisions = revisions.exclude(parentid__isnull=True)
 
         # Order by user and timestamp for block grouping
-        revisions = revisions.order_by("page", "user", "timestamp")
+        revisions = revisions.order_by("page", "user_name", "timestamp")
 
         return revisions[:limit]
 
@@ -134,18 +134,18 @@ class Command(BaseCommand):
 
         blocks = []
         current_block = [revisions[0]]
-        current_user = revisions[0].user
+        current_user = revisions[0].user_name
         current_page = revisions[0].page
 
         for revision in revisions[1:]:
             # Check if same user and same page
-            if revision.user == current_user and revision.page == current_page:
+            if revision.user_name == current_user and revision.page == current_page:
                 current_block.append(revision)
             else:
                 # Start new block
                 blocks.append(current_block)
                 current_block = [revision]
-                current_user = revision.user
+                current_user = revision.user_name
                 current_page = revision.page
 
         # Add the last block
