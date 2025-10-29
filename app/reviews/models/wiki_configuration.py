@@ -72,7 +72,10 @@ class WikiConfiguration(models.Model):
     )
     test_mode = models.BooleanField(
         default=False,
-        help_text="Enable test mode to use specific revision IDs instead of live flaggedpages data.",
+        help_text=(
+            "Enable test mode to use specific revision IDs "
+            "instead of live flaggedpages data."
+        ),
     )
     test_revision_ids = models.JSONField(
         default=list,
