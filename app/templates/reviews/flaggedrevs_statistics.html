@@ -251,7 +251,7 @@
       <!-- Graph Visibility Controls -->
       <section class="section" v-show="state.filterMode === 'wiki'" style="padding: 0.5rem 0; border-bottom: 1px solid #ddd;">
         <div class="columns is-vcentered">
-          <div class="column is-narrow">
+            <div class="column is-narrow">
             <label class="label is-small">Show/Hide Graphs:</label>
           </div>
           <div class="column">
@@ -276,13 +276,13 @@
             </div>
           </div>
           <div class="column is-4">
-            <div class="field">
+              <div class="field">
               <label class="label is-small">Select Wikis</label>
-              <div class="control" v-for="wiki in availableWikis" :key="wiki.code">
-                <label class="checkbox">
-                  <input type="checkbox" :value="wiki.code" v-model="state.selectedWikis" @change="updateUrl">
-                  {{ wiki.code }}wiki_p
-                </label>
+                <div class="control" v-for="wiki in availableWikis" :key="wiki.code">
+                  <label class="checkbox">
+                    <input type="checkbox" :value="wiki.code" v-model="state.selectedWikis" @change="updateUrl">
+                    {{ wiki.code }}wiki_p
+                  </label>
               </div>
             </div>
           </div>
@@ -359,7 +359,7 @@
           <div class="columns">
             <div class="column is-8">
               <div style="width: 90%; height: 500px; margin: 0;">
-                <canvas :id="`chart-${series.key}`" style="width: 100%; height: 100%;"></canvas>
+            <canvas :id="`chart-${series.key}`" style="width: 100%; height: 100%;"></canvas>
               </div>
             </div>
             <div class="column is-4">
@@ -560,20 +560,20 @@
                 <tr>
                   <th>Wiki</th>
                   <th>Date</th>
-                  <th v-if="state.series.pendingLag_average">Pending Lag</th>
-                  <th v-if="state.series.totalPages_ns0">Total Pages</th>
-                  <th v-if="state.series.reviewedPages_ns0">Reviewed Pages</th>
-                  <th v-if="state.series.syncedPages_ns0">Synced Pages</th>
-                  <th v-if="state.series.pendingChanges">Pending Changes</th>
-                  <th v-if="state.series.number_of_reviewers">Reviewers</th>
-                  <th v-if="state.series.number_of_reviews">Reviews</th>
-                  <th v-if="state.series.reviews_per_reviewer">Reviews/Reviewer</th>
+                  <th v-if="state.series.pendingLag_average" @click="goToFrsKey('pendingLag_average')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Pending Lag</th>
+                  <th v-if="state.series.totalPages_ns0" @click="goToFrsKey('totalPages_ns0')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Total Pages</th>
+                  <th v-if="state.series.reviewedPages_ns0" @click="goToFrsKey('reviewedPages_ns0')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Reviewed Pages</th>
+                  <th v-if="state.series.syncedPages_ns0" @click="goToFrsKey('syncedPages_ns0')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Synced Pages</th>
+                  <th v-if="state.series.pendingChanges" @click="goToFrsKey('pendingChanges')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Pending Changes</th>
+                  <th v-if="state.series.number_of_reviewers" @click="goToFrsKey('number_of_reviewers')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Reviewers</th>
+                  <th v-if="state.series.number_of_reviews" @click="goToFrsKey('number_of_reviews')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Reviews</th>
+                  <th v-if="state.series.reviews_per_reviewer" @click="goToFrsKey('reviews_per_reviewer')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Reviews/Reviewer</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in state.tableData" :key="row.wiki + row.date">
+                <tr v-for="row in (state.filterMode === 'single_wiki' ? state.tableData.filter(r => r.wiki === state.selectedSingleWiki) : state.tableData)" :key="row.wiki + row.date">
                   <td>{{ row.wiki }}</td>
-                  <td>{{ row.date }}</td>
+                  <td>{{ formatDateToYearMonth(row.date) }}</td>
                   <td v-if="state.series.pendingLag_average">{{ row.pendingLag_average || '' }}</td>
                   <td v-if="state.series.totalPages_ns0">{{ row.totalPages_ns0 || '' }}</td>
                   <td v-if="state.series.reviewedPages_ns0">{{ row.reviewedPages_ns0 || '' }}</td>
@@ -614,37 +614,47 @@
       <!-- SQL Queries Information Box -->
       <section class="section" style="margin-top: 2rem; border-top: 2px solid #ddd;">
         <div class="box" style="background-color: #f5f5f5; border: 1px solid #ddd;">
-          <h3 class="title is-5">Data Source Information</h3>
+          <h3 class="title is-5">Legend</h3>
           <div class="content">
-            <p class="is-size-7">
-              <strong>How data is acquired:</strong> This dashboard fetches data from Wikimedia's Superset databases
-              using the following SQL queries. These queries aggregate data by year/month and calculate various
-              statistics for FlaggedRevs (FlaggedRevisions) systems.
-            </p>
-            <div class="notification is-light is-small" style="margin-top: 1rem;">
-              <p class="is-size-7"><strong>Statistics Query (load_flaggedrevs_statistics command):</strong></p>
-              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT FLOOR(d/100) as yearmonth,
-  AVG(totalPages_ns0) AS totalPages_ns0_avg,
-  AVG(syncedPages_ns0) AS syncedPages_ns0_avg,
-  AVG(reviewedPages_ns0) AS reviewedPages_ns0_avg,
-  AVG(pendingLag_average) AS pendingLag_average_avg
-FROM (
-  -- Aggregates data from flaggedrevs_statistics table
-  -- Groups by month and averages multiple statistics
-) as t
-GROUP BY yearmonth</pre>
-            </div>
-            <div class="notification is-light is-small" style="margin-top: 0.5rem;">
-              <p class="is-size-7"><strong>Review Activity Query:</strong></p>
-              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT FLOOR(d/100) as yearmonth,
-  AVG(number_of_reviewers) AS number_of_reviewers_avg,
-  AVG(number_of_reviews) AS number_of_reviews_avg,
-  AVG(number_of_pages) AS number_of_pages_avg
-FROM (
-  -- Aggregates data from flaggedrevs table
-  -- Groups by month and calculates reviewer activity metrics
-) as t
-GROUP BY yearmonth</pre>
+            <div class="notification is-light is-small">
+              <p class="is-size-7"><strong>pendingLag-average:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(frs_timestamp/100000000) AS d, frs_stat_key, avg(frs_stat_val) as frs_stat_val
+FROM fiwiki_p.flaggedrevs_statistics
+GROUP BY d, frs_stat_key
+ORDER BY frs_stat_key</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>totalPages-NS:0:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(frs_timestamp/100000000) AS d, frs_stat_key, avg(frs_stat_val) as frs_stat_val
+FROM fiwiki_p.flaggedrevs_statistics
+GROUP BY d, frs_stat_key
+ORDER BY frs_stat_key</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>reviewedPages-NS:0:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(frs_timestamp/100000000) AS d, frs_stat_key, avg(frs_stat_val) as frs_stat_val
+FROM fiwiki_p.flaggedrevs_statistics
+GROUP BY d, frs_stat_key
+ORDER BY frs_stat_key</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>syncedPages-NS:0:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(frs_timestamp/100000000) AS d, frs_stat_key, avg(frs_stat_val) as frs_stat_val
+FROM fiwiki_p.flaggedrevs_statistics
+GROUP BY d, frs_stat_key
+ORDER BY frs_stat_key</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>number_of_reviewers:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(fr_timestamp/100000000) AS d, COUNT(DISTINCT(fr_user)) as number_of_reviewers
+FROM fiwiki_p.flaggedrevs
+WHERE fr_flags NOT LIKE "%auto%"
+GROUP BY d
+ORDER BY d</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>number_of_reviews:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(fr_timestamp/100000000) AS d, SUM(1) as number_of_reviews
+FROM fiwiki_p.flaggedrevs
+WHERE fr_flags NOT LIKE "%auto%"
+GROUP BY d
+ORDER BY d</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>number_of_pages:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(fr_timestamp/100000000) AS d, COUNT(DISTINCT(fr_page_id)) as number_of_pages
+FROM fiwiki_p.flaggedrevs
+WHERE fr_flags NOT LIKE "%auto%"
+GROUP BY d
+ORDER BY d</pre>
             </div>
           </div>
         </div>

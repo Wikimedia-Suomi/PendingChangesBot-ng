@@ -13,6 +13,7 @@ createApp({
       loading: false,
       error: null,
       lastUpdated: null, // Timestamp of last data refresh
+      isUpdatingChart: false, // Flag to prevent concurrent chart updates
 
       // Chart
       chart: null,
@@ -627,7 +628,7 @@ createApp({
       });
     }
 
-    function updateChart() {
+    async function updateChart() {
       console.log('=== CHART UPDATE DEBUG ===');
       console.log('updateChart called, filterMode:', state.filterMode);
       console.log('selectedWikis:', state.selectedWikis);
@@ -647,17 +648,42 @@ createApp({
         return;
       }
 
-      // Destroy existing charts to avoid reactivity issues
-      if (state.charts) {
-        Object.values(state.charts).forEach(chart => {
-          if (chart) {
-            chart.destroy();
-          }
-        });
+      // Initialize charts object if it doesn't exist
+      if (!state.charts) {
         state.charts = {};
       }
+
+      // Only destroy charts for series that are now disabled
+      const seriesConfig = [
+        { key: "pendingLag_average", label: "Pending Lag (Average)" },
+        { key: "totalPages_ns0", label: "Total Pages (NS:0)" },
+        { key: "reviewedPages_ns0", label: "Reviewed Pages (NS:0)" },
+        { key: "syncedPages_ns0", label: "Synced Pages (NS:0)" },
+        { key: "pendingChanges", label: "Pending Changes" },
+        { key: "number_of_reviewers", label: "Number of Reviewers" },
+        { key: "number_of_reviews", label: "Number of Reviews" },
+        { key: "reviews_per_reviewer", label: "Reviews Per Reviewer" },
+      ];
+
+      // Destroy charts for disabled series only
+      seriesConfig.forEach(({ key }) => {
+        if (!state.series[key] && state.charts[key]) {
+          try {
+            state.charts[key].destroy();
+            delete state.charts[key];
+          } catch (error) {
+            console.log(`Error destroying disabled chart ${key}:`, error);
+            delete state.charts[key];
+          }
+        }
+      });
+
       if (state.chart) {
-        state.chart.destroy();
+        try {
+          state.chart.destroy();
+        } catch (error) {
+          console.log('Error destroying state.chart:', error);
+        }
         state.chart = null;
       }
 
@@ -674,17 +700,7 @@ createApp({
       const colors = ["#3273dc", "#48c774", "#ffdd57", "#f14668", "#00d1b2", "#ff3860", "#209cee", "#ff6348"];
       let colorIndex = 0;
 
-      const seriesConfig = [
-        { key: "pendingLag_average", label: "Pending Lag (Average)" },
-        { key: "totalPages_ns0", label: "Total Pages (NS:0)" },
-        { key: "reviewedPages_ns0", label: "Reviewed Pages (NS:0)" },
-        { key: "syncedPages_ns0", label: "Synced Pages (NS:0)" },
-        { key: "pendingChanges", label: "Pending Changes" },
-        { key: "number_of_reviewers", label: "Number of Reviewers" },
-        { key: "number_of_reviews", label: "Number of Reviews" },
-        { key: "reviews_per_reviewer", label: "Reviews Per Reviewer" },
-      ];
-
+      // seriesConfig already defined above - reuse it
       // Create separate charts for each data series when in Wiki mode
       if (state.filterMode === 'wiki') {
         console.log('=== WIKI MODE CHART CREATION DEBUG ===');
@@ -705,17 +721,41 @@ createApp({
         // Only create charts for enabled series
         const seriesToRender = seriesConfig.filter(series => state.series[series.key]);
 
-        seriesToRender.forEach((series, seriesIndex) => {
+        // Fixed color mapping for each wiki
+        const wikiColorMap = {
+          'de': '#FF0000',        // Red
+          'en': '#00FF00',        // Green
+          'fi': '#0000FF',        // Blue
+          'pl': '#FF00FF',        // Magenta
+          'ru': '#FFFF00',        // Yellow
+          'fr': '#FFA500',        // Orange
+          'es': '#800080',        // Purple
+          'it': '#00FFFF'         // Cyan
+        };
+
+        // Wait for Vue to render all canvas elements
+        await nextTick();
+        // Give Vue more time to fully render all canvas elements (especially after they were removed)
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        for (const series of seriesToRender) {
           const canvasId = `chart-${series.key}`;
-          const ctx = document.getElementById(canvasId);
-          console.log(`Looking for canvas: ${canvasId}, found:`, ctx);
-          if (!ctx) {
-            console.log(`Canvas ${canvasId} not found, skipping`);
-            return;
+
+          // Wait a bit and retry if canvas not found (Vue might still be adding it)
+          let canvas = document.getElementById(canvasId);
+          if (!canvas) {
+            // Retry after a delay - Vue might still be rendering
+            await new Promise(resolve => setTimeout(resolve, 200));
+            canvas = document.getElementById(canvasId);
+          }
+
+          console.log(`Looking for canvas: ${canvasId}, found:`, canvas);
+          if (!canvas || !canvas.parentElement || typeof canvas.getContext !== 'function') {
+            console.log(`Canvas ${canvasId} not found or invalid after retry, skipping`);
+            continue;
           }
 
           const datasets = [];
-          let colorIndex = 0;
 
           selectedWikis.forEach(wiki => {
             const seriesData = labels.map(year => {
@@ -735,13 +775,12 @@ createApp({
               datasets.push({
                 label: `${wiki}wiki_p`,
                 data: seriesData,
-                borderColor: colors[colorIndex % colors.length],
-                backgroundColor: colors[colorIndex % colors.length] + "20",
+                borderColor: wikiColorMap[wiki] || '#000000',
+                backgroundColor: (wikiColorMap[wiki] || '#000000') + "20",
                 tension: 0.4,
                 pointRadius: 0,
                 fill: false,
               });
-              colorIndex++;
             }
           });
 
@@ -759,10 +798,10 @@ createApp({
             }
 
             // Show a message in the canvas area
-            ctx.style.display = 'none';
+            canvas.style.display = 'none';
 
             // Create a message element if it doesn't exist
-            let messageEl = ctx.parentElement.querySelector('.no-data-message');
+            let messageEl = canvas.parentElement.querySelector('.no-data-message');
             if (!messageEl) {
               messageEl = document.createElement('div');
               messageEl.className = 'no-data-message';
@@ -786,27 +825,66 @@ createApp({
                   have no data for "${series.label}".
                 </div>
               `;
-              ctx.parentElement.appendChild(messageEl);
+              canvas.parentElement.appendChild(messageEl);
             }
             messageEl.style.display = 'flex';
-            return;
+            continue;
           }
 
-          // Hide any existing no-data message
-          const messageEl = ctx.parentElement.querySelector('.no-data-message');
+          // Hide any existing no-data message on the fresh canvas
+          const messageEl = canvas.parentElement.querySelector('.no-data-message');
           if (messageEl) {
             messageEl.style.display = 'none';
           }
-          ctx.style.display = 'block';
+          canvas.style.display = 'block';
 
-          // Double-check canvas is still valid before creating chart
-          if (!ctx || !ctx.parentElement || ctx.offsetWidth === 0 || ctx.offsetHeight === 0) {
-            console.log(`Canvas ${canvasId} is not ready, skipping chart creation`);
-            return;
+          // Destroy any existing chart from state.charts
+          if (state.charts[series.key]) {
+            try {
+              state.charts[series.key].destroy();
+            } catch (error) {
+              console.log(`Error destroying chart from state for ${canvasId}:`, error);
+            }
+          }
+
+          // Destroy any chart registered with Chart.js
+          try {
+            const existingChart = Chart.getChart(canvas);
+            if (existingChart) {
+              existingChart.destroy();
+            }
+          } catch (error) {
+            console.log(`Error destroying existing chart for ${canvasId}:`, error);
+          }
+
+          // Wait for Chart.js cleanup
+          await new Promise(resolve => setTimeout(resolve, 50));
+
+          // Ensure canvas and its parent containers are visible
+          canvas.style.display = 'block';
+          if (canvas.parentElement) {
+            canvas.parentElement.style.display = 'block';
+          }
+          // Traverse up to ensure parent sections are visible
+          let parent = canvas.parentElement;
+          while (parent && parent !== document.body) {
+            if (parent.style && parent.style.display === 'none') {
+              parent.style.display = '';
+            }
+            parent = parent.parentElement;
+          }
+
+          // Check dimensions (but be more lenient - as long as parent exists, try to create)
+          if (canvas.offsetWidth === 0 && canvas.offsetHeight === 0 && canvas.parentElement) {
+            // Try to get dimensions from parent or use defaults
+            const parentWidth = canvas.parentElement.offsetWidth || 943;
+            const parentHeight = canvas.parentElement.offsetHeight || 500;
+            canvas.width = parentWidth;
+            canvas.height = parentHeight;
           }
 
           try {
-            state.charts[series.key] = new Chart(ctx, {
+            state.charts[series.key] = new Chart(canvas, {
               type: 'line',
               data: {
                 labels: labels,
@@ -907,11 +985,12 @@ createApp({
               },
             },
           });
+          console.log(`Chart created successfully for ${series.label}, canvas visible: ${canvas.style.display}, dimensions: ${canvas.offsetWidth}x${canvas.offsetHeight}`);
           } catch (error) {
             console.error(`Error creating chart for ${series.label}:`, error);
             // Skip this chart if there's an error
           }
-        });
+        }
       }
 
       // Only update main chart if we're in chart or both mode
@@ -1214,10 +1293,20 @@ createApp({
       const labels = [...new Set(data.filter(d => d.yearmonth).map(d => d.yearmonth.toString().substring(0, 4)))].sort();
       console.log('Labels created:', labels);
       console.log('Selected wikis:', selectedWikis);
-      const colors = ["#3273dc", "#48c774", "#ffdd57", "#f14668", "#00d1b2", "#ff3860", "#209cee", "#ff6348"];
+
+      // Fixed color mapping for each wiki
+      const wikiColorMap = {
+        'de': '#FF0000',        // Red
+        'en': '#00FF00',        // Green
+        'fi': '#0000FF',        // Blue
+        'pl': '#FF00FF',        // Magenta
+        'ru': '#FFFF00',        // Yellow
+        'fr': '#FFA500',        // Orange
+        'es': '#800080',        // Purple
+        'it': '#00FFFF'         // Cyan
+      };
 
       const datasets = [];
-      let colorIndex = 0;
 
       selectedWikis.forEach(wiki => {
         const seriesData = labels.map(year => {
@@ -1230,14 +1319,13 @@ createApp({
           datasets.push({
             label: `${wiki}wiki_p`,
             data: seriesData,
-            borderColor: colors[colorIndex % colors.length],
-            backgroundColor: colors[colorIndex % colors.length] + "20",
+            borderColor: wikiColorMap[wiki] || '#000000',
+            backgroundColor: (wikiColorMap[wiki] || '#000000') + "20",
             tension: 0.4,
             borderWidth: 3,
             pointRadius: 0,
             fill: false
           });
-          colorIndex++;
         }
       });
 
@@ -1320,12 +1408,29 @@ createApp({
         return;
       }
 
-      // Destroy existing single chart if it exists
+      // If no wikis selected, destroy chart and return
+      if (state.selectedWikis.length === 0) {
+        console.log('No wikis selected, destroying chart');
+        if (state.singleChart) {
+          try {
+            state.singleChart.destroy();
+          } catch (error) {
+            console.log('Error destroying chart:', error);
+          }
+          state.singleChart = null;
+        }
+        return;
+      }
+
+      // Create chart immediately without destroying first to avoid blank screen
+      createChartAfterDestruction();
+    }
+
+    function createChartAfterDestruction() {
+      // Destroy existing chart first
       if (state.singleChart) {
         try {
-          console.log('Destroying existing chart...');
           state.singleChart.destroy();
-          console.log('Chart destroyed successfully');
         } catch (error) {
           console.log('Error destroying chart:', error);
         }
@@ -1336,25 +1441,15 @@ createApp({
       try {
         const canvas = document.getElementById('singleFrsKeyChart');
         if (canvas) {
-          // Get Chart.js instance from the canvas
           const existingChart = Chart.getChart(canvas);
           if (existingChart) {
-            console.log('Found registered chart, destroying it...');
             existingChart.destroy();
-            console.log('Registered chart destroyed successfully');
           }
         }
       } catch (error) {
         console.log('Error destroying registered chart:', error);
       }
 
-      // Wait longer for Chart.js to fully clean up the canvas
-      setTimeout(() => {
-        createChartAfterDestruction();
-      }, 300);
-    }
-
-    function createChartAfterDestruction() {
       // Wait for DOM to be ready, especially when switching modes
       setTimeout(() => {
         const ctx = document.getElementById('singleFrsKeyChart');
@@ -1390,24 +1485,36 @@ createApp({
 
         console.log('Canvas found and ready:', ctx.offsetWidth, 'x', ctx.offsetHeight);
         createFrsKeyChart(ctx);
-      }, 150); // Increased delay to ensure chart destruction is complete
+      }, 50); // Reduced delay for faster chart updates
     }
 
     // Create the FRS Key chart
     function createFrsKeyChart(ctx) {
-      // Final safety check - ensure canvas is valid
-      if (!ctx) {
-        console.error('Canvas context is null, cannot create chart');
+      // Re-fetch canvas first to ensure we have a fresh, valid reference
+      const canvas = document.getElementById('singleFrsKeyChart');
+      if (!canvas || typeof canvas.getContext !== 'function') {
+        console.error('Canvas is not valid for chart creation');
         return;
       }
 
-      console.log('Creating chart with canvas:', ctx.id, 'dimensions:', ctx.offsetWidth, 'x', ctx.offsetHeight);
+      // Final safety check - ensure canvas is valid
+      if (!canvas || !canvas.parentElement) {
+        console.error('Canvas or parent is null, cannot create chart');
+        return;
+      }
+
+      console.log('Creating chart with canvas:', canvas.id, 'dimensions:', canvas.offsetWidth, 'x', canvas.offsetHeight);
 
       // Clear the canvas completely before creating new chart
-      const canvasContext = ctx.getContext('2d');
-      if (canvasContext) {
-        canvasContext.clearRect(0, 0, ctx.width, ctx.height);
-        console.log('Canvas cleared successfully');
+      try {
+        const canvasContext = canvas.getContext('2d');
+        if (canvasContext) {
+          canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+          console.log('Canvas cleared successfully');
+        }
+      } catch (error) {
+        console.error('Error clearing canvas:', error);
+        return;
       }
 
       // Get the label for the selected FRS key
@@ -1439,10 +1546,20 @@ createApp({
       }
       const selectedWikis = [...state.selectedWikis];
       const labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
-      const colors = ["#3273dc", "#48c774", "#ffdd57", "#f14668", "#00d1b2", "#ff3860", "#209cee", "#ff6348"];
+
+      // Fixed color mapping for each wiki
+      const wikiColorMap = {
+        'de': '#FF0000',        // Red
+        'en': '#00FF00',        // Green
+        'fi': '#0000FF',        // Blue
+        'pl': '#FF00FF',        // Magenta
+        'ru': '#FFFF00',        // Yellow
+        'fr': '#FFA500',        // Orange
+        'es': '#800080',        // Purple
+        'it': '#00FFFF'         // Cyan
+      };
 
       const datasets = [];
-      let colorIndex = 0;
 
       selectedWikis.forEach(wiki => {
         const seriesData = labels.map(year => {
@@ -1460,14 +1577,13 @@ createApp({
           datasets.push({
             label: `${wiki}wiki_p`,
             data: seriesData,
-            borderColor: colors[colorIndex % colors.length],
-            backgroundColor: colors[colorIndex % colors.length] + "20",
+            borderColor: wikiColorMap[wiki] || '#000000',
+            backgroundColor: (wikiColorMap[wiki] || '#000000') + "20",
             tension: 0.4,
             borderWidth: 3,
             pointRadius: 0,
             fill: false,
           });
-          colorIndex++;
         }
       });
 
@@ -1483,10 +1599,10 @@ createApp({
         }
 
         // Show a message in the canvas area
-        ctx.style.display = 'none';
+        canvas.style.display = 'none';
 
         // Create a message element if it doesn't exist
-        let messageEl = ctx.parentElement.querySelector('.no-data-message');
+        let messageEl = canvas.parentElement.querySelector('.no-data-message');
         if (!messageEl) {
           messageEl = document.createElement('div');
           messageEl.className = 'no-data-message';
@@ -1510,22 +1626,31 @@ createApp({
               have no data for "${selectedLabel}".
             </div>
           `;
-          ctx.parentElement.appendChild(messageEl);
+          canvas.parentElement.appendChild(messageEl);
         }
         messageEl.style.display = 'flex';
         return;
       }
 
       // Hide any existing no-data message
-      const messageEl = ctx.parentElement.querySelector('.no-data-message');
+      const messageEl = canvas.parentElement.querySelector('.no-data-message');
       if (messageEl) {
         messageEl.style.display = 'none';
       }
-      ctx.style.display = 'block';
+
+      // Ensure canvas is visible and has valid dimensions
+      canvas.style.display = 'block';
+      if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) {
+        // Try to get dimensions from parent
+        const parentWidth = canvas.parentElement ? canvas.parentElement.offsetWidth : 607;
+        const parentHeight = canvas.parentElement ? canvas.parentElement.offsetHeight : 496;
+        canvas.width = parentWidth;
+        canvas.height = parentHeight;
+      }
 
       // Create the chart
       try {
-        state.singleChart = new Chart(ctx, {
+        state.singleChart = new Chart(canvas, {
           type: 'line',
           data: {
             labels: labels,
@@ -1741,6 +1866,14 @@ createApp({
               legend: {
                 display: true,
                 position: 'bottom',
+                labels: {
+                  boxWidth: 10,  // Square boxes (width = height)
+                  boxHeight: 10,
+                  padding: 5,    // Reduced padding
+                  font: {
+                    size: 9      // Smaller font
+                  }
+                }
               },
             },
             scales: {
@@ -1866,9 +1999,10 @@ createApp({
           if (state.filterMode === 'wiki') {
             // Wait for Vue to update the DOM with new canvas elements
             await nextTick();
+            // Add multiple delays to ensure charts render properly
             setTimeout(() => {
               updateChart();
-            }, 200);
+            }, 500);
           } else if (state.filterMode === 'single_wiki') {
             // For single wiki mode, call updateSingleWikiChart
             await nextTick();
@@ -2009,24 +2143,37 @@ createApp({
       }
     }
 
+    // Debounce timer for wiki selection changes
+    let wikiSelectionTimeout = null;
+
     // Watchers
     watch(() => state.selectedWikis, async () => {
       console.log('=== SELECTED WIKIS WATCHER DEBUG ===');
       console.log('selectedWikis changed:', state.selectedWikis);
       console.log('selectedWikis length:', state.selectedWikis.length);
       console.log('filterMode:', state.filterMode);
-      updateUrl();
 
-      // Call the appropriate chart update function based on filter mode
-      if (state.filterMode === 'frs_key') {
-        // Add a small delay to ensure DOM updates are complete
-        await nextTick();
-        setTimeout(() => {
-          updateFrsKeyChart();
-        }, 50);
-      } else {
-        loadData();
+      // Clear any pending timeout
+      if (wikiSelectionTimeout) {
+        clearTimeout(wikiSelectionTimeout);
       }
+
+      // Debounce the update to prevent rapid-fire calls
+      wikiSelectionTimeout = setTimeout(async () => {
+        updateUrl();
+
+        // Call the appropriate chart update function based on filter mode
+        if (state.filterMode === 'frs_key') {
+          // Just update the chart without reloading all data
+          await nextTick();
+          // Add a small delay to ensure the previous chart is fully destroyed
+          setTimeout(() => {
+            updateFrsKeyChart();
+          }, 100);
+        } else {
+          loadData();
+        }
+      }, 200); // Wait 200ms before updating
     }, { deep: true });
 
     watch(() => state.selectedMonth, () => {
@@ -2040,11 +2187,11 @@ createApp({
     // Watch for series changes to update charts
     watch(() => state.series, async () => {
       if (state.filterMode === 'wiki') {
-        // Wait for DOM to update, then rebuild charts
+        // Wait for DOM to fully update, then rebuild charts
         await nextTick();
-        setTimeout(() => {
-          updateChart();
-        }, 50);
+        // Give Vue more time to render/remove canvas elements
+        await new Promise(resolve => setTimeout(resolve, 300));
+        updateChart();
       } else if (state.filterMode === 'single_wiki') {
         // Update single wiki chart when metrics change
         await nextTick();
@@ -2083,6 +2230,8 @@ createApp({
           updateChart();
         }, 500);  // Increased timeout to give Vue more time to render
       } else if (state.filterMode === 'frs_key') {
+        // Load data for FRS Key mode
+        await loadData();
         await nextTick();
         updateFrsKeyChart();
       } else if (state.filterMode === 'yearmonth') {
