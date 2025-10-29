@@ -87,9 +87,29 @@ jobs:
       working-directory: ./app
       run: python manage.py migrate
 
-    - name: Run tests
+    - name: Run tests with coverage
       working-directory: ./app
-      run: python manage.py test
+      run: |
+        coverage run --source='.' manage.py test
+        coverage report
+        coverage html
+        coverage xml
+
+    - name: Upload coverage report
+      if: github.event_name == 'pull_request'
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: app/htmlcov/
+        retention-days: 7
+
+    - name: Comment coverage summary on PR
+      if: github.event_name == 'pull_request'
+      uses: py-cov-action/python-coverage-comment-action@v3
+      with:
+        GITHUB_TOKEN: ${{ github.token }}
+        MINIMUM_GREEN: 80
+        MINIMUM_ORANGE: 70
 
   label-pr:
     name: Update PR Labels
