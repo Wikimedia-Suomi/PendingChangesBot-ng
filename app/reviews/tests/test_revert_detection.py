@@ -46,17 +46,18 @@ class RevertDetectionTests(TestCase):
             user_name="TestUser",
             user_id=1000,
             change_tags=["mw-manual-revert"],
-            change_tag_params=[
-                json.dumps(
-                    {
-                        "revertId": 200,
-                        "oldestRevertedRevId": 180,
-                        "newestRevertedRevId": 190,
-                        "originalRevisionId": 175,
-                    }
-                )
-            ],
         )
+        # Not a model field; attach dynamically for the check logic
+        self.revision.change_tag_params = [
+            json.dumps(
+                {
+                    "revertId": 200,
+                    "oldestRevertedRevId": 180,
+                    "newestRevertedRevId": 190,
+                    "originalRevisionId": 175,
+                }
+            )
+        ]
 
         self.client = Mock(spec=WikiClient)
         self.client.site = Mock()
@@ -212,17 +213,18 @@ class RevertDetectionIntegrationTests(TestCase):
             user_name="TestUser",
             user_id=1000,
             change_tags=["mw-manual-revert", "mw-reverted"],
-            change_tag_params=[
-                json.dumps(
-                    {
-                        "revertId": 200,
-                        "oldestRevertedRevId": 180,
-                        "newestRevertedRevId": 190,
-                        "originalRevisionId": 175,
-                    }
-                )
-            ],
         )
+        # Attach dynamic params expected by the check logic
+        revision.change_tag_params = [
+            json.dumps(
+                {
+                    "revertId": 200,
+                    "oldestRevertedRevId": 180,
+                    "newestRevertedRevId": 190,
+                    "originalRevisionId": 175,
+                }
+            )
+        ]
 
         # Mock the client
         client = Mock(spec=WikiClient)
