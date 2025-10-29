@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from .. import SupersetQuery
 
 from ..context import CheckContext
 
@@ -163,9 +164,7 @@ def _find_reviewed_revisions_by_sha1(client, page, reverted_rev_ids: list[int]) 
             "    rev_page, content_sha1\n"
         )
 
-        # Execute query using SupersetQuery
-        from pywikibot.data.superset import SupersetQuery
-
+        # Execute query using SupersetQuery (imported from reviews.autoreview for test patching)
         superset = SupersetQuery(site=client.site)
         results = superset.query(sql_query)
 
