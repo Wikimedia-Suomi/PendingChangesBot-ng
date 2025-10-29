@@ -155,21 +155,25 @@ class StatisticsViewTests(TestCase):
     @mock.patch("reviews.views.WikiClient")
     def test_api_statistics_refresh_success(self, mock_client):
         """Test refreshing statistics successfully."""
-        mock_client.return_value.fetch_review_statistics.return_value = {
+        mock_client.return_value.refresh_review_statistics.return_value = {
             "total_records": 10,
             "oldest_timestamp": datetime(2025, 1, 1, tzinfo=timezone.utc),
             "newest_timestamp": datetime(2025, 1, 15, tzinfo=timezone.utc),
+            "is_incremental": True,
         }
         response = self.client.post(reverse("api_statistics_refresh", args=[self.wiki.pk]))
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["total_records"], 10)
+        self.assertEqual(data["is_incremental"], True)
 
     @mock.patch("reviews.views.logger")
     @mock.patch("reviews.views.WikiClient")
     def test_api_statistics_refresh_failure(self, mock_client, mock_logger):
         """Test statistics refresh error handling."""
-        mock_client.return_value.fetch_review_statistics.side_effect = RuntimeError("Network error")
+        mock_client.return_value.refresh_review_statistics.side_effect = RuntimeError(
+            "Network error"
+        )
         response = self.client.post(reverse("api_statistics_refresh", args=[self.wiki.pk]))
         self.assertEqual(response.status_code, 502)
         self.assertIn("error", response.json())
@@ -185,13 +189,14 @@ class StatisticsServiceTests(TestCase):
         )
         WikiConfiguration.objects.create(wiki=self.wiki)
 
-    @mock.patch("reviews.services.wiki_client.SupersetQuery")
+    @mock.patch("reviews.services.statistics.SupersetQuery")
     def test_fetch_review_statistics(self, mock_superset):
         """Test fetching review statistics from Superset."""
         from reviews.services import WikiClient
 
         mock_superset.return_value.query.return_value = [
             {
+                "log_id": 12345,
                 "reviewer_name": "Reviewer1",
                 "reviewed_user_name": "User1",
                 "page_title": "Test_Page",
@@ -205,11 +210,12 @@ class StatisticsServiceTests(TestCase):
         ]
 
         client = WikiClient(self.wiki)
-        result = client.fetch_review_statistics(limit=100)
+        result = client.fetch_review_statistics(days=1)
 
         self.assertEqual(result["total_records"], 1)
         self.assertIsNotNone(result["oldest_timestamp"])
         self.assertIsNotNone(result["newest_timestamp"])
+        self.assertIn("batches_fetched", result)
 
         # Check that cache was created
         cached = ReviewStatisticsCache.objects.filter(wiki=self.wiki)
@@ -222,13 +228,14 @@ class StatisticsServiceTests(TestCase):
         metadata = ReviewStatisticsMetadata.objects.get(wiki=self.wiki)
         self.assertEqual(metadata.total_records, 1)
 
-    @mock.patch("reviews.services.wiki_client.SupersetQuery")
+    @mock.patch("reviews.services.statistics.SupersetQuery")
     def test_fetch_review_statistics_with_invalid_timestamp(self, mock_superset):
         """Test handling of invalid timestamps in statistics."""
         from reviews.services import WikiClient
 
         mock_superset.return_value.query.return_value = [
             {
+                "log_id": 12345,
                 "reviewer_name": "Reviewer1",
                 "reviewed_user_name": "User1",
                 "page_title": "Test_Page",
@@ -242,7 +249,7 @@ class StatisticsServiceTests(TestCase):
         ]
 
         client = WikiClient(self.wiki)
-        result = client.fetch_review_statistics(limit=100)
+        result = client.fetch_review_statistics(days=1)
 
         # Should handle invalid timestamps gracefully
         self.assertEqual(result["total_records"], 0)
@@ -345,3 +352,70 @@ class StatisticsFilteringTests(TestCase):
 
         # Should exclude AutoUser reviews
         self.assertEqual(data["overall_stats"]["total_reviews"], 1)
+
+    def test_metadata_last_data_loaded_at(self):
+        """Test that last_data_loaded_at is set when data is loaded."""
+        from reviews.services import WikiClient
+
+        # Create metadata without last_data_loaded_at
+        metadata = ReviewStatisticsMetadata.objects.create(
+            wiki=self.wiki,
+            total_records=0,
+        )
+        self.assertIsNone(metadata.last_data_loaded_at)
+
+        # Mock fetch to populate last_data_loaded_at
+        with mock.patch("reviews.services.statistics.SupersetQuery") as mock_superset:
+            mock_superset.return_value.query.return_value = [
+                {
+                    "log_id": 12345,
+                    "reviewer_name": "Reviewer1",
+                    "reviewed_user_name": "User1",
+                    "page_title": "Test_Page",
+                    "page_id": 123,
+                    "reviewed_revision_id": 456,
+                    "pending_revision_id": 455,
+                    "reviewed_timestamp": "20250115120000",
+                    "pending_timestamp": "20250110120000",
+                    "review_delay_days": 5,
+                }
+            ]
+
+            client = WikiClient(self.wiki)
+            client.fetch_review_statistics(days=1)
+
+        # Check that last_data_loaded_at is now set
+        metadata.refresh_from_db()
+        self.assertIsNotNone(metadata.last_data_loaded_at)
+
+    def test_batch_limit_not_reached(self):
+        """Test that batch_limit_reached is False for small datasets."""
+        from reviews.services import WikiClient
+
+        with mock.patch("reviews.services.statistics.SupersetQuery") as mock_superset:
+            # First call returns data, second call returns empty (pagination stops)
+            mock_superset.return_value.query.side_effect = [
+                [
+                    {
+                        "log_id": 12345,
+                        "reviewer_name": "Reviewer1",
+                        "reviewed_user_name": "User1",
+                        "page_title": "Test_Page",
+                        "page_id": 123,
+                        "reviewed_revision_id": 456,
+                        "pending_revision_id": 455,
+                        "reviewed_timestamp": "20250115120000",
+                        "pending_timestamp": "20250110120000",
+                        "review_delay_days": 5,
+                    }
+                ],
+                [],  # Second call returns empty - stops pagination
+            ]
+
+            client = WikiClient(self.wiki)
+            result = client.fetch_review_statistics(days=1)
+
+        self.assertFalse(result["batch_limit_reached"])
+        # Note: batches_fetched is 2 because pagination fetches once with data,
+        # then fetches again (gets empty) to confirm no more data exists
+        self.assertEqual(result["batches_fetched"], 2)

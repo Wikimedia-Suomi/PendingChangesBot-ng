@@ -1,0 +1,61 @@
+# Pywikibot configuration file for PendingChangesBot
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to user-config.py in the same directory:
+#    cp user-config.py.OAUTH-example user-config.py
+# 2. Replace all placeholder values with your actual credentials
+# 3. Never commit user-config.py to git (it's already in .gitignore)
+#
+# For detailed OAuth setup instructions, see docs/AUTHENTICATION.md
+
+from collections import defaultdict as _defaultdict
+
+# Bot configuration
+family = 'wikipedia'
+mylang = 'en'
+
+# Username configuration
+# Replace 'YourWikipediaUsername' with your actual Wikipedia/Wikimedia username
+usernames = _defaultdict(dict)
+usernames['wikipedia']['en'] = 'YourWikipediaUsername'
+usernames['meta']['meta'] = 'YourWikipediaUsername'
+
+# OAuth authentication (recommended - more secure than BotPasswords)
+# Get your OAuth 1.0a tokens from:
+# https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose
+#
+# After registering an OAuth consumer, replace the placeholder values below
+# with your actual tokens:
+authenticate = {}
+authenticate['meta.wikimedia.org'] = (
+    'CONSUMER_TOKEN',       # Replace with your consumer token
+    'CONSUMER_SECRET',      # Replace with your consumer secret
+    'ACCESS_TOKEN',         # Replace with your access token
+    'ACCESS_SECRET'         # Replace with your access secret
+)
+
+# Test your setup with:
+# python3 -m pywikibot.scripts.login -site:meta
+#
+# Expected output: "Logged in on meta:meta as YourUsername"
+
+# ALTERNATIVE: BotPassword Authentication (simpler, good for local dev)
+#
+# If you're facing issues with OAuth (especially with Superset OAuth 2.0), you can
+# use BotPasswords instead. This is simpler but less secure.
+#
+# Setup steps:
+# 1. Go to: https://meta.wikimedia.org/wiki/Special:BotPasswords
+# 2. Create a bot password named "PendingChangesBot" (or any name you choose)
+# 3. Grant it: Basic rights, High-volume editing, Edit, Patrol
+# 4. Save the username@botname and password shown
+# 5. Uncomment the lines below and fill in your credentials:
+#
+# usernames['wikipedia']['en'] = 'YourUsername@PendingChangesBot'
+# usernames['meta']['meta'] = 'YourUsername@PendingChangesBot'
+# password_file = "user-password.py"
+#
+# Then create user-password.py with:
+# ('YourUsername@PendingChangesBot', 'your_bot_password_here')
+#
+# Note: If using BotPassword, comment out the 'authenticate' dict above
