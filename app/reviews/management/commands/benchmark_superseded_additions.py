@@ -71,7 +71,7 @@ class Command(BaseCommand):
 
         if use_blocks:
             # Block-based comparison
-            self.stdout.write(f"Grouping revisions into edit blocks...\n")
+            self.stdout.write("Grouping revisions into edit blocks...\n")
             blocks = self._group_consecutive_edits(list(revisions))
             self.stdout.write(f"Testing {len(blocks)} edit blocks...\n")
 
@@ -420,7 +420,10 @@ class Command(BaseCommand):
             return False
 
     def _test_block_with_rest_api(
-        self, first_revision: PendingRevision, last_revision: PendingRevision, stable_rev: PendingRevision
+        self,
+        first_revision: PendingRevision,
+        last_revision: PendingRevision,
+        stable_rev: PendingRevision,
     ) -> bool:
         """Test a block of edits using REST API."""
         try:
@@ -537,7 +540,7 @@ class Command(BaseCommand):
             for disc in results["discrepancies"]:
                 old_status = "SUPERSEDED" if disc["old_method"] else "NOT SUPERSEDED"
                 new_status = "SUPERSEDED" if disc["new_method"] else "NOT SUPERSEDED"
-                
+
                 # Use ASCII-safe versions for console output
                 page_title = self._safe_str(disc['page_title'])
                 message = self._safe_str(disc['old_message'])
