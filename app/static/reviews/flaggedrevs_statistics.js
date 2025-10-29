@@ -53,6 +53,14 @@ createApp({
       showGraph: true, // Show chart in YearMonth mode
       showTable: true, // Show table in YearMonth mode
       yearMonthChart: null, // Chart instance for YearMonth mode
+
+      // Time period selection (default = full data)
+      timePeriod: 'all', // 'all', 'custom', 'last_year', 'last_6_months', 'last_3_months', 'last_month'
+      startDate: null, // Custom start date (YYYY-MM-DD format)
+      endDate: null, // Custom end date (YYYY-MM-DD format)
+
+      // Data resolution selection
+      dataResolution: 'yearly', // 'yearly', 'monthly', 'daily'
     });
 
     // Initialize with default wiki if none selected
@@ -536,6 +544,30 @@ createApp({
       return date.replace('-', '').substring(0, 6);
     }
 
+    // Format month label to show month name (Jan, Feb, etc.)
+    function formatMonthLabel(yyyyMmLabel) {
+      if (!yyyyMmLabel || yyyyMmLabel.length < 7) return yyyyMmLabel;
+      try {
+        const parts = yyyyMmLabel.split('-');
+        if (parts.length < 2) return yyyyMmLabel;
+        const year = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1; // JS months are 0-indexed
+        const date = new Date(year, month, 1);
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return monthNames[date.getMonth()];
+      } catch (e) {
+        return yyyyMmLabel;
+      }
+    }
+
+    // Check if we should format labels as month names
+    function shouldFormatAsMonths() {
+      return state.dataResolution === 'monthly' &&
+             (state.timePeriod === 'last_year' ||
+              state.timePeriod === 'last_6_months' ||
+              state.timePeriod === 'last_3_months');
+    }
+
     // Get series label for display
     function getSeriesLabel(key) {
       const labels = {
@@ -692,8 +724,32 @@ createApp({
       const data = JSON.parse(JSON.stringify(state.tableData));
       const selectedWikis = [...state.selectedWikis];
 
-      // Get unique dates
-      const labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
+      // Get unique dates based on resolution
+      let labels = [];
+      if (state.dataResolution === 'yearly') {
+        // Extract year only (YYYY)
+        labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
+      } else if (state.dataResolution === 'daily') {
+        // Use full date (YYYY-MM-DD) - but if we have monthly data, we still need to show it
+        // Extract all unique dates from the data (only for selected wikis to ensure we have data)
+        const relevantData = data.filter(d => selectedWikis.includes(d.wiki));
+        labels = [...new Set(relevantData.map(d => d.date))].sort();
+        console.log('Daily resolution - extracted labels from relevant data:', labels);
+        console.log('Daily resolution - unique dates count:', labels.length);
+        console.log('Relevant data entries:', relevantData.length);
+        console.log('Sample dates:', relevantData.slice(0, 5).map(d => ({ wiki: d.wiki, date: d.date })));
+      } else {
+        // Monthly (default) - extract year-month (YYYY-MM)
+        labels = [...new Set(data.map(d => d.date.substring(0, 7)))].sort();
+      }
+
+      // Keep original labels for data matching, format display labels separately
+      const displayLabels = shouldFormatAsMonths()
+        ? labels.map(label => formatMonthLabel(label))
+        : labels;
+
+      console.log('Labels for charts (resolution: ' + state.dataResolution + '):', labels);
+      console.log('Display labels:', displayLabels);
 
       // Build datasets
       const datasets = [];
@@ -758,12 +814,52 @@ createApp({
           const datasets = [];
 
           selectedWikis.forEach(wiki => {
-            const seriesData = labels.map(year => {
-              // Find all entries for this wiki and year, then take the latest one
-              const yearEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(year));
-              const latestEntry = yearEntries.sort((a, b) => b.date.localeCompare(a.date))[0];
-              return latestEntry ? (latestEntry[series.key] || null) : null;
+            // Debug: Check available data for this wiki
+            const wikiData = data.filter(d => d.wiki === wiki);
+            console.log(`Data for ${wiki}wiki_p:`, wikiData.length, 'entries');
+            if (wikiData.length > 0) {
+              console.log(`Sample dates for ${wiki}wiki_p:`, wikiData.slice(0, 3).map(d => d.date));
+            }
+
+            const seriesData = labels.map((label, index) => {
+              // Find entries for this wiki matching the label based on resolution
+              // Note: labels are still in YYYY-MM format (not formatted as month names)
+              let matchingEntries = [];
+              if (state.dataResolution === 'yearly') {
+                // Match year (label is YYYY)
+                matchingEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(label));
+              } else if (state.dataResolution === 'daily') {
+                // Exact date match (label is YYYY-MM-DD)
+                // Note: Data might be monthly (e.g., "2025-08-01"), which is fine for exact match
+                matchingEntries = data.filter(d => d.wiki === wiki && d.date === label);
+              } else {
+                // Monthly - match year-month (label is YYYY-MM, data dates are YYYY-MM-DD)
+                matchingEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(label));
+              }
+
+              // Debug for first label attr
+              if (index === 0 && series.key === 'pendingLag_average') {
+                console.log(`Matching label "${label}" for ${wiki}wiki_p, found ${matchingEntries.length} entries`);
+                if (matchingEntries.length > 0) {
+                  console.log(`Sample matching entry:`, matchingEntries[0]);
+                }
+              }
+
+              // For yearly/monthly, take the latest entry; for daily, take the only entry
+              if (matchingEntries.length > 0) {
+                const entry = matchingEntries.sort((a, b) => b.date.localeCompare(a.date))[0];
+                const value = entry ? (entry[series.key] || null) : null;
+                if (state.dataResolution === 'daily' && value === null) {
+                  console.log(`No value for ${wiki}wiki_p, label ${label}, key ${series.key}, entry:`, entry);
+                }
+                return value;
+              }
+              return null;
             });
+
+            // Debug logging for all series, not just pendingLag_average
+            console.log(`Series data for ${wiki}wiki_p, ${series.key}:`, seriesData);
+            console.log(`Non-null count:`, seriesData.filter(v => v !== null && v !== undefined).length);
 
             // Debug Pending Lag data specifically
             if (series.key === 'pendingLag_average') {
@@ -887,7 +983,7 @@ createApp({
             state.charts[series.key] = new Chart(canvas, {
               type: 'line',
               data: {
-                labels: labels,
+                labels: displayLabels,
                 datasets: datasets,
               },
               options: {
@@ -941,26 +1037,75 @@ createApp({
                     color: 'rgba(0, 0, 0, 0.05)',
                   },
                   ticks: {
-                    maxRotation: 0,
+                    maxRotation: 45,
                     minRotation: 0,
                     autoSkip: true,
+                    maxTicksLimit: 20,
                     callback: function(value, index, ticks) {
-                      // Extract year from the date string
+                      // Extract date info from the label
                       const dateStr = this.getLabelForValue(value);
-                      if (dateStr) {
-                        const year = dateStr.split('-')[0];
-                        // Only show year for the first occurrence of each year
+                      if (!dateStr) return '';
+
+                      // Parse the date string (could be YYYY-MM or YYYY-MM-DD)
+                      const parts = dateStr.split('-');
+                      if (parts.length < 2) return dateStr;
+
+                      const year = parts[0];
+                      const month = parts[1];
+
+                      // For custom range, show only years (YYYY format)
+                      if (state.timePeriod === 'custom') {
+                        // Always show first label as year
                         if (index === 0) {
                           return year;
                         }
-                        // Check if this year is different from the previous tick's year
-                        const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
-                        const prevYear = prevDateStr ? prevDateStr.split('-')[0] : '';
-                        if (year !== prevYear) {
+
+                        // Show at year boundaries (when year changes)
+                        if (index > 0) {
+                          const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
+                          if (prevDateStr) {
+                            const prevYear = prevDateStr.split('-')[0];
+                            if (year !== prevYear) {
+                              return year; // Show only year for custom range
+                            }
+                          }
+                        }
+
+                        // Also show last label as year
+                        if (index === ticks.length - 1) {
                           return year;
                         }
+
                         return '';
                       }
+
+                      // For preset time periods (last_year, last_6_months, etc.), show year-month format
+                      const totalTicks = ticks.length;
+
+                      // Always show first and last
+                      if (index === 0 || index === totalTicks - 1) {
+                        return `${year}-${month}`;
+                      }
+
+                      // Show at year boundaries (when year changes)
+                      if (index > 0) {
+                        const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
+                        if (prevDateStr) {
+                          const prevYear = prevDateStr.split('-')[0];
+                          if (year !== prevYear) {
+                            return `${year}-${month}`; // Show year-month when year changes
+                          }
+                        }
+                      }
+
+                      // For monthly resolution with multiple years, show Jan and Jul of each year
+                      if (state.dataResolution === 'monthly' && totalTicks > 12) {
+                        if (month === '01' || month === '07') {
+                          return `${year}-${month}`;
+                        }
+                      }
+
+                      // Otherwise, let autoSkip handle it
                       return '';
                     },
                   },
@@ -1545,7 +1690,17 @@ createApp({
         data = JSON.parse(JSON.stringify(state.tableData));
       }
       const selectedWikis = [...state.selectedWikis];
-      const labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
+
+      // Get unique dates based on resolution
+      let labels = [];
+      if (state.dataResolution === 'yearly') {
+        labels = [...new Set(data.map(d => d.date.substring(0, 4)))].sort();
+      } else if (state.dataResolution === 'daily') {
+        labels = [...new Set(data.map(d => d.date))].sort();
+      } else {
+        // Monthly (default) - extract year-month (YYYY-MM)
+        labels = [...new Set(data.map(d => d.date.substring(0, 7)))].sort();
+      }
 
       // Fixed color mapping for each wiki
       const wikiColorMap = {
@@ -1562,11 +1717,23 @@ createApp({
       const datasets = [];
 
       selectedWikis.forEach(wiki => {
-        const seriesData = labels.map(year => {
-          // Find all entries for this wiki and year, then take the latest one
-          const yearEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(year));
-          const latestEntry = yearEntries.sort((a, b) => b.date.localeCompare(a.date))[0];
-          return latestEntry ? (latestEntry[state.selectedFrsKey] || null) : null;
+        const seriesData = labels.map(label => {
+          // Find entries for this wiki matching the label based on resolution
+          let matchingEntries = [];
+          if (state.dataResolution === 'yearly') {
+            matchingEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(label));
+          } else if (state.dataResolution === 'daily') {
+            matchingEntries = data.filter(d => d.wiki === wiki && d.date === label);
+          } else {
+            // Monthly
+            matchingEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(label));
+          }
+
+          if (matchingEntries.length > 0) {
+            const entry = matchingEntries.sort((a, b) => b.date.localeCompare(a.date))[0];
+            return entry ? (entry[state.selectedFrsKey] || null) : null;
+          }
+          return null;
         });
 
         // Debug: Log the data for each wiki
@@ -1702,26 +1869,75 @@ createApp({
                   color: 'rgba(0, 0, 0, 0.05)',
                 },
                 ticks: {
-                  maxRotation: 0,
+                  maxRotation: 45,
                   minRotation: 0,
                   autoSkip: true,
+                  maxTicksLimit: 20,
                   callback: function(value, index, ticks) {
-                    // Extract year from the date string
+                    // Extract date info from the label
                     const dateStr = this.getLabelForValue(value);
-                    if (dateStr) {
-                      const year = dateStr.split('-')[0];
-                      // Only show year for the first occurrence of each year
+                    if (!dateStr) return '';
+
+                    // Parse the date string (could be YYYY-MM or YYYY-MM-DD)
+                    const parts = dateStr.split('-');
+                    if (parts.length < 2) return dateStr;
+
+                    const year = parts[0];
+                    const month = parts[1];
+
+                    // For custom range, show only years (YYYY format)
+                    if (state.timePeriod === 'custom') {
+                      // Always show first label as year
                       if (index === 0) {
                         return year;
                       }
-                      // Check if this year is different from the previous tick's year
-                      const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
-                      const prevYear = prevDateStr ? prevDateStr.split('-')[0] : '';
-                      if (year !== prevYear) {
+
+                      // Show at year boundaries (when year changes)
+                      if (index > 0) {
+                        const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
+                        if (prevDateStr) {
+                          const prevYear = prevDateStr.split('-')[0];
+                          if (year !== prevYear) {
+                            return year; // Show only year for custom range
+                          }
+                        }
+                      }
+
+                      // Also show last label as year
+                      if (index === ticks.length - 1) {
                         return year;
                       }
+
                       return '';
                     }
+
+                    // For preset time periods (last_year, last_6_months, etc.), show year-month format
+                    const totalTicks = ticks.length;
+
+                    // Always show first and last
+                    if (index === 0 || index === totalTicks - 1) {
+                      return `${year}-${month}`;
+                    }
+
+                    // Show at year boundaries (when year changes)
+                    if (index > 0) {
+                      const prevDateStr = this.getLabelForValue(ticks[index - 1].value);
+                      if (prevDateStr) {
+                        const prevYear = prevDateStr.split('-')[0];
+                        if (year !== prevYear) {
+                          return `${year}-${month}`; // Show year-month when year changes
+                        }
+                      }
+                    }
+
+                    // For monthly resolution with multiple years, show Jan and Jul of each year
+                    if (state.dataResolution === 'monthly' && totalTicks > 12) {
+                      if (month === '01' || month === '07') {
+                        return `${year}-${month}`;
+                      }
+                    }
+
+                    // Otherwise, let autoSkip handle it
                     return '';
                   },
                 },
@@ -1816,17 +2032,37 @@ createApp({
         return;
       }
 
-      // Get unique years as labels
-      const labels = [...new Set(wikiData.map(d => d.date.substring(0, 4)))].sort();
+      // Get unique dates as labels based on resolution
+      let labels = [];
+      if (state.dataResolution === 'yearly') {
+        labels = [...new Set(wikiData.map(d => d.date.substring(0, 4)))].sort();
+      } else if (state.dataResolution === 'daily') {
+        labels = [...new Set(wikiData.map(d => d.date))].sort();
+      } else {
+        // Monthly (default) - extract year-month (YYYY-MM)
+        labels = [...new Set(wikiData.map(d => d.date.substring(0, 7)))].sort();
+      }
 
       // Separate large and small scale metrics
       const largeScaleMetrics = ['pendingLag_average', 'totalPages_ns0', 'reviewedPages_ns0', 'syncedPages_ns0', 'pendingChanges'];
 
       const datasets = selectedMetrics.map((metric) => {
-        const data = labels.map(year => {
-          const yearData = wikiData.filter(d => d.date.startsWith(year));
-          const latest = yearData.sort((a, b) => b.date.localeCompare(a.date))[0];
-          return latest ? (latest[metric.key] || null) : null;
+        const data = labels.map(label => {
+          let matchingEntries = [];
+          if (state.dataResolution === 'yearly') {
+            matchingEntries = wikiData.filter(d => d.date.startsWith(label));
+          } else if (state.dataResolution === 'daily') {
+            matchingEntries = wikiData.filter(d => d.date === label);
+          } else {
+            // Monthly
+            matchingEntries = wikiData.filter(d => d.date.startsWith(label));
+          }
+
+          if (matchingEntries.length > 0) {
+            const entry = matchingEntries.sort((a, b) => b.date.localeCompare(a.date))[0];
+            return entry ? (entry[metric.key] || null) : null;
+          }
+          return null;
         });
 
         const config = {
@@ -1924,6 +2160,14 @@ createApp({
           const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
           apiParams.set('start_date', startDate);
           apiParams.set('end_date', endDate);
+        } else if (state.timePeriod !== 'all' || state.startDate || state.endDate) {
+          // Apply time period filtering (unless already handled by YearMonth mode)
+          if (state.startDate) {
+            apiParams.set('start_date', state.startDate);
+          }
+          if (state.endDate) {
+            apiParams.set('end_date', state.endDate);
+          }
         }
         const queryString = apiParams.toString();
 
@@ -2025,6 +2269,63 @@ createApp({
       }
     }
 
+    // Handle time period change
+    function handleTimePeriodChange() {
+      // Set flag to prevent the date watcher from triggering
+      isHandlingTimePeriodChange = true;
+
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      switch (state.timePeriod) {
+        case 'all':
+          state.startDate = null;
+          state.endDate = null;
+          break;
+        case 'last_year':
+          const lastYear = new Date(today);
+          lastYear.setFullYear(today.getFullYear() - 1);
+          state.startDate = lastYear.toISOString().split('T')[0];
+          state.endDate = today.toISOString().split('T')[0];
+          // Auto-set resolution to monthly for last year
+          state.dataResolution = 'monthly';
+          break;
+        case 'last_6_months':
+          const sixMonthsAgo = new Date(today);
+          sixMonthsAgo.setMonth(today.getMonth() - 6);
+          state.startDate = sixMonthsAgo.toISOString().split('T')[0];
+          state.endDate = today.toISOString().split('T')[0];
+          // Auto-set resolution to monthly for 6 months
+          state.dataResolution = 'monthly';
+          break;
+        case 'last_3_months':
+          const threeMonthsAgo = new Date(today);
+          threeMonthsAgo.setMonth(today.getMonth() - 3);
+          state.startDate = threeMonthsAgo.toISOString().split('T')[0];
+          state.endDate = today.toISOString().split('T')[0];
+          // Auto-set resolution to monthly for 3 months
+          state.dataResolution = 'monthly';
+          break;
+        case 'last_month':
+          const lastMonth = new Date(today);
+          lastMonth.setMonth(today.getMonth() - 1);
+          state.startDate = lastMonth.toISOString().split('T')[0];
+          state.endDate = today.toISOString().split('T')[0];
+          break;
+        case 'custom':
+          // Keep existing custom dates, or set defaults
+          if (!state.startDate) {
+            state.startDate = '2010-01-01';
+          }
+          if (!state.endDate) {
+            state.endDate = today.toISOString().split('T')[0];
+          }
+          break;
+      }
+      updateUrl();
+      loadData();
+    }
+
     async function refreshData() {
       await loadData();
     }
@@ -2066,6 +2367,22 @@ createApp({
         const year = state.selectedMonth.substring(0, 4);
         const month = state.selectedMonth.substring(4, 6);
         params.set('month', `${year}-${month}`);
+      }
+
+      // Handle time period
+      if (state.timePeriod && state.timePeriod !== 'all') {
+        params.set('time_period', state.timePeriod);
+      }
+      if (state.startDate) {
+        params.set('start_date', state.startDate);
+      }
+      if (state.endDate) {
+        params.set('end_date', state.endDate);
+      }
+
+      // Handle data resolution
+      if (state.dataResolution && state.dataResolution !== 'monthly') {
+        params.set('resolution', state.dataResolution);
       }
 
       const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
@@ -2141,10 +2458,38 @@ createApp({
         // Convert YYYY-MM to YYYYMM format
         state.selectedMonth = monthParam.replace('-', '');
       }
+
+      // Handle time period
+      const timePeriodParam = params.get('time_period');
+      if (timePeriodParam) {
+        state.timePeriod = timePeriodParam;
+      }
+      const startDateParam = params.get('start_date');
+      if (startDateParam) {
+        state.startDate = startDateParam;
+      }
+      const endDateParam = params.get('end_date');
+      if (endDateParam) {
+        state.endDate = endDateParam;
+      }
+
+      // Handle data resolution
+      const resolutionParam = params.get('resolution');
+      if (resolutionParam && ['yearly', 'monthly', 'daily'].includes(resolutionParam)) {
+        state.dataResolution = resolutionParam;
+      }
+
+      // If time period is set from URL but dates aren't, calculate them
+      if (timePeriodParam && timePeriodParam !== 'all' && timePeriodParam !== 'custom') {
+        handleTimePeriodChange();
+      }
     }
 
     // Debounce timer for wiki selection changes
     let wikiSelectionTimeout = null;
+
+    // Flag to prevent double-loading when time period changes
+    let isHandlingTimePeriodChange = false;
 
     // Watchers
     watch(() => state.selectedWikis, async () => {
@@ -2184,6 +2529,30 @@ createApp({
       }, 100);
     });
 
+    // Watch for time period changes
+    watch(() => state.timePeriod, async () => {
+      console.log('Time period changed to:', state.timePeriod);
+      if (state.timePeriod !== 'custom') {
+        handleTimePeriodChange();
+        // handleTimePeriodChange already calls loadData(), so no need to call it again
+      } else {
+        updateUrl();
+      }
+    });
+
+    // Watch for date/resolution changes (but not when triggered by handleTimePeriodChange)
+    watch(() => [state.startDate, state.endDate, state.dataResolution], () => {
+      // Skip if we're already handling time period change (to avoid double loading)
+      if (isHandlingTimePeriodChange) {
+        isHandlingTimePeriodChange = false;
+        return;
+      }
+      updateUrl();
+      // Always reload data when resolution or dates change, even if timePeriod is 'all'
+      // This ensures resolution changes update the chart immediately
+      loadData();
+    }, { deep: true });
+
     // Watch for series changes to update charts
     watch(() => state.series, async () => {
       if (state.filterMode === 'wiki') {
@@ -2209,6 +2578,40 @@ createApp({
         state.selectedMonth = '';
       }
 
+      // Destroy existing charts when switching modes to prevent conflicts
+      if (state.charts) {
+        Object.values(state.charts).forEach(chart => {
+          if (chart) {
+            try {
+              chart.destroy();
+            } catch (e) {
+              console.log('Error destroying chart in filterMode watcher:', e);
+            }
+          }
+        });
+        state.charts = {};
+      }
+
+      // Destroy single chart instances if they exist
+      if (state.singleChart) {
+        try {
+          state.singleChart.destroy();
+        } catch (e) {
+          console.log('Error destroying singleChart in filterMode watcher:', e);
+        }
+        state.singleChart = null;
+      }
+
+      // Destroy year month chart if it exists
+      if (state.yearMonthChart) {
+        try {
+          state.yearMonthChart.destroy();
+        } catch (e) {
+          console.log('Error destroying yearMonthChart in filterMode watcher:', e);
+        }
+        state.yearMonthChart = null;
+      }
+
       // Initialize selectedWikis based on filter mode
       if (state.filterMode === 'frs_key') {
         // In FRS Key mode, select all available wikis by default
@@ -2222,31 +2625,9 @@ createApp({
         }
       }
 
-      // Trigger appropriate chart rendering when filter mode changes
-      if (state.filterMode === 'wiki') {
-        // Wait for Vue to update the DOM with new canvas elements
-        await nextTick();
-        setTimeout(() => {
-          updateChart();
-        }, 500);  // Increased timeout to give Vue more time to render
-      } else if (state.filterMode === 'frs_key') {
-        // Load data for FRS Key mode
-        await loadData();
-        await nextTick();
-        updateFrsKeyChart();
-      } else if (state.filterMode === 'yearmonth') {
-        // YearMonth uses the same chart as FRS Key
-        await nextTick();
-        updateFrsKeyChart();
-      } else if (state.filterMode === 'single_wiki') {
-        // Single wiki mode - add delay to ensure data is loaded
-        await nextTick();
-        setTimeout(() => {
-          updateSingleWikiChart();
-        }, 100);
-      } else {
-        updateChart();
-      }
+      // Always reload data when switching modes to ensure we have the correct data
+      // loadData() will automatically call the appropriate chart update function based on filterMode
+      await loadData();
     });
 
     // Watch for changes to selectedFrsKey and update the chart
@@ -2338,6 +2719,7 @@ createApp({
       goToWikiPage,
       goToDatePage,
       goToFrsKey,
+      handleTimePeriodChange,
       goToWikiDatePage,
       goToWikiFromDateView,
       goToYearMonthMetric,

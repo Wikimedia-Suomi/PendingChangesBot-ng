@@ -245,6 +245,70 @@
                 </div>
               </div>
             </div>
+
+            <!-- Time Period Selection -->
+            <div class="column is-narrow">
+              <div class="field">
+                <label class="label is-small">Time Period</label>
+                <div class="control">
+                  <div class="select is-small">
+                    <select v-model="state.timePeriod">
+                      <option value="all">All Time</option>
+                      <option value="last_year">Last Year</option>
+                      <option value="last_6_months">Last 6 Months</option>
+                      <option value="last_3_months">Last 3 Months</option>
+                      <option value="last_month">Last Month</option>
+                      <option value="custom">Custom Range</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Custom Date Range (only shown when custom is selected) -->
+            <div class="column is-narrow" v-if="state.timePeriod === 'custom'">
+              <div class="field">
+                <label class="label is-small">Start Date</label>
+                <div class="control">
+                  <input
+                    class="input is-small"
+                    type="date"
+                    v-model="state.startDate"
+                    @change="updateUrl"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="column is-narrow" v-if="state.timePeriod === 'custom'">
+              <div class="field">
+                <label class="label is-small">End Date</label>
+                <div class="control">
+                  <input
+                    class="input is-small"
+                    type="date"
+                    v-model="state.endDate"
+                    @change="updateUrl"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Data Resolution Selection -->
+            <div class="column is-narrow">
+              <div class="field">
+                <label class="label is-small">Resolution</label>
+                <div class="control">
+                  <div class="select is-small">
+                    <select v-model="state.dataResolution" @change="updateUrl">
+                      <option value="yearly">Yearly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="daily">Daily</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
       </section>
 
