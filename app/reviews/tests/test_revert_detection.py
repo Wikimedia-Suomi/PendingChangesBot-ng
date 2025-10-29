@@ -6,9 +6,11 @@ a pending edit is a revert to previously reviewed content.
 """
 
 import json
+from datetime import timedelta
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
+from django.utils import timezone
 
 from reviews.autoreview import (
     _check_revert_detection,
@@ -46,6 +48,10 @@ class RevertDetectionTests(TestCase):
             user_name="TestUser",
             user_id=1000,
             change_tags=["mw-manual-revert"],
+            timestamp=timezone.now(),
+            age_at_fetch=timedelta(seconds=0),
+            sha1=("0" * 40),
+            wikitext="Test content",
         )
         # Not a model field; attach dynamically for the check logic
         self.revision.change_tag_params = [
@@ -213,6 +219,10 @@ class RevertDetectionIntegrationTests(TestCase):
             user_name="TestUser",
             user_id=1000,
             change_tags=["mw-manual-revert", "mw-reverted"],
+            timestamp=timezone.now(),
+            age_at_fetch=timedelta(seconds=0),
+            sha1=("0" * 40),
+            wikitext="Test content",
         )
         # Attach dynamic params expected by the check logic
         revision.change_tag_params = [
