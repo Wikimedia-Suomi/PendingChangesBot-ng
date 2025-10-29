@@ -71,17 +71,6 @@
         </div>
       </section>
 
-      <!-- Test Mode Warning Banner -->
-      <section class="section py-3" v-if="currentWiki && currentWiki.configuration.test_mode">
-        <div class="notification is-warning">
-          <strong>Test Mode Active:</strong> You are viewing test data with revision IDs:
-          <span v-if="currentWiki.configuration.test_revision_ids && currentWiki.configuration.test_revision_ids.length">
-            {{ currentWiki.configuration.test_revision_ids.join(', ') }}
-          </span>
-          <span v-else>(none set)</span>
-        </div>
-      </section>
-
       <section class="section" v-if="currentWiki">
         <div class="box mb-5">
           <div class="level is-mobile">
@@ -109,62 +98,6 @@
                 <textarea class="textarea" rows="4" v-model="forms.autoApprovedGroups" placeholder="One user group per line"></textarea>
               </div>
             </div>
-
-            <!-- Test Mode Section -->
-            <div class="box has-background-light mt-4">
-              <h3 class="title is-6">Test Mode</h3>
-              <p class="help mb-4">Enable test mode to use specific revision IDs instead of live flagged pages.</p>
-
-              <!-- Test Mode Toggle -->
-              <div class="field">
-                <label class="checkbox">
-                  <input type="checkbox" v-model="forms.testMode">
-                  Enable test mode
-                </label>
-              </div>
-              <!-- Revision IDs Input (only show when test mode is enabled) -->
-              <div v-if="forms.testMode">
-                <label class="label">Revision IDs</label>
-
-                <!-- Input field for adding new revision ID -->
-                <div class="field has-addons">
-                  <div class="control is-expanded">
-                    <input
-                      class="input"
-                      type="text"
-                      v-model="forms.newRevisionId"
-                      placeholder="Enter revision ID"
-                      @keyup.enter="addRevisionId"
-                    >
-                  </div>
-                  <div class="control">
-                    <button
-                      class="button is-info"
-                      @click="addRevisionId"
-                      :disabled="!forms.newRevisionId.trim()"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-                <!-- Error message for validation -->
-                <div class="notification is-danger mt-2" v-if="state.error">
-                  {{ state.error }}
-                </div>
-
-                <!-- Display added revision IDs as chips/tags -->
-                <div class="field is-grouped is-grouped-multiline mt-3" v-if="forms.testRevisionIds.length">
-                  <div class="control" v-for="(revId, index) in forms.testRevisionIds" :key="index">
-                    <div class="tags has-addons">
-                      <span class="tag is-link">{{ revId }}</span>
-                      <a class="tag is-delete" @click="removeRevisionId(index)"></a>
-                    </div>
-                  </div>
-                </div>
-                <p class="help" v-else>No revision IDs added yet.</p>
-              </div>
-            </div>
-
             <div class="content mt-4">
               <h3 class="title is-6">ORES Edit Quality Thresholds</h3>
               <p class="help">Set to 0 to disable checks. Values range from 0.0 to 1.0.</p>

@@ -263,8 +263,6 @@ def index(request: HttpRequest) -> HttpResponse:
                 "configuration": {
                     "blocking_categories": configuration.blocking_categories,
                     "auto_approved_groups": configuration.auto_approved_groups,
-                    "test_mode": configuration.test_mode,
-                    "test_revision_ids": configuration.test_revision_ids,
                     "ores_damaging_threshold": configuration.ores_damaging_threshold,
                     "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
                     "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
@@ -549,28 +547,6 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
         configuration.auto_approved_groups = auto_groups
         update_fields = ["blocking_categories", "auto_approved_groups", "updated_at"]
 
-        # Handle test mode toggle
-        if "test_mode" in payload:
-            test_mode = payload.get("test_mode")
-            if isinstance(test_mode, bool):
-                configuration.test_mode = test_mode
-                update_fields.append("test_mode")
-
-        # Handle test revision IDs with validation
-        if "test_revision_ids" in payload:
-            test_revision_ids = payload.get("test_revision_ids", [])
-            if isinstance(test_revision_ids, str):  # Accept comma-separated string
-                test_revision_ids = [
-                    item.strip() for item in str(test_revision_ids).split(",") if item.strip()
-                ]
-            validated_ids = []  # Validate: only integers allowed
-            for item in test_revision_ids:
-                cleaned = str(item).strip()
-                if cleaned.isdigit():
-                    validated_ids.append(cleaned)
-            configuration.test_revision_ids = validated_ids
-            update_fields.append("test_revision_ids")
-
         if validated_damaging is not None:
             configuration.ores_damaging_threshold = validated_damaging
             update_fields.append("ores_damaging_threshold")
@@ -590,13 +566,10 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
-            "test_mode": configuration.test_mode,
-            "test_revision_ids": configuration.test_revision_ids,
             "ores_damaging_threshold": configuration.ores_damaging_threshold,
             "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
             "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
             "ores_goodfaith_threshold_living": configuration.ores_goodfaith_threshold_living,
-            "updated_at": configuration.updated_at.isoformat(),
         }
     )
 
