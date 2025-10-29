@@ -231,7 +231,8 @@ class WordAnnotationEngine:
     def _generate_word_id(self, revision_id: int, position: int, word: str) -> str:
         """Generate a stable word ID."""
         content = f"{revision_id}-{position}-{word}"
-        return hashlib.md5(content.encode()).hexdigest()[:16]
+        # Use a stronger hash to satisfy security linters while keeping short IDs
+        return hashlib.sha256(content.encode()).hexdigest()[:16]
 
     def _get_parent_annotations(
         self, parent_revision: PendingRevision

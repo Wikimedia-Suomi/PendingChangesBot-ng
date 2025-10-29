@@ -63,7 +63,15 @@ class ModelScoresAdmin(admin.ModelAdmin):
 
 @admin.register(WordAnnotation)
 class WordAnnotationAdmin(admin.ModelAdmin):
-    list_display = ("page", "revision_id", "word", "author_user_name", "position", "is_moved", "is_deleted")
+    list_display = (
+        "page",
+        "revision_id",
+        "word",
+        "author_user_name",
+        "position",
+        "is_moved",
+        "is_deleted",
+    )
     search_fields = ("word", "author_user_name", "stable_word_id")
     list_filter = ("page__wiki", "is_moved", "is_modified", "is_deleted")
     readonly_fields = ("created_at",)
@@ -72,7 +80,14 @@ class WordAnnotationAdmin(admin.ModelAdmin):
 
 @admin.register(RevisionAnnotation)
 class RevisionAnnotationAdmin(admin.ModelAdmin):
-    list_display = ("page", "revision_id", "status", "words_annotated", "created_at", "completed_at")
+    list_display = (
+        "page",
+        "revision_id",
+        "status",
+        "words_annotated",
+        "created_at",
+        "completed_at",
+    )
     search_fields = ("page__title",)
     list_filter = ("status", "page__wiki", "created_at")
     readonly_fields = ("created_at", "updated_at")
