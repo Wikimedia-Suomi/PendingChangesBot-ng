@@ -263,6 +263,8 @@ def index(request: HttpRequest) -> HttpResponse:
                 "configuration": {
                     "blocking_categories": configuration.blocking_categories,
                     "auto_approved_groups": configuration.auto_approved_groups,
+                    "test_mode": configuration.test_mode,
+                    "test_revision_ids": configuration.test_revision_ids,
                     "ores_damaging_threshold": configuration.ores_damaging_threshold,
                     "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
                     "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
@@ -296,6 +298,10 @@ def api_wikis(request: HttpRequest) -> JsonResponse:
                     ),
                     "auto_approved_groups": (
                         configuration.auto_approved_groups if configuration else []
+                    ),
+                    "test_mode": configuration.test_mode if configuration else False,
+                    "test_revision_ids": (
+                        configuration.test_revision_ids if configuration else []
                     ),
                     "ores_damaging_threshold": (
                         configuration.ores_damaging_threshold if configuration else 0.0
@@ -488,6 +494,8 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             ores_goodfaith_threshold = payload.get("ores_goodfaith_threshold")
             ores_damaging_threshold_living = payload.get("ores_damaging_threshold_living")
             ores_goodfaith_threshold_living = payload.get("ores_goodfaith_threshold_living")
+            test_mode = payload.get("test_mode")
+            test_revision_ids = payload.get("test_revision_ids")
         else:
             encoding = request.encoding or "utf-8"
             raw_body = request.body.decode(encoding) if request.body else ""
@@ -498,6 +506,8 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             ores_goodfaith_threshold = form_payload.get("ores_goodfaith_threshold")
             ores_damaging_threshold_living = form_payload.get("ores_damaging_threshold_living")
             ores_goodfaith_threshold_living = form_payload.get("ores_goodfaith_threshold_living")
+            test_mode = form_payload.get("test_mode")
+            test_revision_ids = form_payload.get("test_revision_ids")
 
         if isinstance(blocking_categories, str):
             blocking_categories = [blocking_categories]
@@ -560,12 +570,37 @@ def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
             configuration.ores_goodfaith_threshold_living = validated_goodfaith_living
             update_fields.append("ores_goodfaith_threshold_living")
 
+        # Handle test mode
+        if test_mode is not None:
+            if isinstance(test_mode, bool):
+                configuration.test_mode = test_mode
+                update_fields.append("test_mode")
+            elif isinstance(test_mode, str):
+                configuration.test_mode = test_mode.lower() in ("true", "1", "yes")
+                update_fields.append("test_mode")
+
+        # Handle test revision IDs with validation
+        if test_revision_ids is not None:
+            if isinstance(test_revision_ids, str):  # Accept comma-separated string
+                test_revision_ids = [
+                    item.strip() for item in str(test_revision_ids).split(",") if item.strip()
+                ]
+            validated_ids = []  # Validate: only integers allowed
+            for item in test_revision_ids:
+                cleaned = str(item).strip()
+                if cleaned.isdigit():
+                    validated_ids.append(cleaned)
+            configuration.test_revision_ids = validated_ids
+            update_fields.append("test_revision_ids")
+
         configuration.save(update_fields=update_fields)
 
     return JsonResponse(
         {
             "blocking_categories": configuration.blocking_categories,
             "auto_approved_groups": configuration.auto_approved_groups,
+            "test_mode": configuration.test_mode,
+            "test_revision_ids": configuration.test_revision_ids,
             "ores_damaging_threshold": configuration.ores_damaging_threshold,
             "ores_goodfaith_threshold": configuration.ores_goodfaith_threshold,
             "ores_damaging_threshold_living": configuration.ores_damaging_threshold_living,
