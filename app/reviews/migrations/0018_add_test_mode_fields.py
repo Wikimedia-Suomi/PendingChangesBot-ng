@@ -14,7 +14,10 @@ class Migration(migrations.Migration):
             name="test_mode",
             field=models.BooleanField(
                 default=False,
-                help_text="Enable test mode to use specific revision IDs instead of live flaggedpages data.",
+                help_text=(
+                    "Enable test mode to use specific revision IDs "
+                    "instead of live flaggedpages data."
+                ),
             ),
         ),
         migrations.AddField(

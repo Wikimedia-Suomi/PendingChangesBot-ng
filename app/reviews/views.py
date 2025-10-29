@@ -300,9 +300,7 @@ def api_wikis(request: HttpRequest) -> JsonResponse:
                         configuration.auto_approved_groups if configuration else []
                     ),
                     "test_mode": configuration.test_mode if configuration else False,
-                    "test_revision_ids": (
-                        configuration.test_revision_ids if configuration else []
-                    ),
+                    "test_revision_ids": (configuration.test_revision_ids if configuration else []),
                     "ores_damaging_threshold": (
                         configuration.ores_damaging_threshold if configuration else 0.0
                     ),
