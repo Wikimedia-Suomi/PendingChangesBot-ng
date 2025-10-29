@@ -44,8 +44,9 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
 
         # Display current configuration
+        current_dry_run = getattr(settings, "PENDING_CHANGES_DRY_RUN", True)
         self.stdout.write(
-            f"Current PENDING_CHANGES_DRY_RUN setting: {getattr(settings, 'PENDING_CHANGES_DRY_RUN', True)}"
+            f"Current PENDING_CHANGES_DRY_RUN setting: {current_dry_run}"
         )
 
         if dry_run:
