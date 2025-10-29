@@ -11,7 +11,7 @@ from typing import Any
 
 from django.conf import settings
 
-from ..utils.ores import CheckContext
+from ..context import CheckContext
 
 logger = logging.getLogger(__name__)
 
