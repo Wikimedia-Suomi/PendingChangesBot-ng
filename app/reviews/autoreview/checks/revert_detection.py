@@ -133,16 +133,16 @@ def _find_reviewed_revisions_by_sha1(
 ) -> list[dict]:
     """
     Find previously reviewed revisions by SHA1 content hash.
-    
+
     This implements @zache-fi's suggested Superset approach:
     1. Query MediaWiki database for older reviewed versions by SHA1
     2. Check if any of the reverted revisions were previously reviewed
-    
+
     Args:
         client: WikiClient instance
         page: PendingPage object
         reverted_rev_ids: List of reverted revision IDs
-        
+
     Returns:
         List of reviewed revision data
     """

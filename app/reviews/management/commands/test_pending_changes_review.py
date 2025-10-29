@@ -5,8 +5,9 @@ This command allows testing the approve_revision() utility function
 with various parameters and configurations.
 """
 
-from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
+
 from reviews.utils.approval import approve_revision
 
 
