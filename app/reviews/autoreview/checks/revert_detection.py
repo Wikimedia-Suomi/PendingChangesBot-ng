@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 def check_revert_detection(context: CheckContext) -> dict[str, Any]:
     """
     Check if a revision is a revert to previously reviewed content.
-    
+
     Args:
         context: CheckContext containing revision and related data
-        
+
     Returns:
         Dict with check result including status, message, and metadata
     """
