@@ -16,7 +16,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from .autoreview.checks import AVAILABLE_CHECKS
 from .autoreview.runner import run_autoreview_for_page
