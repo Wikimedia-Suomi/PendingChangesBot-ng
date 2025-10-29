@@ -346,20 +346,50 @@
         }
 
         // Load revisions when page ID is entered
-        document.getElementById('pageId').addEventListener('change', async function() {
-            const pageId = this.value;
-            if (!pageId) return;
+        async function autoFillRevision() {
+            const pageId = document.getElementById('pageId').value;
+            const revisionInput = document.getElementById('revisionId');
+            
+            if (!pageId) {
+                revisionInput.value = '';
+                revisionInput.placeholder = 'Auto-filled or manual';
+                return;
+            }
 
             try {
+                revisionInput.placeholder = 'Loading...';
                 const response = await fetch(`/api/annotations/revisions/?page_id=${pageId}`);
                 const data = await response.json();
 
+                if (data.error) {
+                    revisionInput.placeholder = 'No revisions found';
+                    revisionInput.value = '';
+                    console.error('Error:', data.error);
+                    return;
+                }
+
                 if (data.revisions && data.revisions.length > 0) {
                     // Auto-fill with latest revision
-                    document.getElementById('revisionId').value = data.revisions[0].revision_id;
+                    revisionInput.value = data.revisions[0].revision_id;
+                    revisionInput.placeholder = `Latest: ${data.revisions[0].revision_id}`;
+                } else {
+                    revisionInput.placeholder = 'No revisions found';
+                    revisionInput.value = '';
                 }
             } catch (error) {
                 console.error('Error loading revisions:', error);
+                revisionInput.placeholder = 'Error loading revisions';
+                revisionInput.value = '';
+            }
+        }
+
+        // Listen to multiple events for better UX
+        const pageIdInput = document.getElementById('pageId');
+        pageIdInput.addEventListener('blur', autoFillRevision);  // When user tabs away
+        pageIdInput.addEventListener('change', autoFillRevision); // When value changes
+        pageIdInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                autoFillRevision();
             }
         });
     </script>
