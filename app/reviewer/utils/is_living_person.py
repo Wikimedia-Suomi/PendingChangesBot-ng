@@ -85,7 +85,7 @@ def _check_by_wikidata(page) -> bool:
                 age = datetime.now().year - birth.year
                 return age < 130
         except Exception:
-            pass
+            return True
 
     return True
 
