@@ -106,12 +106,14 @@ jobs:
       uses: actions-ecosystem/action-add-labels@v1
       with:
         labels: ready-for-review
+        github_token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Remove changes-required label on success
       if: needs.test.result == 'success'
       uses: actions-ecosystem/action-remove-labels@v1
       with:
         labels: changes-required
+        github_token: ${{ secrets.GITHUB_TOKEN }}
       continue-on-error: true
 
     - name: Add changes-required label on failure
@@ -119,10 +121,12 @@ jobs:
       uses: actions-ecosystem/action-add-labels@v1
       with:
         labels: changes-required
+        github_token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Remove ready-for-review label on failure
       if: needs.test.result == 'failure'
       uses: actions-ecosystem/action-remove-labels@v1
       with:
         labels: ready-for-review
+        github_token: ${{ secrets.GITHUB_TOKEN }}
       continue-on-error: true
