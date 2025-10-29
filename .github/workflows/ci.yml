@@ -92,24 +92,21 @@ jobs:
       run: |
         coverage run --source='.' manage.py test
         coverage report
+
+    - name: Generate coverage reports
+      if: always()
+      working-directory: ./app
+      run: |
         coverage html
         coverage xml
 
     - name: Upload coverage report
-      if: github.event_name == 'pull_request'
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
         path: app/htmlcov/
         retention-days: 7
-
-    - name: Comment coverage summary on PR
-      if: github.event_name == 'pull_request'
-      uses: py-cov-action/python-coverage-comment-action@v3
-      with:
-        GITHUB_TOKEN: ${{ github.token }}
-        MINIMUM_GREEN: 80
-        MINIMUM_ORANGE: 70
 
   label-pr:
     name: Update PR Labels
