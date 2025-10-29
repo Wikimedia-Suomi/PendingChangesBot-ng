@@ -51,10 +51,10 @@ class Command(BaseCommand):
 
         # Display current configuration
         self.stdout.write(f"Current PENDING_CHANGES_DRY_RUN setting: {getattr(settings, 'PENDING_CHANGES_DRY_RUN', True)}")
-        
+
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY-RUN MODE: No actual changes will be made"))
-        
+
         # Display operation details
         operation = "unapprove" if unapprove else "approve"
         self.stdout.write(f"Operation: {operation}")
@@ -62,7 +62,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Comment: {comment}")
         if value is not None:
             self.stdout.write(f"Value: {value}")
-        
+
         try:
             # Call the approve_revision function
             result = approve_revision(
@@ -71,7 +71,7 @@ class Command(BaseCommand):
                 value=value,
                 unapprove=unapprove
             )
-            
+
             # Display results
             if result['result'] == 'success':
                 if result.get('dry_run', False):
@@ -86,11 +86,11 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.ERROR(f"❌ {result['message']}")
                 )
-            
+
             # Display additional information
             if 'api_response' in result:
                 self.stdout.write(f"API Response: {result['api_response']}")
-            
+
             # Display dry-run information
             if result.get('dry_run', False):
                 self.stdout.write(
@@ -99,13 +99,13 @@ class Command(BaseCommand):
                         "Set PENDING_CHANGES_DRY_RUN=False to make actual changes."
                     )
                 )
-            
+
         except Exception as e:
             self.stdout.write(
                 self.style.ERROR(f"❌ Error: {str(e)}")
             )
             raise CommandError(f"Failed to {operation} revision {revid}: {str(e)}")
-        
+
         self.stdout.write(
             self.style.SUCCESS(f"✅ Command completed successfully")
         )

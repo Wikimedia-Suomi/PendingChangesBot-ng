@@ -28,14 +28,14 @@ class RevertDetectionTests(TestCase):
             api_endpoint="https://test.wikipedia.org/w/api.php"
         )
         self.config = WikiConfiguration.objects.create(wiki=self.wiki)
-        
+
         self.page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=12345,
             title="Test Page",
             stable_revid=100,
         )
-        
+
         self.revision = PendingRevision.objects.create(
             page=self.page,
             revid=200,
@@ -52,7 +52,7 @@ class RevertDetectionTests(TestCase):
                 })
             ]
         )
-        
+
         self.client = Mock(spec=WikiClient)
         self.client.site = Mock()
 
@@ -60,7 +60,7 @@ class RevertDetectionTests(TestCase):
         """Test that revert detection is skipped when disabled."""
         with self.settings(ENABLE_REVERT_DETECTION=False):
             result = _check_revert_detection(self.revision, self.client)
-            
+
             self.assertEqual(result["status"], "skip")
             self.assertEqual(result["message"], "Revert detection is disabled")
 
@@ -68,16 +68,16 @@ class RevertDetectionTests(TestCase):
         """Test that revert detection is skipped when no revert tags are present."""
         self.revision.change_tags = ["mw-edit"]
         self.revision.save()
-        
+
         result = _check_revert_detection(self.revision, self.client)
-        
+
         self.assertEqual(result["status"], "skip")
         self.assertEqual(result["message"], "No revert tags found")
 
     def test_parse_revert_params(self):
         """Test parsing of change tag parameters."""
         reverted_ids = _parse_revert_params(self.revision)
-        
+
         expected_ids = [180, 190, 175]  # From change_tag_params
         self.assertEqual(set(reverted_ids), set(expected_ids))
 
@@ -85,7 +85,7 @@ class RevertDetectionTests(TestCase):
         """Test parsing when no change tag parameters are present."""
         self.revision.change_tag_params = []
         self.revision.save()
-        
+
         reverted_ids = _parse_revert_params(self.revision)
         self.assertEqual(reverted_ids, [])
 
@@ -93,7 +93,7 @@ class RevertDetectionTests(TestCase):
         """Test parsing with invalid JSON in change tag parameters."""
         self.revision.change_tag_params = ["invalid json"]
         self.revision.save()
-        
+
         reverted_ids = _parse_revert_params(self.revision)
         self.assertEqual(reverted_ids, [])
 
@@ -109,12 +109,12 @@ class RevertDetectionTests(TestCase):
                 'rev_page': 12345
             }
         ]
-        
+
         reverted_ids = [180, 190]
         reviewed_revisions = _find_reviewed_revisions_by_sha1(
             self.client, self.page, reverted_ids
         )
-        
+
         self.assertEqual(len(reviewed_revisions), 1)
         self.assertEqual(reviewed_revisions[0]['sha1'], 'abc123')
         self.assertEqual(reviewed_revisions[0]['max_reviewed_id'], 150)
@@ -123,12 +123,12 @@ class RevertDetectionTests(TestCase):
     def test_find_reviewed_revisions_by_sha1_no_results(self, mock_superset):
         """Test when no reviewed revisions are found."""
         mock_superset.return_value.query.return_value = []
-        
+
         reverted_ids = [180, 190]
         reviewed_revisions = _find_reviewed_revisions_by_sha1(
             self.client, self.page, reverted_ids
         )
-        
+
         self.assertEqual(reviewed_revisions, [])
 
     @patch('reviews.autoreview._find_reviewed_revisions_by_sha1')
@@ -143,9 +143,9 @@ class RevertDetectionTests(TestCase):
                 'page_id': 12345
             }
         ]
-        
+
         result = _check_revert_detection(self.revision, self.client)
-        
+
         self.assertEqual(result["status"], "approve")
         self.assertIn("Revert to previously reviewed content", result["message"])
         self.assertIn("abc123", result["message"])
@@ -155,9 +155,9 @@ class RevertDetectionTests(TestCase):
         """Test revert detection when no reviewed content is found."""
         # Mock no reviewed revisions found
         mock_find_reviewed.return_value = []
-        
+
         result = _check_revert_detection(self.revision, self.client)
-        
+
         self.assertEqual(result["status"], "block")
         self.assertEqual(result["message"], "Revert detected but no previously reviewed content found")
 
@@ -165,9 +165,9 @@ class RevertDetectionTests(TestCase):
         """Test revert detection when no reverted revision IDs are found."""
         self.revision.change_tag_params = []
         self.revision.save()
-        
+
         result = _check_revert_detection(self.revision, self.client)
-        
+
         self.assertEqual(result["status"], "skip")
         self.assertEqual(result["message"], "No reverted revision IDs found in change tags")
 
@@ -175,9 +175,9 @@ class RevertDetectionTests(TestCase):
         """Test that revert detection returns proper metadata."""
         with patch('reviews.autoreview._find_reviewed_revisions_by_sha1') as mock_find:
             mock_find.return_value = [{'sha1': 'abc123'}]
-            
+
             result = _check_revert_detection(self.revision, self.client)
-            
+
             self.assertIn("reverted_rev_ids", result["metadata"])
             self.assertIn("revert_tags", result["metadata"])
             self.assertIn("reviewed_revisions", result["metadata"])
@@ -205,7 +205,7 @@ class RevertDetectionIntegrationTests(TestCase):
             title="Test Page",
             stable_revid=100,
         )
-        
+
         # Create a revision with revert tags
         revision = PendingRevision.objects.create(
             page=page,
@@ -223,11 +223,11 @@ class RevertDetectionIntegrationTests(TestCase):
                 })
             ]
         )
-        
+
         # Mock the client
         client = Mock(spec=WikiClient)
         client.site = Mock()
-        
+
         # Test with SupersetQuery mock
         with patch('reviews.autoreview.SupersetQuery') as mock_superset:
             mock_superset.return_value.query.return_value = [
@@ -238,9 +238,9 @@ class RevertDetectionIntegrationTests(TestCase):
                     'rev_page': 12345
                 }
             ]
-            
+
             result = _check_revert_detection(revision, client)
-            
+
             self.assertEqual(result["status"], "approve")
             self.assertIn("test_sha1", result["message"])
             self.assertEqual(len(result["metadata"]["reverted_rev_ids"]), 3)

@@ -29,24 +29,24 @@ class ApprovalUtilityTests(TestCase):
         """Test successful approval of a revision."""
         # Mock the site
         mock_site_class.return_value = self.test_site
-        
+
         # Mock the API request
         mock_request = Mock()
         mock_request.submit.return_value = {'review': {'result': 'success'}}
         mock_request_class.return_value = mock_request
-        
+
         # Call the function
         result = approve_revision(
             revid=self.test_revid,
             comment=self.test_comment,
             unapprove=False
         )
-        
+
         # Assertions
         self.assertEqual(result['result'], 'success')
         self.assertFalse(result['dry_run'])
         self.assertIn('Successfully approved', result['message'])
-        
+
         # Verify API call was made
         mock_request_class.assert_called_once()
         mock_request.submit.assert_called_once()
@@ -58,19 +58,19 @@ class ApprovalUtilityTests(TestCase):
         """Test successful unapproval of a revision."""
         # Mock the site
         mock_site_class.return_value = self.test_site
-        
+
         # Mock the API request
         mock_request = Mock()
         mock_request.submit.return_value = {'review': {'result': 'success'}}
         mock_request_class.return_value = mock_request
-        
+
         # Call the function
         result = approve_revision(
             revid=self.test_revid,
             comment=self.test_comment,
             unapprove=True
         )
-        
+
         # Assertions
         self.assertEqual(result['result'], 'success')
         self.assertFalse(result['dry_run'])
@@ -84,22 +84,22 @@ class ApprovalUtilityTests(TestCase):
         """Test dry-run mode with production page (should skip)."""
         # Mock the site
         mock_site_class.return_value = self.test_site
-        
+
         # Mock page title (production page)
         mock_get_title.return_value = "Production_Page"
-        
+
         # Call the function
         result = approve_revision(
             revid=self.test_revid,
             comment=self.test_comment,
             unapprove=False
         )
-        
+
         # Assertions
         self.assertEqual(result['result'], 'success')
         self.assertTrue(result['dry_run'])
         self.assertIn('DRY-RUN: Would approve', result['message'])
-        
+
         # Verify API call was NOT made
         mock_request_class.assert_not_called()
 
@@ -111,27 +111,27 @@ class ApprovalUtilityTests(TestCase):
         """Test dry-run mode with test page (should proceed)."""
         # Mock the site
         mock_site_class.return_value = self.test_site
-        
+
         # Mock page title (test page)
         mock_get_title.return_value = "Merkityt_versiot_-kokeilu/Test_Page"
-        
+
         # Mock the API request
         mock_request = Mock()
         mock_request.submit.return_value = {'review': {'result': 'success'}}
         mock_request_class.return_value = mock_request
-        
+
         # Call the function
         result = approve_revision(
             revid=self.test_revid,
             comment=self.test_comment,
             unapprove=False
         )
-        
+
         # Assertions
         self.assertEqual(result['result'], 'success')
         self.assertFalse(result['dry_run'])
         self.assertIn('Successfully approved', result['message'])
-        
+
         # Verify API call was made
         mock_request_class.assert_called_once()
 
@@ -142,12 +142,12 @@ class ApprovalUtilityTests(TestCase):
         """Test approval with custom value parameter."""
         # Mock the site
         mock_site_class.return_value = self.test_site
-        
+
         # Mock the API request
         mock_request = Mock()
         mock_request.submit.return_value = {'review': {'result': 'success'}}
         mock_request_class.return_value = mock_request
-        
+
         # Call the function with value
         result = approve_revision(
             revid=self.test_revid,
@@ -155,10 +155,10 @@ class ApprovalUtilityTests(TestCase):
             value=1,
             unapprove=False
         )
-        
+
         # Assertions
         self.assertEqual(result['result'], 'success')
-        
+
         # Verify API call was made with value parameter
         mock_request_class.assert_called_once()
         call_args = mock_request_class.call_args
@@ -171,7 +171,7 @@ class ApprovalUtilityTests(TestCase):
         """Test handling of API errors."""
         # Mock the site
         mock_site_class.return_value = self.test_site
-        
+
         # Mock API error response
         mock_request = Mock()
         mock_request.submit.return_value = {
@@ -181,14 +181,14 @@ class ApprovalUtilityTests(TestCase):
             }
         }
         mock_request_class.return_value = mock_request
-        
+
         # Call the function
         result = approve_revision(
             revid=self.test_revid,
             comment=self.test_comment,
             unapprove=False
         )
-        
+
         # Assertions
         self.assertEqual(result['result'], 'error')
         self.assertIn('Failed to approve', result['message'])
@@ -199,14 +199,14 @@ class ApprovalUtilityTests(TestCase):
         """Test handling of exceptions."""
         # Mock the site to raise an exception
         mock_site_class.side_effect = Exception("Connection error")
-        
+
         # Call the function
         result = approve_revision(
             revid=self.test_revid,
             comment=self.test_comment,
             unapprove=False
         )
-        
+
         # Assertions
         self.assertEqual(result['result'], 'error')
         self.assertIn('Error approving', result['message'])
@@ -227,10 +227,10 @@ class ApprovalUtilityTests(TestCase):
             }
         }
         mock_request_class.return_value = mock_request
-        
+
         # Call the function
         title = _get_page_title_from_revid(self.test_site, self.test_revid)
-        
+
         # Assertions
         self.assertEqual(title, 'Test_Page')
         mock_request_class.assert_called_once()
@@ -242,10 +242,10 @@ class ApprovalUtilityTests(TestCase):
         mock_request = Mock()
         mock_request.submit.return_value = {'query': {'pages': {}}}
         mock_request_class.return_value = mock_request
-        
+
         # Call the function
         title = _get_page_title_from_revid(self.test_site, self.test_revid)
-        
+
         # Assertions
         self.assertIsNone(title)
 
@@ -256,10 +256,10 @@ class ApprovalUtilityTests(TestCase):
         mock_request = Mock()
         mock_request.submit.side_effect = Exception("API error")
         mock_request_class.return_value = mock_request
-        
+
         # Call the function
         title = _get_page_title_from_revid(self.test_site, self.test_revid)
-        
+
         # Assertions
         self.assertIsNone(title)
 
