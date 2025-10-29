@@ -43,7 +43,7 @@ def check_revert_detection(context: CheckContext) -> dict[str, Any]:
     
     if not any(tag in change_tags for tag in revert_tags):
         return {
-            "status": "skip", 
+            "status": "skip",
             "message": "No revert tags found",
             "metadata": {"change_tags": change_tags}
         }
