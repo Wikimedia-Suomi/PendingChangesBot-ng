@@ -1708,8 +1708,8 @@ def word_annotation_page(request: HttpRequest) -> HttpResponse:
 
 @require_GET
 def api_get_revisions(request: HttpRequest) -> JsonResponse:
-    """Get list of revisions for a page."""
-    from .models import PendingPage, PendingRevision
+    """Get list of revisions for a page that have word annotations."""
+    from .models import PendingPage, WordAnnotation
 
     page_id = request.GET.get("page_id")
     if not page_id:
@@ -1720,17 +1720,30 @@ def api_get_revisions(request: HttpRequest) -> JsonResponse:
     except PendingPage.DoesNotExist:
         return JsonResponse({"error": "Page not found"}, status=404)
 
-    revisions = PendingRevision.objects.filter(page=page).order_by("-timestamp")
+    # Get only revisions that have word annotations
+    annotations = (
+        WordAnnotation.objects.filter(page=page)
+        .values("revision_id")
+        .distinct()
+        .order_by("-revision_id")
+    )
 
-    data = [
-        {
-            "revision_id": rev.revid,
-            "timestamp": rev.timestamp.isoformat() if rev.timestamp else None,
-            "user": rev.user_name,
-            "comment": rev.comment or "",
-        }
-        for rev in revisions[:100]  # Limit to 100 latest revisions
-    ]
+    # Fetch revision details for each annotated revision
+    data = []
+    for ann in annotations[:100]:  # Limit to 100 latest revisions
+        revision_id = ann["revision_id"]
+        # Get word count for this revision
+        word_count = WordAnnotation.objects.filter(
+            page=page, revision_id=revision_id
+        ).count()
+        
+        data.append({
+            "revision_id": revision_id,
+            "word_count": word_count,
+            "timestamp": None,  # Could fetch from PendingRevision if needed
+            "user": None,
+            "comment": f"{word_count} words annotated",
+        })
 
     return JsonResponse({"revisions": data})
 
