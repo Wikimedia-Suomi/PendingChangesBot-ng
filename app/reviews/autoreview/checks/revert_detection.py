@@ -27,25 +27,21 @@ def check_revert_detection(context: CheckContext) -> dict[str, Any]:
         Dict with check result including status, message, and metadata
     """
     # Check if revert detection is enabled
-    if not getattr(settings, 'ENABLE_REVERT_DETECTION', True):
-        return {
-            "status": "skip",
-            "message": "Revert detection is disabled",
-            "metadata": {}
-        }
+    if not getattr(settings, "ENABLE_REVERT_DETECTION", True):
+        return {"status": "skip", "message": "Revert detection is disabled", "metadata": {}}
 
     revision = context.revision
     page = revision.page
 
     # Check for revert tags
     revert_tags = {"mw-manual-revert", "mw-reverted", "mw-rollback", "mw-undo"}
-    change_tags = getattr(revision, 'change_tags', [])
+    change_tags = getattr(revision, "change_tags", [])
 
     if not any(tag in change_tags for tag in revert_tags):
         return {
             "status": "skip",
             "message": "No revert tags found",
-            "metadata": {"change_tags": change_tags}
+            "metadata": {"change_tags": change_tags},
         }
 
     # Parse change tag parameters to get reverted revision IDs
@@ -54,26 +50,23 @@ def check_revert_detection(context: CheckContext) -> dict[str, Any]:
         return {
             "status": "skip",
             "message": "No reverted revision IDs found in change tags",
-            "metadata": {"change_tags": change_tags}
+            "metadata": {"change_tags": change_tags},
         }
 
     # Check if any of the reverted revisions were previously reviewed
-    reviewed_revisions = _find_reviewed_revisions_by_sha1(
-        context.client, page, reverted_rev_ids
-    )
+    reviewed_revisions = _find_reviewed_revisions_by_sha1(context.client, page, reverted_rev_ids)
 
     if reviewed_revisions:
         return {
             "status": "approve",
             "message": (
-                "Revert to previously reviewed content (SHA1: "
-                f"{reviewed_revisions[0]['sha1']})"
+                f"Revert to previously reviewed content (SHA1: {reviewed_revisions[0]['sha1']})"
             ),
             "metadata": {
                 "reverted_rev_ids": reverted_rev_ids,
                 "reviewed_revisions": reviewed_revisions,
-                "revert_tags": [tag for tag in change_tags if tag in revert_tags]
-            }
+                "revert_tags": [tag for tag in change_tags if tag in revert_tags],
+            },
         }
 
     return {
@@ -81,8 +74,8 @@ def check_revert_detection(context: CheckContext) -> dict[str, Any]:
         "message": "Revert detected but no previously reviewed content found",
         "metadata": {
             "reverted_rev_ids": reverted_rev_ids,
-            "revert_tags": [tag for tag in change_tags if tag in revert_tags]
-        }
+            "revert_tags": [tag for tag in change_tags if tag in revert_tags],
+        },
     }
 
 
@@ -98,7 +91,7 @@ def _parse_revert_params(revision) -> list[int]:
     """
     try:
         # Get change tag parameters from revision
-        change_tag_params = getattr(revision, 'change_tag_params', [])
+        change_tag_params = getattr(revision, "change_tag_params", [])
         if not change_tag_params:
             return []
 
@@ -110,12 +103,12 @@ def _parse_revert_params(revision) -> list[int]:
                 param_data = json.loads(param_str)
 
                 # Extract reverted revision IDs
-                if 'oldestRevertedRevId' in param_data:
-                    reverted_ids.append(param_data['oldestRevertedRevId'])
-                if 'newestRevertedRevId' in param_data:
-                    reverted_ids.append(param_data['newestRevertedRevId'])
-                if 'originalRevisionId' in param_data:
-                    reverted_ids.append(param_data['originalRevisionId'])
+                if "oldestRevertedRevId" in param_data:
+                    reverted_ids.append(param_data["oldestRevertedRevId"])
+                if "newestRevertedRevId" in param_data:
+                    reverted_ids.append(param_data["newestRevertedRevId"])
+                if "originalRevisionId" in param_data:
+                    reverted_ids.append(param_data["originalRevisionId"])
 
             except (json.JSONDecodeError, KeyError) as e:
                 logger.warning(f"Failed to parse change tag param: {param_str}, error: {e}")
@@ -128,9 +121,7 @@ def _parse_revert_params(revision) -> list[int]:
         return []
 
 
-def _find_reviewed_revisions_by_sha1(
-    client, page, reverted_rev_ids: list[int]
-) -> list[dict]:
+def _find_reviewed_revisions_by_sha1(client, page, reverted_rev_ids: list[int]) -> list[dict]:
     """
     Find previously reviewed revisions by SHA1 content hash.
 
@@ -174,19 +165,22 @@ def _find_reviewed_revisions_by_sha1(
 
         # Execute query using SupersetQuery
         from pywikibot.data.superset import SupersetQuery
+
         superset = SupersetQuery(site=client.site)
         results = superset.query(sql_query)
 
         # Filter results where content was previously reviewed
         reviewed_revisions = []
         for result in results:
-            if result.get('max_old_reviewed_id') is not None:
-                reviewed_revisions.append({
-                    'sha1': result.get('content_sha1'),
-                    'max_reviewed_id': result.get('max_old_reviewed_id'),
-                    'max_reviewable_id': result.get('max_reviewable_rev_id_by_sha1'),
-                    'page_id': result.get('rev_page')
-                })
+            if result.get("max_old_reviewed_id") is not None:
+                reviewed_revisions.append(
+                    {
+                        "sha1": result.get("content_sha1"),
+                        "max_reviewed_id": result.get("max_old_reviewed_id"),
+                        "max_reviewable_id": result.get("max_reviewable_rev_id_by_sha1"),
+                        "page_id": result.get("rev_page"),
+                    }
+                )
 
         return reviewed_revisions
 
