@@ -145,11 +145,11 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 OAUTH_ENABLED = os.getenv("OAUTH_ENABLED", "False").lower() == "true"
 
 # MediaWiki OAuth 1.0a settings
-# For development: use meta.wikimedia.beta.wmflabs.org
+# For development: use meta.wikimedia.org (beta is often blocked)
 # For production: use meta.wikimedia.org
 SOCIAL_AUTH_MEDIAWIKI_URL = os.getenv(
     "SOCIAL_AUTH_MEDIAWIKI_URL",
-    "https://meta.wikimedia.beta.wmflabs.org/w/index.php"
+    "https://meta.wikimedia.org/w/index.php"
 )
 SOCIAL_AUTH_MEDIAWIKI_KEY = os.getenv("SOCIAL_AUTH_MEDIAWIKI_KEY", "")
 SOCIAL_AUTH_MEDIAWIKI_SECRET = os.getenv("SOCIAL_AUTH_MEDIAWIKI_SECRET", "")

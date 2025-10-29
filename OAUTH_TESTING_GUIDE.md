@@ -1,28 +1,30 @@
-# OAuth Testing Guide for PR #117
-
 ## Important Note
-Beta.wmflabs.org is often down or blocks IPs. Use **production Meta** for OAuth consumer registration - it works fine for local development testing!
+I found that beta.wmflabs.org is often down or blocks IPs, so I switched to using production Meta (meta.wikimedia.org) for OAuth consumer registration instead.
 
 ## Step 1: Register OAuth Consumer on Production Meta
 
-1. **Go to**: https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose
-2. **Login** to Wikimedia if needed
-3. **Fill out the form**:
-   - **OAuth version**: OAuth 1.0a ⚠️ (NOT 2.0 - Pywikibot doesn't support it)
-   - **Application name**: PendingChangesBot-ng Development
-   - **Application description**: Local development testing of OAuth login for PendingChangesBot-ng
-   - **Application version**: 0.1.0
-   - **OAuth "callback" URL**: `http://127.0.0.1:8000/oauth/complete/mediawiki/` ⚠️ (trailing slash is CRITICAL!)
-   - **Allow consumer to specify a callback**: ✓ (check this box)
-   - **Applicable grants**: Select "User identity verification only" (basic auth for now)
-   - **Public RSA key**: Leave blank (not needed for OAuth 1.0a)
-   - **Contact email**: Your email address
-4. **Submit** the proposal
-5. **Copy** the **Consumer token** (key) and **Consumer secret token** - you'll need these!
+1. Go to https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose
+2. Login to Wikimedia if you haven't already
+3. Select "Propose new OAuth 1.0a consumer" (Pywikibot doesn't support OAuth 2.0 yet)
+4. Fill out the registration form:
+   - Application name: PendingChangesBot-ng Development
+   - Application description: Local development testing of OAuth login for PendingChangesBot-ng
+   - Application version: 0.1.0
+   - OAuth callback URL: `http://127.0.0.1:8000/` (just the base URL)
+   - Make sure to check: "Allow consumer to specify a callback in requests and use 'callback' URL above as a required prefix"
+   - Applicable grants: Select "User identity verification only"
+   - Public RSA key: Leave this blank
+   - Contact email: Your email address
+5. Submit the proposal
+6. You'll see a confirmation page saying "Your OAuth consumer has been created and is ready to use"
+7. Save the credentials you receive:
+   - Consumer token: Something like `ef713d806fa7c02a1b9bd15252fb0ffa`
+   - Secret token: Something like `c3d97b740f96fcb1e06d368687ee23a3bebbe08f`
+   - Keep these safe - you'll need them for testing!
 
-## Step 2: Configure Environment Variables
+## Step 2: Set Up Environment Variables
 
-Open a new terminal and export these variables (replace with your actual tokens):
+Open your terminal and set these environment variables (replace with your actual credentials):
 
 ```bash
 export OAUTH_ENABLED=true
@@ -31,36 +33,36 @@ export SOCIAL_AUTH_MEDIAWIKI_SECRET=your_consumer_secret_here
 export SOCIAL_AUTH_MEDIAWIKI_URL=https://meta.wikimedia.org/w/index.php
 ```
 
-**Note**: These will only persist in the current terminal session. For permanent setup, add them to your `~/.zshrc` or create an `app/.env` file.
+Note: These only last for your current terminal session. For a more permanent setup, you can add them to your `~/.zshrc` file or create an `app/.env` file.
 
-## Step 3: Start the Development Server
+## Step 3: Start the Server
 
 ```bash
 cd app
 python3 manage.py runserver
 ```
 
-The server should start with OAuth enabled.
+If everything's configured correctly, the server should start up with OAuth enabled.
 
-## Step 4: Test OAuth Login Flow
+## Step 4: Test the OAuth Login
 
-1. **Open browser** to: http://127.0.0.1:8000/
-2. You should see a **"Login with Wikimedia"** button in the top right corner
-3. **Click the button** - you'll be redirected to meta.wikimedia.org
-4. **Authorize the application** on the Wikimedia OAuth page
-5. You should be **redirected back** to http://127.0.0.1:8000/
-6. You should now see **your username** and a **"Logout"** button instead of "Login"
+1. Open http://127.0.0.1:8000/ in your browser
+2. You should see a "Login with Wikimedia" button in the top right corner
+3. Click the button and you'll be redirected to meta.wikimedia.org
+4. Authorize the application on Wikimedia's OAuth page
+5. You should get redirected back to http://127.0.0.1:8000/
+6. After successful login, you should see your username and a "Logout" button instead of the login button
 
-## Step 5: Verify OAuth Token Storage
+## Step 5: Verify the OAuth Tokens Are Stored
 
-Open Django shell:
+Open the Django shell to check if everything was saved correctly:
 
 ```bash
 cd app
 python3 manage.py shell
 ```
 
-Check the stored OAuth data:
+Then run this code to check the stored OAuth data:
 
 ```python
 from django.contrib.auth.models import User
@@ -85,7 +87,7 @@ if 'access_token' in social_auth.extra_data:
     print(f"Has oauth_token: {'oauth_token' in access_token}")
     print(f"Has oauth_token_secret: {'oauth_token_secret' in access_token}")
 else:
-    print("\n⚠️ WARNING: No access_token found in extra_data!")
+    print("\nWARNING: No access_token found in extra_data!")
 ```
 
 Expected output:
@@ -104,107 +106,53 @@ Has oauth_token_secret: True
 
 ## Step 6: Test Pywikibot Integration
 
-In the same Django shell:
+While still in the Django shell, test if Pywikibot can use the OAuth credentials:
 
 ```python
 from reviews.views import configure_pywikibot_oauth
 
-# Try configuring Pywikibot with OAuth credentials
+# Try configuring Pywikibot with the OAuth credentials
 try:
     site = configure_pywikibot_oauth(user, 'meta.wikimedia.org')
-    print(f"\n✅ SUCCESS!")
+    print(f"\nSuccess! Pywikibot is working with OAuth")
     print(f"Site family: {site.family}")
     print(f"Site code: {site.code}")
     print(f"Logged in as: {site.username()}")
 except Exception as e:
-    print(f"\n❌ ERROR: {e}")
+    print(f"\nError: {e}")
 ```
 
-Expected output:
+If everything works, you should see:
 ```
-✅ SUCCESS!
+Success! Pywikibot is working with OAuth
 Site family: meta
 Site code: meta
 Logged in as: YourWikimediaUsername
 ```
 
-Type `exit()` to leave the shell.
+Type `exit()` when you're done.
 
 ## Step 7: Test Logout
 
-1. Go back to http://127.0.0.1:8000/
-2. Click the **"Logout"** button
-3. You should see the **"Login with Wikimedia"** button again
-4. User session should be cleared
+1. Go back to http://127.0.0.1:8000/ in your browser
+2. Click the "Logout" button
+3. You should see the "Login with Wikimedia" button appear again
+4. The user session should be cleared
 
-## Expected Test Results Checklist
+## What Should Work When Testing Is Complete
 
-- ✅ OAuth consumer registered successfully on meta.wikimedia.org
-- ✅ Environment variables set correctly
-- ✅ Server starts without errors with OAUTH_ENABLED=true
-- ✅ Login button appears when not authenticated
-- ✅ Clicking login redirects to Wikimedia OAuth page
-- ✅ Authorization succeeds and redirects back to app
-- ✅ Username and logout button displayed after login
-- ✅ User record created in database
-- ✅ UserSocialAuth record created with provider='mediawiki'
-- ✅ OAuth tokens (oauth_token, oauth_token_secret) stored in extra_data
-- ✅ `configure_pywikibot_oauth()` successfully authenticates with Pywikibot
-- ✅ Pywikibot can access user's identity
-- ✅ Logout works and clears session
+Here's what we're expecting to see when everything's working:
 
-## Common Issues & Solutions
-
-### Issue: Login button redirects but then fails silently
-**Solution**: Check callback URL has trailing slash: `http://127.0.0.1:8000/oauth/complete/mediawiki/`
-
-### Issue: Error about user groups (T353593)
-**Solution**: Verify `SOCIAL_AUTH_PROTECTED_USER_FIELDS = ['groups']` is in `app/reviewer/settings.py`
-
-### Issue: Pywikibot can't authenticate
-**Solution**: 
-- Check OAuth tokens exist: `social_auth.extra_data['access_token']`
-- Verify consumer key/secret match what you registered
-- Check wiki_domain format matches the wiki you're authenticating to
-
-### Issue: "NoUsernameError" in Pywikibot
-**Solution**: The OAuth consumer might not have been approved yet, or tokens are invalid
-
-### Issue: Beta.wmflabs.org is blocked/down
-**Solution**: Use production meta.wikimedia.org instead (works fine for local dev!)
-
-## Cleanup After Testing
-
-Stop the server:
-```bash
-# In the terminal running the server
-CTRL+C
-```
-
-Clear test data (optional):
-```bash
-cd app
-python3 manage.py shell
-```
-
-```python
-from django.contrib.auth.models import User
-User.objects.all().delete()
-exit()
-```
-
-Unset environment variables:
-```bash
-unset OAUTH_ENABLED
-unset SOCIAL_AUTH_MEDIAWIKI_KEY
-unset SOCIAL_AUTH_MEDIAWIKI_SECRET
-unset SOCIAL_AUTH_MEDIAWIKI_URL
-```
-
-## Next Steps After Successful Testing
-
-1. Document any issues in the PR
-2. Commit and push the OAuth implementation
-3. Update PR description with testing notes
-4. Consider adding automated tests for OAuth flow
-5. Document OAuth setup in main docs/AUTHENTICATION.md
+- OAuth consumer registered on meta.wikimedia.org
+- Environment variables configured properly
+- Server starts without any errors when OAUTH_ENABLED is true
+- Login button appears when you're not logged in
+- Clicking login redirects you to Wikimedia's OAuth authorization page
+- After authorizing, you get redirected back to the app
+- Your username and logout button show up after login
+- User record gets created in the database
+- UserSocialAuth record is created with provider='mediawiki'
+- OAuth tokens (oauth_token and oauth_token_secret) are stored in extra_data
+- The `configure_pywikibot_oauth()` function successfully authenticates with Pywikibot
+- Pywikibot can access the user's identity
+- Logout works and clears the session
