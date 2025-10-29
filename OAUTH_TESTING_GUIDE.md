@@ -1,41 +1,72 @@
-## Important Note
-I found that beta.wmflabs.org is often down or blocks IPs, so I switched to using production Meta (meta.wikimedia.org) for OAuth consumer registration instead.
+## Testing Status (Updated with Maintainer Guidance)
 
-## Step 1: Register OAuth Consumer on Production Meta
+**Update from @zache-fi:** Use **meta.wikimedia.beta.wmcloud.org** for local testing. This doesn't work for Superset queries, but OAuth registration and approval can be done there. Note that beta cloud doesn't use Wikimedia's unified login, so you need to register a separate account there.
 
-1. Go to https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose
-2. Login to Wikimedia if you haven't already
+**What's Working:**
+- Django Social Auth integrated with MediaWiki OAuth 1.0a backend 
+- Login/logout UI implemented 
+- `configure_pywikibot_oauth()` helper function ready 
+- Environment variable toggle (`OAUTH_ENABLED`) working 
+
+**Known Issues:**
+- Testing on localhost requires beta cloud registration (see instructions below)
+- Beta cloud requires separate account registration
+
+## Step 1: Register Account on Beta Cloud
+
+1. Go to https://meta.wikimedia.beta.wmcloud.org
+2. Click "Create account" (this is separate from your main Wikimedia account)
+3. Register with username, password, email
+4. Verify your email if required
+
+## Step 2: Register OAuth Consumer on Beta Cloud
+
+1. Go to https://meta.wikimedia.beta.wmcloud.org/wiki/Special:OAuthConsumerRegistration/propose
+2. Login with your beta cloud account
 3. Select "Propose new OAuth 1.0a consumer" (Pywikibot doesn't support OAuth 2.0 yet)
 4. Fill out the registration form:
-   - Application name: PendingChangesBot-ng Development
-   - Application description: Local development testing of OAuth login for PendingChangesBot-ng
-   - Application version: 0.1.0
-   - OAuth callback URL: `http://127.0.0.1:8000/` (just the base URL)
-   - Make sure to check: "Allow consumer to specify a callback in requests and use 'callback' URL above as a required prefix"
-   - Applicable grants: Select "User identity verification only"
-   - Public RSA key: Leave this blank
-   - Contact email: Your email address
+   - **Application name:** PendingChangesBot test
+   - **Consumer version:** 1.0
+   - **Application description:** PendingChangesBot is FlaggedRevs automatic review bot (https://github.com/Wikimedia-Suomi/PendingChangesBot-ng)
+   - **OAuth callback URL:** `http://127.0.0.1:8000/`
+   - **Check this box:** "Allow consumer to specify a callback in requests and use 'callback' URL above as a required prefix"
+   - **Contact email:** Your email address
+   - **Applicable project:** `*` (all projects)
+   - **Types of grants:** "Request authorization for specific permissions"
+   - **Applicable grants:**
+     - Edit existing pages
+     - Create, edit, and move pages
+     - Patrol changes to pages
+     - Rollback changes to pages
 5. Submit the proposal
-6. You'll see a confirmation page saying "Your OAuth consumer has been created and is ready to use"
-7. Save the credentials you receive:
-   - Consumer token: Something like `ef713d806fa7c02a1b9bd15252fb0ffa`
-   - Secret token: Something like `c3d97b740f96fcb1e06d368687ee23a3bebbe08f`
-   - Keep these safe - you'll need them for testing!
+6. Save the credentials you receive:
+   - **Consumer token:** e.g., `ef713d806fa7c02a1b9bd15252fb0ffa`
+   - **Secret token:** e.g., `c3d97b740f96fcb1e06d368687ee23a3bebbe08f`
 
-## Step 2: Set Up Environment Variables
+## Step 3: Set Up Environment Variables
 
-Open your terminal and set these environment variables (replace with your actual credentials):
+Based on maintainer's configuration, set these environment variables (replace with your actual credentials from Step 2):
 
 ```bash
 export OAUTH_ENABLED=true
 export SOCIAL_AUTH_MEDIAWIKI_KEY=your_consumer_token_here
 export SOCIAL_AUTH_MEDIAWIKI_SECRET=your_consumer_secret_here
-export SOCIAL_AUTH_MEDIAWIKI_URL=https://meta.wikimedia.org/w/index.php
+export SOCIAL_AUTH_MEDIAWIKI_URL=https://meta.wikimedia.beta.wmcloud.org/w/index.php
+export SOCIAL_AUTH_MEDIAWIKI_CALLBACK=http://127.0.0.1:8000/oauth/complete/mediawiki/
+```
+
+**Example (using dummy tokens):**
+```bash
+export OAUTH_ENABLED=true
+export SOCIAL_AUTH_MEDIAWIKI_KEY=ef713d806fa7c02a1b9bd15252fb0ffa
+export SOCIAL_AUTH_MEDIAWIKI_SECRET=c3d97b740f96fcb1e06d368687ee23a3bebbe08f
+export SOCIAL_AUTH_MEDIAWIKI_URL=https://meta.wikimedia.beta.wmcloud.org/w/index.php
+export SOCIAL_AUTH_MEDIAWIKI_CALLBACK=http://127.0.0.1:8000/oauth/complete/mediawiki/
 ```
 
 Note: These only last for your current terminal session. For a more permanent setup, you can add them to your `~/.zshrc` file or create an `app/.env` file.
 
-## Step 3: Start the Server
+## Step 4: Start the Server
 
 ```bash
 cd app
@@ -44,16 +75,19 @@ python3 manage.py runserver
 
 If everything's configured correctly, the server should start up with OAuth enabled.
 
-## Step 4: Test the OAuth Login
+## Step 5: Test the OAuth Login
 
 1. Open http://127.0.0.1:8000/ in your browser
 2. You should see a "Login with Wikimedia" button in the top right corner
-3. Click the button and you'll be redirected to meta.wikimedia.org
-4. Authorize the application on Wikimedia's OAuth page
-5. You should get redirected back to http://127.0.0.1:8000/
-6. After successful login, you should see your username and a "Logout" button instead of the login button
+3. Click the button and you'll be redirected to meta.wikimedia.beta.wmcloud.org
+4. Login with your **beta cloud account** (not your regular Wikimedia account)
+5. Authorize the application on the OAuth page
+6. You should get redirected back to http://127.0.0.1:8000/
+7. After successful login, you should see your username and a "Logout" button instead of the login button
 
-## Step 5: Verify the OAuth Tokens Are Stored
+**Important:** Make sure you're using your beta cloud credentials, not your main Wikimedia account!
+
+## Step 6: Verify the OAuth Tokens Are Stored
 
 Open the Django shell to check if everything was saved correctly:
 
