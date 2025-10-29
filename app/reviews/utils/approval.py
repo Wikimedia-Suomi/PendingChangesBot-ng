@@ -37,11 +37,14 @@ def approve_revision(revid, comment, value=None, unapprove=False):
             page_title = _get_page_title_from_revid(site, revid)
             
             if page_title and not page_title.startswith('Merkityt_versiot_-kokeilu/'):
-                logger.info(f"DRY-RUN: Would {'unapprove' if unapprove else 'approve'} revision {revid} on {page_title}")
+                action = 'unapprove' if unapprove else 'approve'
+                logger.info(
+                    "DRY-RUN: Would %s revision %s on %s", action, revid, page_title
+                )
                 return {
                     'result': 'success',
                     'dry_run': True,
-                    'message': f"DRY-RUN: Would {'unapprove' if unapprove else 'approve'} revision {revid}"
+                    'message': f"DRY-RUN: Would {action} revision {revid}"
                 }
         
         # Prepare API request parameters
@@ -65,28 +68,31 @@ def approve_revision(revid, comment, value=None, unapprove=False):
         
         # Check if the request was successful
         if 'review' in result:
-            logger.info(f"Successfully {'unapproved' if unapprove else 'approved'} revision {revid}")
+            action_past = 'unapproved' if unapprove else 'approved'
+            logger.info("Successfully %s revision %s", action_past, revid)
             return {
                 'result': 'success',
                 'dry_run': False,
-                'message': f"Successfully {'unapproved' if unapprove else 'approved'} revision {revid}",
+                'message': f"Successfully {action_past} revision {revid}",
                 'api_response': result['review']
             }
         else:
-            logger.error(f"Failed to {'unapprove' if unapprove else 'approve'} revision {revid}: {result}")
+            action = 'unapprove' if unapprove else 'approve'
+            logger.error("Failed to %s revision %s: %s", action, revid, result)
             return {
                 'result': 'error',
                 'dry_run': False,
-                'message': f"Failed to {'unapprove' if unapprove else 'approve'} revision {revid}",
+                'message': f"Failed to {action} revision {revid}",
                 'api_response': result
             }
             
     except Exception as e:
-        logger.error(f"Error {'unapproving' if unapprove else 'approving'} revision {revid}: {str(e)}")
+        action_ing = 'unapproving' if unapprove else 'approving'
+        logger.error("Error %s revision %s: %s", action_ing, revid, e)
         return {
             'result': 'error',
             'dry_run': False,
-            'message': f"Error {'unapproving' if unapprove else 'approving'} revision {revid}: {str(e)}"
+            'message': f"Error {action_ing} revision {revid}: {e}"
         }
 
 
@@ -119,5 +125,5 @@ def _get_page_title_from_revid(site, revid):
         return None
         
     except Exception as e:
-        logger.error(f"Error getting page title for revision {revid}: {str(e)}")
+        logger.error("Error getting page title for revision %s: %s", revid, e)
         return None

@@ -174,7 +174,12 @@ class ApprovalUtilityTests(TestCase):
         
         # Mock API error response
         mock_request = Mock()
-        mock_request.submit.return_value = {'error': {'code': 'permissiondenied', 'info': 'Permission denied'}}
+        mock_request.submit.return_value = {
+            'error': {
+                'code': 'permissiondenied',
+                'info': 'Permission denied',
+            }
+        }
         mock_request_class.return_value = mock_request
         
         # Call the function
