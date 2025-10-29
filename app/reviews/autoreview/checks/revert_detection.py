@@ -65,7 +65,10 @@ def check_revert_detection(context: CheckContext) -> dict[str, Any]:
     if reviewed_revisions:
         return {
             "status": "approve",
-            "message": f"Revert to previously reviewed content (SHA1: {reviewed_revisions[0]['sha1']})",
+            "message": (
+                "Revert to previously reviewed content (SHA1: "
+                f"{reviewed_revisions[0]['sha1']})"
+            ),
             "metadata": {
                 "reverted_rev_ids": reverted_rev_ids,
                 "reviewed_revisions": reviewed_revisions,
@@ -86,10 +89,10 @@ def check_revert_detection(context: CheckContext) -> dict[str, Any]:
 def _parse_revert_params(revision) -> list[int]:
     """
     Parse change tag parameters to extract reverted revision IDs.
-    
+
     Args:
         revision: PendingRevision object
-        
+
     Returns:
         List of reverted revision IDs
     """
