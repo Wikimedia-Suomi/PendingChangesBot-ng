@@ -258,7 +258,22 @@
                       <option value="last_6_months">Last 6 Months</option>
                       <option value="last_3_months">Last 3 Months</option>
                       <option value="last_month">Last Month</option>
+                      <option value="select_year">Select Year</option>
                       <option value="custom">Custom Range</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Year Selection (only shown when Select Year is selected) -->
+            <div class="column is-narrow" v-if="state.timePeriod === 'select_year'">
+              <div class="field">
+                <label class="label is-small">Select Year</label>
+                <div class="control">
+                  <div class="select is-small">
+                    <select v-model="state.selectedYear" @change="updateUrl">
+                      <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
                     </select>
                   </div>
                 </div>
@@ -300,7 +315,7 @@
                 <label class="label is-small">Resolution</label>
                 <div class="control">
                   <div class="select is-small">
-                    <select v-model="state.dataResolution" @change="updateUrl">
+                    <select v-model="state.dataResolution" @change="updateUrl" :disabled="state.timePeriod === 'select_year'">
                       <option value="yearly">Yearly</option>
                       <option value="monthly">Monthly</option>
                       <option value="daily">Daily</option>

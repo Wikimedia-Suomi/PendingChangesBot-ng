@@ -55,9 +55,10 @@ createApp({
       yearMonthChart: null, // Chart instance for YearMonth mode
 
       // Time period selection (default = full data)
-      timePeriod: 'all', // 'all', 'custom', 'last_year', 'last_6_months', 'last_3_months', 'last_month'
+      timePeriod: 'all', // 'all', 'custom', 'last_year', 'last_6_months', 'last_3_months', 'last_month', 'select_year'
       startDate: null, // Custom start date (YYYY-MM-DD format)
       endDate: null, // Custom end date (YYYY-MM-DD format)
+      selectedYear: null, // Selected year for 'select_year' time period
 
       // Data resolution selection
       dataResolution: 'yearly', // 'yearly', 'monthly', 'daily'
@@ -71,6 +72,15 @@ createApp({
 
     // Computed properties
     const availableWikis = computed(() => AVAILABLE_WIKIS);
+
+    const availableYears = computed(() => {
+      const currentYear = new Date().getFullYear();
+      const years = [];
+      for (let year = 2010; year <= currentYear; year++) {
+        years.push(year);
+      }
+      return years.reverse(); // Most recent year first
+    });
 
     const filteredTableData = computed(() => {
       return state.tableData.filter(entry => {
@@ -565,7 +575,8 @@ createApp({
       return state.dataResolution === 'monthly' &&
              (state.timePeriod === 'last_year' ||
               state.timePeriod === 'last_6_months' ||
-              state.timePeriod === 'last_3_months');
+              state.timePeriod === 'last_3_months' ||
+              state.timePeriod === 'select_year');
     }
 
     // Get series label for display
@@ -1077,6 +1088,11 @@ createApp({
                         }
 
                         return '';
+                      }
+
+                      // For select_year, show month names (Jan, Feb, etc.)
+                      if (state.timePeriod === 'select_year') {
+                        return formatMonthLabel(`${year}-${month}`);
                       }
 
                       // For preset time periods (last_year, last_6_months, etc.), show year-month format
@@ -1911,6 +1927,11 @@ createApp({
                       return '';
                     }
 
+                    // For select_year, show month names (Jan, Feb, etc.)
+                    if (state.timePeriod === 'select_year') {
+                      return formatMonthLabel(`${year}-${month}`);
+                    }
+
                     // For preset time periods (last_year, last_6_months, etc.), show year-month format
                     const totalTicks = ticks.length;
 
@@ -2321,6 +2342,17 @@ createApp({
             state.endDate = today.toISOString().split('T')[0];
           }
           break;
+        case 'select_year':
+          // If selectedYear is not set, default to current year
+          if (!state.selectedYear) {
+            state.selectedYear = today.getFullYear();
+          }
+          const year = state.selectedYear;
+          state.startDate = `${year}-01-01`;
+          state.endDate = `${year}-12-31`;
+          // Auto-set resolution to monthly for selected year
+          state.dataResolution = 'monthly';
+          break;
       }
       updateUrl();
       loadData();
@@ -2372,6 +2404,9 @@ createApp({
       // Handle time period
       if (state.timePeriod && state.timePeriod !== 'all') {
         params.set('time_period', state.timePeriod);
+      }
+      if (state.timePeriod === 'select_year' && state.selectedYear) {
+        params.set('selected_year', state.selectedYear.toString());
       }
       if (state.startDate) {
         params.set('start_date', state.startDate);
@@ -2464,6 +2499,13 @@ createApp({
       if (timePeriodParam) {
         state.timePeriod = timePeriodParam;
       }
+      const selectedYearParam = params.get('selected_year');
+      if (selectedYearParam && state.timePeriod === 'select_year') {
+        const year = parseInt(selectedYearParam);
+        if (year >= 2010 && year <= new Date().getFullYear()) {
+          state.selectedYear = year;
+        }
+      }
       const startDateParam = params.get('start_date');
       if (startDateParam) {
         state.startDate = startDateParam;
@@ -2529,9 +2571,20 @@ createApp({
       }, 100);
     });
 
+    // Watch for selected year changes
+    watch(() => state.selectedYear, () => {
+      if (state.timePeriod === 'select_year') {
+        handleTimePeriodChange();
+      }
+    });
+
     // Watch for time period changes
     watch(() => state.timePeriod, async () => {
       console.log('Time period changed to:', state.timePeriod);
+      if (state.timePeriod === 'select_year' && !state.selectedYear) {
+        // Default to current year if no year is selected
+        state.selectedYear = new Date().getFullYear();
+      }
       if (state.timePeriod !== 'custom') {
         handleTimePeriodChange();
         // handleTimePeriodChange already calls loadData(), so no need to call it again
@@ -2706,6 +2759,7 @@ createApp({
     return {
       state,
       availableWikis,
+      availableYears,
       availableMonths: computed(() => state.availableMonths),
       enabledSeries,
       isSingleMonthView,
