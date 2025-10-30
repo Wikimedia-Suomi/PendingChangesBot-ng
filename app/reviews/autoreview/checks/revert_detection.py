@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Revert detection check for already-reviewed edits.
 
@@ -9,9 +11,9 @@ import json
 import logging
 from typing import Any
 
+import reviews.autoreview as autoreview
 from django.conf import settings
 
-from .. import SupersetQuery
 from ..context import CheckContext
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,9 @@ def check_revert_detection(context: CheckContext) -> dict[str, Any]:
         }
 
     # Check if any of the reverted revisions were previously reviewed
-    reviewed_revisions = _find_reviewed_revisions_by_sha1(context.client, page, reverted_rev_ids)
+    reviewed_revisions = autoreview._find_reviewed_revisions_by_sha1(
+        context.client, page, reverted_rev_ids
+    )
 
     if reviewed_revisions:
         return {
@@ -96,7 +100,7 @@ def _parse_revert_params(revision) -> list[int]:
         if not change_tag_params:
             return []
 
-        reverted_ids = []
+        reverted_ids: list[int] = []
 
         for param_str in change_tag_params:
             try:
@@ -164,12 +168,12 @@ def _find_reviewed_revisions_by_sha1(client, page, reverted_rev_ids: list[int]) 
             "    rev_page, content_sha1\n"
         )
 
-        # Execute query using SupersetQuery (imported from reviews.autoreview for test patching)
-        superset = SupersetQuery(site=client.site)
+        # Execute query using SupersetQuery (resolved through package for test patching)
+        superset = autoreview.SupersetQuery(site=client.site)
         results = superset.query(sql_query)
 
         # Filter results where content was previously reviewed
-        reviewed_revisions = []
+        reviewed_revisions: list[dict] = []
         for result in results:
             if result.get("max_old_reviewed_id") is not None:
                 reviewed_revisions.append(
