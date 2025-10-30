@@ -19,6 +19,8 @@ class EditorProfile(models.Model):
     is_former_bot = models.BooleanField(default=False)
     is_autopatrolled = models.BooleanField(default=False)
     is_autoreviewed = models.BooleanField(default=False)
+    is_global_bot = models.BooleanField(default=False)
+    is_former_global_bot = models.BooleanField(default=False)
     fetched_at = models.DateTimeField(auto_now=True)
 
     class Meta:

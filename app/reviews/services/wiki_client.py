@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import pywikibot
@@ -41,6 +42,7 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
+    @lru_cache(maxsize=1000)
     def check_global_bot_user(self, username: str) -> tuple[bool, bool]:
         """Check if a user is a global bot using the efficient globaluserinfo API."""
         try:
@@ -48,11 +50,12 @@ class WikiClient:
             request = pywikibot.data.api.Request(
                 site=site,
                 parameters={
-                    "action": "query",
-                    "meta": "globaluserinfo",
-                    "guiuser": username,
-                    "guiprop": "groups",
-                },
+                    'action': 'query',
+                    'list': 'globalallusers',
+                    'agugroup': 'global-bot',
+                    'agulimit': 'max',
+                    'aguprop': 'groups|existslocally'
+                }
             )
             result = request.submit()
             user_info = result.get("query", {}).get("globaluserinfo", {})
