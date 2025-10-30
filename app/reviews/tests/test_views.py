@@ -414,8 +414,8 @@ class ViewTests(TestCase):
         self.assertEqual(result["tests"][0]["id"], "broken-wikicode")
         self.assertEqual(result["tests"][1]["status"], "ok")
         self.assertEqual(result["tests"][1]["id"], "manual-unapproval")
-        self.assertEqual(result["tests"][4]["status"], "ok")
-        self.assertEqual(result["tests"][4]["id"], "auto-approved-group")
+        self.assertEqual(result["tests"][5]["status"], "ok")
+        self.assertEqual(result["tests"][5]["id"], "auto-approved-group")
 
     @mock.patch("reviews.services.wiki_client.pywikibot.Site")
     def test_api_autoreview_defaults_to_profile_rights(self, mock_site):

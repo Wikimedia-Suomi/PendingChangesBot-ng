@@ -32,6 +32,7 @@ class AutoreviewTimingTests(TestCase):
         revision.superset_data = {}
         revision.parentid = None  # No parent revision
         revision.change_tags = []
+        revision.get_rendered_html.return_value = "<p>Test content</p>"
 
         mock_client = MagicMock()
         mock_profile = MagicMock()
@@ -75,6 +76,7 @@ class AutoreviewTimingTests(TestCase):
         revision.superset_data = {}
         revision.parentid = None
         revision.change_tags = []
+        revision.get_rendered_html.return_value = "<p>Test content</p>"
 
         mock_client = MagicMock()
         mock_client.has_manual_unapproval.return_value = False
@@ -116,6 +118,7 @@ class AutoreviewTimingTests(TestCase):
         revision.superset_data = {}
         revision.parentid = None
         revision.change_tags = []
+        revision.get_rendered_html.return_value = "<p>Test content</p>"
 
         mock_client = MagicMock()
         mock_profile = MagicMock()
@@ -160,6 +163,7 @@ class AutoreviewTimingTests(TestCase):
         revision.superset_data = {}
         revision.parentid = None
         revision.change_tags = []
+        revision.get_rendered_html.return_value = "<p>Test content</p>"
 
         mock_client = MagicMock()
         mock_client.has_manual_unapproval.return_value = False
