@@ -23,12 +23,15 @@ class AutoreviewTimingTests(TestCase):
 
         mock_page = MagicMock()
         mock_page.wiki = mock_wiki
+        mock_page.categories = []
 
         revision = MagicMock()
         revision.page = mock_page
         revision.user_name = "TestUser"
         revision.wikitext = "Some test content"
         revision.superset_data = {}
+        revision.parentid = None  # No parent revision
+        revision.change_tags = []
 
         mock_client = MagicMock()
         mock_profile = MagicMock()
@@ -63,12 +66,15 @@ class AutoreviewTimingTests(TestCase):
 
         mock_page = MagicMock()
         mock_page.wiki = mock_wiki
+        mock_page.categories = []
 
         revision = MagicMock()
         revision.page = mock_page
         revision.user_name = "TestUser"
         revision.wikitext = "Some test content"
         revision.superset_data = {}
+        revision.parentid = None
+        revision.change_tags = []
 
         mock_client = MagicMock()
         mock_client.has_manual_unapproval.return_value = False
@@ -101,12 +107,15 @@ class AutoreviewTimingTests(TestCase):
 
         mock_page = MagicMock()
         mock_page.wiki = mock_wiki
+        mock_page.categories = []
 
         revision = MagicMock()
         revision.page = mock_page
         revision.user_name = "TestUser"
         revision.wikitext = "Some test content"
         revision.superset_data = {}
+        revision.parentid = None
+        revision.change_tags = []
 
         mock_client = MagicMock()
         mock_profile = MagicMock()
@@ -149,6 +158,8 @@ class AutoreviewTimingTests(TestCase):
         revision.user_name = "BlockedUser"
         revision.wikitext = "Some content"
         revision.superset_data = {}
+        revision.parentid = None
+        revision.change_tags = []
 
         mock_client = MagicMock()
         mock_client.has_manual_unapproval.return_value = False

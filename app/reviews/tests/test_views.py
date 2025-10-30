@@ -409,7 +409,7 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 5)
+        self.assertEqual(len(result["tests"]), 6)  # Includes revert-detection check
         self.assertEqual(result["tests"][0]["status"], "ok")
         self.assertEqual(result["tests"][0]["id"], "broken-wikicode")
         self.assertEqual(result["tests"][1]["status"], "ok")
@@ -453,7 +453,7 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 6)
+        self.assertEqual(len(result["tests"]), 7)  # Includes revert-detection check
 
     @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.models.pending_revision.pywikibot.Site")
@@ -547,9 +547,9 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 7)
-        self.assertEqual(result["tests"][6]["status"], "fail")
-        self.assertEqual(result["tests"][6]["id"], "blocking-categories")
+        self.assertEqual(len(result["tests"]), 8)  # Includes revert-detection check
+        self.assertEqual(result["tests"][7]["status"], "fail")
+        self.assertEqual(result["tests"][7]["id"], "blocking-categories")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
