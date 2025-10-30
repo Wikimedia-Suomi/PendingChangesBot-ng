@@ -7,7 +7,6 @@ the approval workflow, including batch processing and statistics.
 import logging
 from collections import Counter
 from datetime import datetime
-from typing import Dict, List
 
 from .approval_comment import generate_approval_comment
 
@@ -15,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 def process_and_approve_revisions(
-    autoreview_results: List[Dict], comment_prefix: str = "", dry_run: bool = True
-) -> Dict:
+    autoreview_results: list[dict], comment_prefix: str = "", dry_run: bool = True
+) -> dict:
     """
     Process autoreview results and approve revisions with consolidated comment.
 
@@ -104,7 +103,7 @@ def process_and_approve_revisions(
         }
 
 
-def preview_approval_comment(autoreview_results: List[Dict], comment_prefix: str = "") -> Dict:
+def preview_approval_comment(autoreview_results: list[dict], comment_prefix: str = "") -> dict:
     """
     Preview approval comment without making any changes.
 
@@ -119,8 +118,8 @@ def preview_approval_comment(autoreview_results: List[Dict], comment_prefix: str
 
 
 def batch_process_pages(
-    pages_data: List[Dict], comment_prefix: str = "", dry_run: bool = True
-) -> Dict:
+    pages_data: list[dict], comment_prefix: str = "", dry_run: bool = True
+) -> dict:
     """
     Process multiple pages and their autoreview results in batch.
 
@@ -186,7 +185,7 @@ def batch_process_pages(
         }
 
 
-def get_approval_statistics(autoreview_results: List[Dict]) -> Dict:
+def get_approval_statistics(autoreview_results: list[dict]) -> dict:
     """
     Get comprehensive statistics about approval decisions.
 

@@ -7,7 +7,7 @@ by matching SHA1 content hashes and checking for revert tags.
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from django.conf import settings
 
@@ -16,7 +16,7 @@ from ..utils.ores import CheckContext
 logger = logging.getLogger(__name__)
 
 
-def check_revert_detection(context: CheckContext) -> Dict[str, Any]:
+def check_revert_detection(context: CheckContext) -> dict[str, Any]:
     """
     Check if a revision is a revert to previously reviewed content.
 
@@ -77,7 +77,7 @@ def check_revert_detection(context: CheckContext) -> Dict[str, Any]:
     }
 
 
-def _parse_revert_params(revision) -> List[int]:
+def _parse_revert_params(revision) -> list[int]:
     """
     Parse change tag parameters to extract reverted revision IDs.
 
@@ -119,7 +119,7 @@ def _parse_revert_params(revision) -> List[int]:
         return []
 
 
-def _find_reviewed_revisions_by_sha1(client, page, reverted_rev_ids: List[int]) -> List[Dict]:
+def _find_reviewed_revisions_by_sha1(client, page, reverted_rev_ids: list[int]) -> list[dict]:
     """
     Find previously reviewed revisions by SHA1 content hash.
 
@@ -140,10 +140,11 @@ def _find_reviewed_revisions_by_sha1(client, page, reverted_rev_ids: List[int]) 
 
     try:
         # Execute Superset query to find reviewed revisions by SHA1
-        # This follows @zache-fi's suggested SQL approach
-        revid_list = ",".join(str(revid) for revid in reverted_rev_ids)
+        # NOTE: The revision ids are validated to integers to avoid injection risk.
+        safe_ids = ",".join(str(int(r)) for r in sorted(set(reverted_rev_ids)))
 
-        sql_query = f"""
+        # noqa reason: S608 is suppressed because ids are validated ints and query is read-only
+        sql_query = f"""  
         SELECT 
             MAX(rev_id) as max_reviewable_rev_id_by_sha1, 
             rev_page, 
@@ -155,10 +156,10 @@ def _find_reviewed_revisions_by_sha1(client, page, reverted_rev_ids: List[int]) 
             JOIN slots ON slot_revision_id=rev_id
             JOIN content ON slot_content_id=content_id
         WHERE 
-            rev_id IN ({revid_list})
+            rev_id IN ({safe_ids})
         GROUP BY 
             rev_page, content_sha1
-        """
+        """  # noqa: S608
 
         # Execute query using SupersetQuery
         from pywikibot.data.superset import SupersetQuery
