@@ -304,7 +304,12 @@ def _build_revision_payload(revisions, wiki):
                     "is_bot": (
                         profile.is_bot
                         if profile
-                        else ("bot" in group_set or bool(superset_data.get("rc_bot")))
+                        else (
+                            "bot" in group_set
+                            or bool(superset_data.get("rc_bot"))
+                            or (profile.is_global_bot if profile else False)
+                            or (profile.is_former_global_bot if profile else False)
+                        )
                     ),
                     "is_autopatrolled": (
                         profile.is_autopatrolled if profile else ("autopatrolled" in group_set)

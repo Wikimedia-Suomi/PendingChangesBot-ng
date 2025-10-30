@@ -46,9 +46,9 @@ class WikiClient:
     def check_global_bot_user(self, username: str) -> tuple[bool, bool]:
         """Check if a user is a global bot using the efficient globaluserinfo API."""
         try:
-            site = pywikibot.Site("meta", "meta")
+            meta_site = pywikibot.Site("meta", "meta")
             request = pywikibot.data.api.Request(
-                site=site,
+                site=meta_site,
                 parameters={
                     "action": "query",
                     "list": "globalallusers",
@@ -57,18 +57,22 @@ class WikiClient:
                     "aguprop": "groups|existslocally",
                 },
             )
-            result = request.submit()
-            user_info = result.get("query", {}).get("globaluserinfo", {})
 
-            if "missing" in user_info:
+            response = request.submit()
+            user_info = response.get("query", {}).get("globaluserinfo", {})
+
+            if not user_info or "missing" in user_info or "name" not in user_info:
                 return (False, False)
 
             current_groups = user_info.get("groups", [])
+            former_groups = user_info.get("formergroups", [])
+
             is_global_bot = "global-bot" in current_groups
-            is_former_global_bot = False
+            is_former_global_bot = "global-bot" in former_groups
 
             return (is_global_bot, is_former_global_bot)
-        except Exception:
+        except Exception as e:
+            logger.exception("Failed to check global bot status for user %s: %s", username, e)
             return (False, False)
 
     def has_manual_unapproval(self, page_title: str, revid: int) -> bool:
