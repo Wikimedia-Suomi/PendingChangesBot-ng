@@ -11,8 +11,8 @@ from typing import Any
 
 from django.conf import settings
 
-from ..context import CheckContext
 from .. import SupersetQuery
+from ..context import CheckContext
 
 logger = logging.getLogger(__name__)
 
