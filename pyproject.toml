@@ -51,6 +51,9 @@ indent-style = "space"
 
 skip-magic-trailing-comma = false
 
+# Ensure consistent line endings across platforms to match CI
+line-ending = "lf"
+
 # =============================================================================
 # MYPY TYPE CHECKING
 # =============================================================================
