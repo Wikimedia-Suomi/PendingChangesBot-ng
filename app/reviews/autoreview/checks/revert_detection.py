@@ -59,7 +59,9 @@ def check_revert_detection(context: CheckContext) -> dict[str, Any]:
     if reviewed_revisions:
         return {
             "status": "approve",
-            "message": f"Revert to previously reviewed content (SHA1: {reviewed_revisions[0]['sha1']})",
+            "message": (
+                f"Revert to previously reviewed content " f"(SHA1: {reviewed_revisions[0]['sha1']})"
+            ),
             "metadata": {
                 "reverted_rev_ids": reverted_rev_ids,
                 "reviewed_revisions": reviewed_revisions,
@@ -144,20 +146,20 @@ def _find_reviewed_revisions_by_sha1(client, page, reverted_rev_ids: list[int]) 
         safe_ids = ",".join(str(int(r)) for r in sorted(set(reverted_rev_ids)))
 
         # noqa reason: S608 is suppressed because ids are validated ints and query is read-only
-        sql_query = f"""  
-        SELECT 
-            MAX(rev_id) as max_reviewable_rev_id_by_sha1, 
-            rev_page, 
-            content_sha1, 
-            MAX(fr_rev_id) as max_old_reviewed_id 
-        FROM 
-            revision 
+        sql_query = f"""
+        SELECT
+            MAX(rev_id) as max_reviewable_rev_id_by_sha1,
+            rev_page,
+            content_sha1,
+            MAX(fr_rev_id) as max_old_reviewed_id
+        FROM
+            revision
             LEFT JOIN flaggedrevs ON rev_id=fr_rev_id
             JOIN slots ON slot_revision_id=rev_id
             JOIN content ON slot_content_id=content_id
-        WHERE 
+        WHERE
             rev_id IN ({safe_ids})
-        GROUP BY 
+        GROUP BY
             rev_page, content_sha1
         """  # noqa: S608
 

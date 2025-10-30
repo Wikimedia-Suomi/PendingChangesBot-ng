@@ -5,7 +5,6 @@ generation functionality with multiple scenarios and preview capabilities.
 """
 
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 from reviews.utils.approval_comment import generate_approval_comment
 from reviews.utils.approval_processor import (
@@ -78,7 +77,8 @@ class Command(BaseCommand):
         # Show statistics
         stats = get_approval_statistics(test_data)
         self.stdout.write(
-            f'Statistics: {stats["approved_count"]}/{stats["total_revisions"]} approved ({stats["approval_rate"]:.1f}%)'
+            f'Statistics: {stats["approved_count"]}/{stats["total_revisions"]} '
+            f'approved ({stats["approval_rate"]:.1f}%)'
         )
 
         if verbose:
@@ -86,7 +86,7 @@ class Command(BaseCommand):
 
     def _get_test_data(self, scenario: str) -> list:
         """Generate test data for different scenarios."""
-        now = timezone.now()
+        # timezone.now() not used; keeping function pure on inputs
 
         if scenario == "bot":
             return [

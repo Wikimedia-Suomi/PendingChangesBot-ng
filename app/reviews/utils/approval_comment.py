@@ -5,7 +5,7 @@ from autoreview results, with smart grouping and formatting.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +14,8 @@ MAX_COMMENT_LENGTH = 500
 
 
 def generate_approval_comment(
-    autoreview_results: List[Dict], comment_prefix: str = ""
-) -> Tuple[Optional[int], str]:
+    autoreview_results: list[dict], comment_prefix: str = ""
+) -> tuple[Optional[int], str]:
     """Generate a consolidated approval comment and select highest approvable revid.
 
     Args:
@@ -73,7 +73,8 @@ def generate_approval_comment(
         comment = validate_comment_length(comment)
 
         logger.info(
-            f"Generated approval comment for {len(approved_revisions)} revisions, max_revid: {max_revid}"
+            f"Generated approval comment for {len(approved_revisions)} "
+            f"revisions, max_revid: {max_revid}"
         )
         return max_revid, comment
 
@@ -135,7 +136,7 @@ def validate_comment_length(comment: str) -> str:
     return truncated
 
 
-def group_consecutive_revisions(rev_ids: List[int]) -> List[List[int]]:
+def group_consecutive_revisions(rev_ids: list[int]) -> list[list[int]]:
     """
     Group consecutive revision IDs together.
 
@@ -165,7 +166,7 @@ def group_consecutive_revisions(rev_ids: List[int]) -> List[List[int]]:
     return groups
 
 
-def format_revision_group(rev_ids: List[int]) -> str:
+def format_revision_group(rev_ids: list[int]) -> str:
     """
     Format a group of revision IDs for display.
 

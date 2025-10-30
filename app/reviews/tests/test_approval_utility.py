@@ -212,7 +212,10 @@ class ApprovalUtilityTests(TestCase):
 
     def test_edge_case_single_revision_with_long_reason(self):
         """Test edge case with single revision having a very long approval reason."""
-        long_reason = "This is a very long approval reason that might contain special characters like @#$%^&*() and numbers 123456789"
+        long_reason = (
+            "This is a very long approval reason that might contain special characters "
+            "like @#$%^&*() and numbers 123456789"
+        )
         results = [
             {"revid": 12345, "decision": {"status": "approve", "reason": long_reason}},
         ]
