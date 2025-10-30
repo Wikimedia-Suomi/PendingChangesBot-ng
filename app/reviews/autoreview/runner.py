@@ -56,7 +56,11 @@ def run_checks_pipeline(
 
         if result.should_stop:
             total_duration_ms = (time.perf_counter() - pipeline_start_time) * 1000
-            return {"tests": tests, "decision": result.decision, "total_duration_ms": total_duration_ms}
+            return {
+                "tests": tests,
+                "decision": result.decision,
+                "total_duration_ms": total_duration_ms,
+            }
 
         if (
             result.check_id == "article-to-redirect-conversion"
