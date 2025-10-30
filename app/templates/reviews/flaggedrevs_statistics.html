@@ -168,6 +168,7 @@
                     <select v-model="state.filterMode" @change="updateUrl">
                       <option value="wiki">Wiki</option>
                       <option value="frs_key">FRS Key</option>
+                      <option value="single_wiki">Single Wiki</option>
                       <option value="yearmonth">YearMonth</option>
                     </select>
                   </div>
@@ -182,6 +183,22 @@
                 <div class="control">
                   <div class="select is-small">
                     <select v-model="state.selectedWikiForTable" @change="updateUrl">
+                      <option v-for="wiki in availableWikis" :key="wiki.code" :value="wiki.code">
+                        {{ wiki.code }}wiki_p
+                      </option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Single Wiki Selection (only shown when Single Wiki mode is selected) -->
+            <div class="column is-narrow" v-if="state.filterMode === 'single_wiki'">
+              <div class="field">
+                <label class="label is-small">Select Wiki</label>
+                <div class="control">
+                  <div class="select is-small">
+                    <select v-model="state.selectedSingleWiki" @change="updateUrl">
                       <option v-for="wiki in availableWikis" :key="wiki.code" :value="wiki.code">
                         {{ wiki.code }}wiki_p
                       </option>
@@ -228,7 +245,105 @@
                 </div>
               </div>
             </div>
+
+            <!-- Time Period Selection -->
+            <div class="column is-narrow">
+              <div class="field">
+                <label class="label is-small">Time Period</label>
+                <div class="control">
+                  <div class="select is-small">
+                    <select v-model="state.timePeriod">
+                      <option value="all">All Time</option>
+                      <option value="last_year">Last Year</option>
+                      <option value="last_6_months">Last 6 Months</option>
+                      <option value="last_3_months">Last 3 Months</option>
+                      <option value="last_month">Last Month</option>
+                      <option value="select_year">Select Year</option>
+                      <option value="custom">Custom Range</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Year Selection (only shown when Select Year is selected) -->
+            <div class="column is-narrow" v-if="state.timePeriod === 'select_year'">
+              <div class="field">
+                <label class="label is-small">Select Year</label>
+                <div class="control">
+                  <div class="select is-small">
+                    <select v-model="state.selectedYear" @change="updateUrl">
+                      <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Custom Date Range (only shown when custom is selected) -->
+            <div class="column is-narrow" v-if="state.timePeriod === 'custom'">
+              <div class="field">
+                <label class="label is-small">Start Date</label>
+                <div class="control">
+                  <input
+                    class="input is-small"
+                    type="date"
+                    v-model="state.startDate"
+                    @change="updateUrl"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="column is-narrow" v-if="state.timePeriod === 'custom'">
+              <div class="field">
+                <label class="label is-small">End Date</label>
+                <div class="control">
+                  <input
+                    class="input is-small"
+                    type="date"
+                    v-model="state.endDate"
+                    @change="updateUrl"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Data Resolution Selection -->
+            <div class="column is-narrow">
+              <div class="field">
+                <label class="label is-small">Resolution</label>
+                <div class="control">
+                  <div class="select is-small">
+                    <select v-model="state.dataResolution" @change="updateUrl" :disabled="state.timePeriod === 'select_year'">
+                      <option value="yearly">Yearly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="daily">Daily</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
+      </section>
+
+      <!-- Graph Visibility Controls -->
+      <section class="section" v-show="state.filterMode === 'wiki'" style="padding: 0.5rem 0; border-bottom: 1px solid #ddd;">
+        <div class="columns is-vcentered">
+            <div class="column is-narrow">
+            <label class="label is-small">Show/Hide Graphs:</label>
+          </div>
+          <div class="column">
+            <div class="field is-grouped is-grouped-multiline">
+              <div class="control" v-for="(enabled, key) in state.series" :key="key">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series[key]" @change="updateUrl">
+                  {{ getSeriesLabel(key) }}
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- FRS Key Mode: Single Chart Display -->
@@ -240,12 +355,76 @@
             </div>
           </div>
           <div class="column is-4">
-            <div class="field">
+              <div class="field">
               <label class="label is-small">Select Wikis</label>
-              <div class="control" v-for="wiki in availableWikis" :key="wiki.code">
+                <div class="control" v-for="wiki in availableWikis" :key="wiki.code">
+                  <label class="checkbox">
+                    <input type="checkbox" :value="wiki.code" v-model="state.selectedWikis" @change="updateUrl">
+                    {{ wiki.code }}wiki_p
+                  </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Single Wiki Mode: Customizable Chart Display -->
+      <section class="section" v-show="state.filterMode === 'single_wiki'" style="padding-top: 0;">
+        <div class="columns">
+          <div class="column is-8">
+            <div style="width: 90%; height: 500px; margin: 0; border: 2px solid #000; display: inline-block;">
+              <canvas id="singleWikiChart" style="width: 100%; height: 100%;"></canvas>
+            </div>
+          </div>
+          <div class="column is-4">
+            <div class="field">
+              <label class="label is-small">Select Metrics to Display</label>
+              <div class="control">
                 <label class="checkbox">
-                  <input type="checkbox" :value="wiki.code" v-model="state.selectedWikis" @change="updateUrl">
-                  {{ wiki.code }}wiki_p
+                  <input type="checkbox" v-model="state.series.pendingChanges">
+                  Pending Changes
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.pendingLag_average">
+                  Pending Lag (Average)
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.totalPages_ns0">
+                  Total Pages (NS:0)
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.reviewedPages_ns0">
+                  Reviewed Pages (NS:0)
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.syncedPages_ns0">
+                  Synced Pages (NS:0)
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.number_of_reviewers">
+                  Number of Reviewers
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.number_of_reviews">
+                  Number of Reviews
+                </label>
+              </div>
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="state.series.reviews_per_reviewer">
+                  Reviews Per Reviewer
                 </label>
               </div>
             </div>
@@ -259,7 +438,7 @@
           <div class="columns">
             <div class="column is-8">
               <div style="width: 90%; height: 500px; margin: 0;">
-                <canvas :id="`chart-${series.key}`" style="width: 100%; height: 100%;"></canvas>
+            <canvas :id="`chart-${series.key}`" style="width: 100%; height: 100%;"></canvas>
               </div>
             </div>
             <div class="column is-4">
@@ -460,20 +639,20 @@
                 <tr>
                   <th>Wiki</th>
                   <th>Date</th>
-                  <th v-if="state.series.pendingLag_average">Pending Lag</th>
-                  <th v-if="state.series.totalPages_ns0">Total Pages</th>
-                  <th v-if="state.series.reviewedPages_ns0">Reviewed Pages</th>
-                  <th v-if="state.series.syncedPages_ns0">Synced Pages</th>
-                  <th v-if="state.series.pendingChanges">Pending Changes</th>
-                  <th v-if="state.series.number_of_reviewers">Reviewers</th>
-                  <th v-if="state.series.number_of_reviews">Reviews</th>
-                  <th v-if="state.series.reviews_per_reviewer">Reviews/Reviewer</th>
+                  <th v-if="state.series.pendingLag_average" @click="goToFrsKey('pendingLag_average')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Pending Lag</th>
+                  <th v-if="state.series.totalPages_ns0" @click="goToFrsKey('totalPages_ns0')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Total Pages</th>
+                  <th v-if="state.series.reviewedPages_ns0" @click="goToFrsKey('reviewedPages_ns0')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Reviewed Pages</th>
+                  <th v-if="state.series.syncedPages_ns0" @click="goToFrsKey('syncedPages_ns0')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Synced Pages</th>
+                  <th v-if="state.series.pendingChanges" @click="goToFrsKey('pendingChanges')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Pending Changes</th>
+                  <th v-if="state.series.number_of_reviewers" @click="goToFrsKey('number_of_reviewers')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Reviewers</th>
+                  <th v-if="state.series.number_of_reviews" @click="goToFrsKey('number_of_reviews')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Reviews</th>
+                  <th v-if="state.series.reviews_per_reviewer" @click="goToFrsKey('reviews_per_reviewer')" style="cursor: pointer; background-color: #f5f5f5; border: 2px solid #000; padding: 0px; font-weight: normal; text-align: center;">Reviews/Reviewer</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in state.tableData" :key="row.wiki + row.date">
+                <tr v-for="row in (state.filterMode === 'single_wiki' ? state.tableData.filter(r => r.wiki === state.selectedSingleWiki) : state.tableData)" :key="row.wiki + row.date">
                   <td>{{ row.wiki }}</td>
-                  <td>{{ row.date }}</td>
+                  <td>{{ formatDateToYearMonth(row.date) }}</td>
                   <td v-if="state.series.pendingLag_average">{{ row.pendingLag_average || '' }}</td>
                   <td v-if="state.series.totalPages_ns0">{{ row.totalPages_ns0 || '' }}</td>
                   <td v-if="state.series.reviewedPages_ns0">{{ row.reviewedPages_ns0 || '' }}</td>
@@ -508,6 +687,55 @@
         <div class="notification is-warning">
           <p><strong>No data available.</strong></p>
           <p>Please select at least one wiki and ensure statistics data has been loaded.</p>
+        </div>
+      </section>
+
+      <!-- SQL Queries Information Box -->
+      <section class="section" style="margin-top: 2rem; border-top: 2px solid #ddd;">
+        <div class="box" style="background-color: #f5f5f5; border: 1px solid #ddd;">
+          <h3 class="title is-5">Legend</h3>
+          <div class="content">
+            <div class="notification is-light is-small">
+              <p class="is-size-7"><strong>pendingLag-average:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(frs_timestamp/100000000) AS d, frs_stat_key, avg(frs_stat_val) as frs_stat_val
+FROM fiwiki_p.flaggedrevs_statistics
+GROUP BY d, frs_stat_key
+ORDER BY frs_stat_key</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>totalPages-NS:0:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(frs_timestamp/100000000) AS d, frs_stat_key, avg(frs_stat_val) as frs_stat_val
+FROM fiwiki_p.flaggedrevs_statistics
+GROUP BY d, frs_stat_key
+ORDER BY frs_stat_key</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>reviewedPages-NS:0:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(frs_timestamp/100000000) AS d, frs_stat_key, avg(frs_stat_val) as frs_stat_val
+FROM fiwiki_p.flaggedrevs_statistics
+GROUP BY d, frs_stat_key
+ORDER BY frs_stat_key</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>syncedPages-NS:0:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(frs_timestamp/100000000) AS d, frs_stat_key, avg(frs_stat_val) as frs_stat_val
+FROM fiwiki_p.flaggedrevs_statistics
+GROUP BY d, frs_stat_key
+ORDER BY frs_stat_key</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>number_of_reviewers:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(fr_timestamp/100000000) AS d, COUNT(DISTINCT(fr_user)) as number_of_reviewers
+FROM fiwiki_p.flaggedrevs
+WHERE fr_flags NOT LIKE "%auto%"
+GROUP BY d
+ORDER BY d</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>number_of_reviews:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(fr_timestamp/100000000) AS d, SUM(1) as number_of_reviews
+FROM fiwiki_p.flaggedrevs
+WHERE fr_flags NOT LIKE "%auto%"
+GROUP BY d
+ORDER BY d</pre>
+              <p class="is-size-7" style="margin-top: 0.5rem;"><strong>number_of_pages:</strong></p>
+              <pre style="font-size: 10px; white-space: pre-wrap; word-wrap: break-word;">SELECT floor(fr_timestamp/100000000) AS d, COUNT(DISTINCT(fr_page_id)) as number_of_pages
+FROM fiwiki_p.flaggedrevs
+WHERE fr_flags NOT LIKE "%auto%"
+GROUP BY d
+ORDER BY d</pre>
+            </div>
+          </div>
         </div>
       </section>
     </div>
