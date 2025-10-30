@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from functools import lru_cache
+from typing import TYPE_CHECKING
 
 import pywikibot
 from django.db import transaction
@@ -41,6 +42,7 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
+    @lru_cache(maxsize=1000)
     def check_global_bot_user(self, username: str) -> tuple[bool, bool]:
         """Check if a user is a global bot using the efficient globaluserinfo API."""
         try:
@@ -49,9 +51,10 @@ class WikiClient:
                 site=site,
                 parameters={
                     "action": "query",
-                    "meta": "globaluserinfo",
-                    "guiuser": username,
-                    "guiprop": "groups",
+                    "list": "globalallusers",
+                    "agugroup": "global-bot",
+                    "agulimit": "max",
+                    "aguprop": "groups|existslocally",
                 },
             )
             result = request.submit()
@@ -115,7 +118,9 @@ class WikiClient:
             )
             return False
 
-    def is_user_blocked_after_edit(self, username: str, edit_timestamp: datetime) -> bool:
+    def is_user_blocked_after_edit(
+        self, username: str, edit_timestamp: datetime
+    ) -> bool:
         """Check if user was blocked after making an edit."""
         year = edit_timestamp.year
         return was_user_blocked_after(self.wiki.code, self.wiki.family, username, year)
@@ -231,7 +236,9 @@ ORDER BY fp_pending_since, rev_id DESC
 
                 page = pages_by_id.get(pageid_int)
                 if page is None:
-                    pending_since = parse_superset_timestamp(entry.get("fp_pending_since"))
+                    pending_since = parse_superset_timestamp(
+                        entry.get("fp_pending_since")
+                    )
                     page = PendingPage.objects.create(
                         wiki=self.wiki,
                         pageid=pageid_int,
@@ -253,7 +260,9 @@ ORDER BY fp_pending_since, rev_id DESC
                 except (TypeError, ValueError):
                     continue
 
-                superset_revision_timestamp = parse_superset_timestamp(entry.get("rev_timestamp"))
+                superset_revision_timestamp = parse_superset_timestamp(
+                    entry.get("rev_timestamp")
+                )
                 if superset_revision_timestamp is None:
                     superset_revision_timestamp = dj_timezone.now()
 
@@ -272,15 +281,21 @@ ORDER BY fp_pending_since, rev_id DESC
 
         return pages
 
-    def _save_revision(self, page: PendingPage, payload: RevisionPayload) -> PendingRevision | None:
+    def _save_revision(
+        self, page: PendingPage, payload: RevisionPayload
+    ) -> PendingRevision | None:
         from reviews.models import PendingPage, PendingRevision
 
         existing_page = (
-            PendingPage.objects.filter(pk=page.pk).only("id").first() if page.pk else None
+            PendingPage.objects.filter(pk=page.pk).only("id").first()
+            if page.pk
+            else None
         )
         if existing_page is None:
             logger.warning(
-                "Pending page %s was deleted before saving revision %s", page.pk, payload.revid
+                "Pending page %s was deleted before saving revision %s",
+                page.pk,
+                payload.revid,
             )
             return None
 
@@ -330,7 +345,14 @@ ORDER BY fp_pending_since, rev_id DESC
         if not superset_data:
             return profile
 
-        autoreviewed_groups = {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
+        autoreviewed_groups = {
+            "autoreview",
+            "autoreviewer",
+            "editor",
+            "reviewer",
+            "sysop",
+            "bot",
+        }
         groups = sorted(superset_data.get("user_groups") or [])
         former_groups = sorted(superset_data.get("user_former_groups") or [])
 
