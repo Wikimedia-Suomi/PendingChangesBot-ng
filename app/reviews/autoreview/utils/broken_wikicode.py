@@ -184,9 +184,7 @@ def check_broken_wikicode(
         return False, ""
 
     # Filter out noise: require either multiple indicator types OR significant count
-    significant_indicators = {
-        key: count for key, count in new_indicators.items() if count > 0
-    }
+    significant_indicators = {key: count for key, count in new_indicators.items() if count > 0}
 
     # Check if we have enough evidence of broken wikicode
     indicator_types = len(significant_indicators)
