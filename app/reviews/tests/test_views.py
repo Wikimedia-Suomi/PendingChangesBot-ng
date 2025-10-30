@@ -515,6 +515,7 @@ class ViewTests(TestCase):
         class FakeRequest:
             def __init__(self, data):
                 self._data = data
+                self.protocol = "https"
 
             def submit(self):
                 return self._data
