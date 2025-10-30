@@ -127,7 +127,11 @@ PYWIKIBOT_SITE_FAMILY = os.getenv("PYWIKIBOT_SITE_FAMILY", "wikipedia")
 
 # Revert detection configuration
 # Enable/disable revert detection for already-reviewed edits
-ENABLE_REVERT_DETECTION = os.getenv("ENABLE_REVERT_DETECTION", "True").lower() in ("true", "1", "yes")
+ENABLE_REVERT_DETECTION = os.getenv("ENABLE_REVERT_DETECTION", "True").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # ORES model thresholds (global defaults, per-wiki config takes precedence)
 ORES_DAMAGING_THRESHOLD = float(os.getenv("ORES_DAMAGING_THRESHOLD", "0.3"))
