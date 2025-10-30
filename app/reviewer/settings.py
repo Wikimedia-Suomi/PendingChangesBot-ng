@@ -133,7 +133,11 @@ ORES_GOODFAITH_THRESHOLD_LIVING = float(os.getenv("ORES_GOODFAITH_THRESHOLD", "0
 
 # Revert detection configuration
 # Enable/disable revert detection for already-reviewed edits
-ENABLE_REVERT_DETECTION = os.getenv("ENABLE_REVERT_DETECTION", "True").lower() in ("true", "1", "yes")
+ENABLE_REVERT_DETECTION = os.getenv("ENABLE_REVERT_DETECTION", "True").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
