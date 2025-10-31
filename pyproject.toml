@@ -42,6 +42,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 "app/reviews/services/wiki_client.py" = ["S608", "S607"]
 "app/reviews/services/statistics.py" = ["S608", "S607"]
 "app/reviews/management/commands/load_flaggedrevs_statistics.py" = ["S608", "S607"]
+"app/reviews/autoreview/checks/revert_detection.py" = ["S608"]
 
 
 [tool.ruff.format]

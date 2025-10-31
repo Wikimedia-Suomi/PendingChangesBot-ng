@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from http import HTTPStatus
 from urllib.parse import urlencode
 
-
 import requests
 from django.core.cache import cache
 from django.db.models import Count
@@ -37,86 +36,6 @@ CACHE_TTL = 60 * 60 * 1
 # Constants for LiftWing feature
 VALIDATION_TIMEOUT = 8  # seconds
 USER_AGENT = "PendingChangesBot/1.0 (https://github.com/Wikimedia-Suomi/PendingChangesBot-ng)"
-
-
-def calculate_percentile(values: list[float], percentile: float) -> float:
-    """
-    Calculate the percentile of a list of values using linear interpolation.
-
-    This function implements the standard percentile calculation method:
-    1. Sort the values in ascending order
-    2. Calculate the index position: (n-1) * (percentile/100)
-    3. If the index is not a whole number, interpolate between the floor and ceiling values
-
-    For median (P50), this returns the middle value for odd-length lists,
-    or the average of the two middle values for even-length lists.
-
-    Args:
-        values: List of numeric values to calculate percentile from
-        percentile: The percentile to calculate (0-100), e.g., 50 for median
-
-    Returns:
-        The calculated percentile value, or 0.0 if the list is empty
-
-    Examples:
-        >>> calculate_percentile([1, 2, 3, 4, 5], 50)  # Median
-        3.0
-        >>> calculate_percentile([1, 2, 3, 4], 50)  # Median of even list
-        2.5
-        >>> calculate_percentile([1, 5, 10, 20], 90)  # P90
-        17.0
-    """
-    if not values:
-        return 0.0
-    sorted_values = sorted(values)
-    index = (len(sorted_values) - 1) * (percentile / 100.0)
-    floor = int(index)
-    ceil = floor + 1
-    if ceil >= len(sorted_values):
-        return sorted_values[floor]
-    # Linear interpolation between floor and ceil
-    return sorted_values[floor] + (sorted_values[ceil] - sorted_values[floor]) * (index - floor)
-
-
-def get_time_filter_cutoff(time_filter: str) -> datetime | None:
-    """Get the cutoff datetime for a time filter."""
-    now = timezone.now()
-    if time_filter == "day":
-        return now - timedelta(days=1)
-    elif time_filter == "week":
-        return now - timedelta(days=7)
-    return None
-
-
-def statistics_page(request: HttpRequest) -> HttpResponse:
-    """Render the standalone statistics page."""
-    wikis = Wiki.objects.all().order_by("code")
-    if not wikis.exists():
-        # If no wikis, redirect to main page to populate them
-        return index(request)
-
-    payload = []
-    for wiki in wikis:
-        configuration, _ = WikiConfiguration.objects.get_or_create(wiki=wiki)
-        payload.append(
-            {
-                "id": wiki.id,
-                "name": wiki.name,
-                "code": wiki.code,
-                "api_endpoint": wiki.api_endpoint,
-                "configuration": {
-                    "blocking_categories": configuration.blocking_categories,
-                    "auto_approved_groups": configuration.auto_approved_groups,
-                },
-            }
-        )
-    return render(
-        request,
-        "reviews/statistics.html",
-        {
-            "initial_wikis": json.dumps(payload),
-        },
-    )
 
 
 def calculate_percentile(values: list[float], percentile: float) -> float:
@@ -864,9 +783,9 @@ def _resolve_wiki_from_payload(wiki_value):
         pk = int(wiki_value)
         try:
             return Wiki.objects.get(pk=pk)
-        except Exception:
+        except Exception:  # noqa: S110 - intentionally fallthrough
             pass
-    except Exception:
+    except Exception:  # noqa: S110 - intentionally fallthrough
         pass
 
     # Otherwise assume code
@@ -874,20 +793,20 @@ def _resolve_wiki_from_payload(wiki_value):
         return Wiki.objects.get(code=str(wiki_value))
     except Exception:
         raise LookupError(f"Unknown wiki identifier: {wiki_value!r}")
-    
+
 @csrf_exempt
 def fetch_revisions(request):
     if request.method != 'POST':
         return JsonResponse({"error": "Invalid method"}, status=405)
-    
+
     try:
         data = json.loads(request.body)
         wiki = data.get('wiki', 'en')
         article = data.get('article', '')
-        
+
         if not article:
             return JsonResponse({"error": "Missing article parameter"}, status=400)
-        
+
         base_url = f"https://{wiki}.wikipedia.org/w/api.php"
         headers = {"User-Agent": USER_AGENT}
 
@@ -916,7 +835,9 @@ def fetch_revisions(request):
             except requests.exceptions.Timeout:
                 return JsonResponse({"error": "Request to Wikipedia API timed out"}, status=504)
             except requests.exceptions.JSONDecodeError as e:
-                return JsonResponse({"error": f"Invalid JSON from Wikipedia API: {str(e)}"}, status=500)
+                return JsonResponse(
+                    {"error": f"Invalid JSON from Wikipedia API: {str(e)}"}, status=500
+                )
             except requests.exceptions.RequestException as e:
                 return JsonResponse({"error": f"Wikipedia API error: {str(e)}"}, status=500)
 
@@ -930,18 +851,18 @@ def fetch_revisions(request):
             max_iterations -= 1
 
         return JsonResponse({"title": article, "revisions": revisions})
-    
+
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON in request body"}, status=400)
     except Exception as e:
         return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
-    
+
 @csrf_exempt
 def fetch_liftwing_predictions(request):
     """
     POST JSON: { "wiki": "en", "model": "articlequality", "revisions": [12345, 67890] }
     Response: { "predictions": { "12345": {...}, "67890": {...} } }
-    
+
     Optimized to use concurrent requests with ThreadPoolExecutor for parallel processing.
     Much faster than sequential requests.
     """
@@ -956,7 +877,7 @@ def fetch_liftwing_predictions(request):
     # Base URL for LiftWing API
     base_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
     headers = {"User-Agent": USER_AGENT}
-    
+
     def fetch_single_prediction(rev_id):
         """Fetch prediction for a single revision ID"""
         try:
@@ -971,335 +892,15 @@ def fetch_liftwing_predictions(request):
             return (rev_id, {"error": f"HTTP {e.response.status_code}: {str(e)}"})
         except Exception as e:
             return (rev_id, {"error": str(e)})
-    
+
     predictions = {}
-    
+
     # Use ThreadPoolExecutor for parallel requests (max 10 concurrent)
     with ThreadPoolExecutor(max_workers=10) as executor:
         # Submit all tasks
-        future_to_rev = {executor.submit(fetch_single_prediction, rev_id): rev_id 
+        future_to_rev = {executor.submit(fetch_single_prediction, rev_id): rev_id
                         for rev_id in revisions}
-        
-        # Collect results as they complete
-        for future in as_completed(future_to_rev):
-            rev_id, prediction = future.result()
-            predictions[rev_id] = prediction
 
-    return JsonResponse({"predictions": predictions})
-
-@csrf_exempt
-def fetch_predictions(request):
-    """
-    POST JSON: { "wiki": "en", "article": "Allu Arjun", "model": "articlequality" }
-    Calls the LiftWing API to fetch predictions for an article.
-    """
-    if request.method != "POST":
-        return JsonResponse({"error": "Invalid method"}, status=405)
-
-    try:
-        data = json.loads(request.body.decode("utf-8"))
-    except Exception:
-        return JsonResponse({"error": "Invalid JSON body"}, status=400)
-
-    wiki = data.get("wiki", "en")
-    article = data.get("article", "")
-    model = data.get("model", "articlequality")
-
-    if not article:
-        return JsonResponse({"error": "Missing article title"}, status=400)
-
-    # LiftWing API endpoint for model inference
-    api_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
-
-    # For simplicity, we fetch the latest revision ID of the article first
-    rev_api = f"https://{wiki}.wikipedia.org/w/api.php"
-    params = {
-        "action": "query",
-        "titles": article,
-        "prop": "revisions",
-        "rvlimit": 1,
-        "rvprop": "ids",
-        "format": "json",
-    }
-    verify=False
-    response = requests.get(
-    "https://en.wikipedia.org/w/api.php",
-    headers=headers,
-    params=params
-    )
-    response.raise_for_status()
-    
-
-    try:
-        rev_resp = requests.get(rev_api, params=params, timeout=10)
-        rev_resp.raise_for_status()
-        rev_data = rev_resp.json()
-        pages = rev_data.get("query", {}).get("pages", {})
-        rev_id = None
-        for page_id, page_info in pages.items():
-            if "revisions" in page_info:
-                rev_id = page_info["revisions"][0]["revid"]
-                break
-    except Exception as e:
-        return JsonResponse({"error": f"Failed to fetch revision ID: {e}"}, status=500)
-
-    if not rev_id:
-        return JsonResponse({"error": "No revision found for this article"}, status=404)
-
-    # Call LiftWing API
-    payload = {"rev_id": rev_id}
-    headers = {"User-Agent": "PendingChangesBot/1.0 (LiftWingIntegration)"}
-
-    try:
-        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
-        response.raise_for_status()
-        prediction = response.json()
-        return JsonResponse({
-            "wiki": wiki,
-            "article": article,
-            "rev_id": rev_id,
-            "model": model,
-            "prediction": prediction
-        })
-    except requests.RequestException as e:
-        return JsonResponse({"error": f"LiftWing request failed: {str(e)}"}, status=500)
-
-    
-
-def liftwing_page(request):
-    return render(request, "reviews/lift.html")
-
-@csrf_exempt
-def validate_article(request):
-    """
-    POST JSON: { "wiki": <wiki id|code|{id:,code:}>, "article": "Page title" }
-    Response JSON: { "valid": bool, "exists": bool, "pageid": int|null,
-        "normalized_title": str|null, "missing": bool, "error": null|str }
-    """
-    if request.method != "POST":
-        return JsonResponse({"error": "Invalid method"}, status=405)
-
-    try:
-        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
-    except Exception:
-        return JsonResponse({"error": "Invalid JSON body"}, status=400)
-
-    article = payload.get("article")
-    wiki_payload = payload.get("wiki")
-
-    if not article or not isinstance(article, str) or not article.strip():
-        return JsonResponse({"valid": False, "error": "Empty article title"}, status=200)
-
-    try:
-        wiki = _resolve_wiki_from_payload(wiki_payload)
-    except LookupError as e:
-        return JsonResponse({"valid": False, "error": str(e)}, status=400)
-
-    api_endpoint = wiki.api_endpoint
-    if not api_endpoint:
-        return JsonResponse(
-            {"valid": False, "error": "Wiki has no configured api_endpoint"}, status=500
-        )
-
-    params = {
-        "action": "query",
-        "format": "json",
-        "formatversion": 2,
-        "titles": article,
-        "redirects": 1,
-        "prop": "info",
-    }
-
-    # Build query URL safely
-    if "?" not in api_endpoint:
-        query_url = f"{api_endpoint}?{urlencode(params)}"
-    else:
-        query_url = f"{api_endpoint}&{urlencode(params)}"
-
-    headers = {"User-Agent": USER_AGENT}
-    try:
-        resp = requests.get(query_url, headers=headers, timeout=VALIDATION_TIMEOUT)
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        logger.exception("Failed to call MediaWiki API for validation: %s", exc)
-        return JsonResponse(
-            {"valid": False, "error": f"API request failed: {str(exc)}"},
-            status=HTTPStatus.BAD_GATEWAY,
-        )
-
-    try:
-        data = resp.json()
-    except ValueError:
-        logger.error("MediaWiki API returned non-json for %s", query_url)
-        return JsonResponse(
-            {"valid": False, "error": "API returned invalid JSON"},
-            status=HTTPStatus.BAD_GATEWAY,
-        )
-
-    query = data.get("query", {})
-    pages = query.get("pages", [])
-    if not pages:
-        return JsonResponse({"valid": False, "error": "Unexpected API response"}, status=500)
-
-    page = pages[0]
-    missing = bool(page.get("missing", False))
-    normalized_title = page.get("title")
-    pageid = page.get("pageid")
-
-    result = {
-        "valid": True,
-        "exists": not missing,
-        "missing": missing,
-        "pageid": pageid if pageid is not None else None,
-        "normalized_title": normalized_title,
-        "error": None,
-    }
-    return JsonResponse(result, status=200)
-
-def _resolve_wiki_from_payload(wiki_value):
-    """
-    Accept either integer pk, string code, or dictionary with 'id'/'code'.
-    Returns Wiki instance or raises LookupError.
-    """
-    from .models import Wiki
-
-    if wiki_value is None:
-        raise LookupError("Missing wiki parameter")
-
-    # If a dict was passed (from frontend), try keys
-    if isinstance(wiki_value, dict):
-        if "id" in wiki_value:
-            try:
-                return Wiki.objects.get(pk=int(wiki_value["id"]))
-            except Exception:
-                raise LookupError(f"Unknown wiki id {wiki_value['id']}")
-        if "code" in wiki_value:
-            try:
-                return Wiki.objects.get(code=str(wiki_value["code"]))
-            except Exception:
-                raise LookupError(f"Unknown wiki code {wiki_value['code']}")
-
-    # If numeric string or int -> assume pk
-    try:
-        pk = int(wiki_value)
-        try:
-            return Wiki.objects.get(pk=pk)
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-    # Otherwise assume code
-    try:
-        return Wiki.objects.get(code=str(wiki_value))
-    except Exception:
-        raise LookupError(f"Unknown wiki identifier: {wiki_value!r}")
-
-@csrf_exempt
-def fetch_revisions(request):
-    if request.method != 'POST':
-        return JsonResponse({"error": "Invalid method"}, status=405)
-    
-    try:
-        data = json.loads(request.body)
-        wiki = data.get('wiki', 'en')
-        article = data.get('article', '')
-        
-        if not article:
-            return JsonResponse({"error": "Missing article parameter"}, status=400)
-        
-        base_url = f"https://{wiki}.wikipedia.org/w/api.php"
-        headers = {"User-Agent": USER_AGENT}
-
-        params = {
-            "action": "query",
-            "prop": "revisions",
-            "titles": article,
-            "rvlimit": "max",
-            "rvprop": "ids|timestamp|user|comment",
-            "format": "json"
-        }
-
-        revisions = []
-        cont = True
-        cont_token = None
-        max_iterations = 10  # Prevent infinite loops
-
-        while cont and max_iterations > 0:
-            if cont_token:
-                params['rvcontinue'] = cont_token
-
-            try:
-                response = requests.get(base_url, params=params, headers=headers, timeout=10)
-                response.raise_for_status()
-                api_data = response.json()
-            except requests.exceptions.Timeout:
-                return JsonResponse({"error": "Request to Wikipedia API timed out"}, status=504)
-            except requests.exceptions.JSONDecodeError as e:
-                return JsonResponse({"error": f"Invalid JSON from Wikipedia API: {str(e)}"}, status=500)
-            except requests.exceptions.RequestException as e:
-                return JsonResponse({"error": f"Wikipedia API error: {str(e)}"}, status=500)
-
-            pages = api_data.get("query", {}).get("pages", {})
-            for page_id, page_info in pages.items():
-                revs = page_info.get("revisions", [])
-                revisions.extend(revs)
-
-            cont_token = api_data.get("continue", {}).get("rvcontinue")
-            cont = bool(cont_token)
-            max_iterations -= 1
-
-        return JsonResponse({"title": article, "revisions": revisions})
-    
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON in request body"}, status=400)
-    except Exception as e:
-        return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
-
-@csrf_exempt
-def fetch_liftwing_predictions(request):
-    """
-    POST JSON: { "wiki": "en", "model": "articlequality", "revisions": [12345, 67890] }
-    Response: { "predictions": { "12345": {...}, "67890": {...} } }
-    
-    Optimized to use concurrent requests with ThreadPoolExecutor for parallel processing.
-    Much faster than sequential requests.
-    """
-    data = json.loads(request.body)
-    wiki = data.get("wiki", "en")
-    model = data.get("model", "articlequality")
-    revisions = data.get("revisions", [])
-
-    if not revisions:
-        return JsonResponse({"error": "Missing revisions list"}, status=400)
-
-    # Base URL for LiftWing API
-    base_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
-    headers = {"User-Agent": USER_AGENT}
-    
-    def fetch_single_prediction(rev_id):
-        """Fetch prediction for a single revision ID"""
-        try:
-            payload = {"rev_id": rev_id}
-            resp = requests.post(base_url, json=payload, headers=headers, timeout=15)
-            resp.raise_for_status()
-            result = resp.json()
-            return (rev_id, result.get("output", result))
-        except requests.exceptions.Timeout:
-            return (rev_id, {"error": "Request timed out"})
-        except requests.exceptions.HTTPError as e:
-            return (rev_id, {"error": f"HTTP {e.response.status_code}: {str(e)}"})
-        except Exception as e:
-            return (rev_id, {"error": str(e)})
-    
-    predictions = {}
-    
-    # Use ThreadPoolExecutor for parallel requests (max 10 concurrent)
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        # Submit all tasks
-        future_to_rev = {executor.submit(fetch_single_prediction, rev_id): rev_id 
-                        for rev_id in revisions}
-        
         # Collect results as they complete
         for future in as_completed(future_to_rev):
             rev_id, prediction = future.result()
@@ -1360,7 +961,6 @@ def fetch_predictions(request):
 
     # Call LiftWing API
     payload = {"rev_id": rev_id}
-    headers = {"User-Agent": USER_AGENT}
 
     try:
         response = requests.post(api_url, headers=headers, json=payload, timeout=10)
@@ -1375,50 +975,6 @@ def fetch_predictions(request):
         })
     except requests.RequestException as e:
         return JsonResponse({"error": f"LiftWing request failed: {str(e)}"}, status=500)
-
-@require_GET
-def liftwing_models(request, wiki_code):
-    """Return available LiftWing models for the given wiki."""
-    # Comprehensive list of available Wikimedia ML models
-    models = [
-        {
-            "name": "articlequality",
-            "version": "1.0.0",
-            "description": "Predicts the quality class of Wikipedia articles",
-            "supported_languages": ["en", "de", "fr", "es", "it", "pt", "ru", "ja", "zh", "ar", "hi", "tr", "pl", "nl", "sv", "no", "da", "fi", "cs", "hu", "ro", "bg", "hr", "sk", "sl", "et", "lv", "lt", "el", "he", "th", "vi", "ko", "uk", "be", "mk", "sq", "sr", "bs", "hr", "sl", "sk", "cs", "pl", "hu", "ro", "bg", "el", "tr", "ar", "he", "fa", "ur", "hi", "bn", "ta", "te", "ml", "kn", "gu", "pa", "or", "as", "ne", "si", "my", "km", "lo", "th", "vi", "ko", "ja", "zh", "yue", "zh-min-nan", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical", "zh-yue", "yue", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical"]
-        },
-        {
-            "name": "draftquality",
-            "version": "1.0.0",
-            "description": "Predicts the quality of new article drafts",
-            "supported_languages": ["en", "de", "fr", "es", "it", "pt", "ru", "ja", "zh", "ar", "hi", "tr", "pl", "nl", "sv", "no", "da", "fi", "cs", "hu", "ro", "bg", "hr", "sk", "sl", "et", "lv", "lt", "el", "he", "th", "vi", "ko", "uk", "be", "mk", "sq", "sr", "bs", "hr", "sl", "sk", "cs", "pl", "hu", "ro", "bg", "el", "tr", "ar", "he", "fa", "ur", "hi", "bn", "ta", "te", "ml", "kn", "gu", "pa", "or", "as", "ne", "si", "my", "km", "lo", "th", "vi", "ko", "ja", "zh", "yue", "zh-min-nan", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical", "zh-yue", "yue", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical"]
-        },
-        {
-            "name": "revertrisk",
-            "version": "1.0.0",
-            "description": "Predicts the likelihood of an edit being reverted",
-            "supported_languages": ["en", "de", "fr", "es", "it", "pt", "ru", "ja", "zh", "ar", "hi", "tr", "pl", "nl", "sv", "no", "da", "fi", "cs", "hu", "ro", "bg", "hr", "sk", "sl", "et", "lv", "lt", "el", "he", "th", "vi", "ko", "uk", "be", "mk", "sq", "sr", "bs", "hr", "sl", "sk", "cs", "pl", "hu", "ro", "bg", "el", "tr", "ar", "he", "fa", "ur", "hi", "bn", "ta", "te", "ml", "kn", "gu", "pa", "or", "as", "ne", "si", "my", "km", "lo", "th", "vi", "ko", "ja", "zh", "yue", "zh-min-nan", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical", "zh-yue", "yue", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical"]
-        },
-        {
-            "name": "revertrisk-multilingual",
-            "version": "1.0.0",
-            "description": "Multilingual revert risk prediction",
-            "supported_languages": ["en", "de", "fr", "es", "it", "pt", "ru", "ja", "zh", "ar", "hi", "tr", "pl", "nl", "sv", "no", "da", "fi", "cs", "hu", "ro", "bg", "hr", "sk", "sl", "et", "lv", "lt", "el", "he", "th", "vi", "ko", "uk", "be", "mk", "sq", "sr", "bs", "hr", "sl", "sk", "cs", "pl", "hu", "ro", "bg", "el", "tr", "ar", "he", "fa", "ur", "hi", "bn", "ta", "te", "ml", "kn", "gu", "pa", "or", "as", "ne", "si", "my", "km", "lo", "th", "vi", "ko", "ja", "zh", "yue", "zh-min-nan", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical", "zh-yue", "yue", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical"]
-        },
-        {
-            "name": "damaging",
-            "version": "1.0.0",
-            "description": "Predicts if an edit is damaging",
-            "supported_languages": ["en", "de", "fr", "es", "it", "pt", "ru", "ja", "zh", "ar", "hi", "tr", "pl", "nl", "sv", "no", "da", "fi", "cs", "hu", "ro", "bg", "hr", "sk", "sl", "et", "lv", "lt", "el", "he", "th", "vi", "ko", "uk", "be", "mk", "sq", "sr", "bs", "hr", "sl", "sk", "cs", "pl", "hu", "ro", "bg", "el", "tr", "ar", "he", "fa", "ur", "hi", "bn", "ta", "te", "ml", "kn", "gu", "pa", "or", "as", "ne", "si", "my", "km", "lo", "th", "vi", "ko", "ja", "zh", "yue", "zh-min-nan", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical", "zh-yue", "yue", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical"]
-        },
-        {
-            "name": "goodfaith",
-            "version": "1.0.0",
-            "description": "Predicts if an edit is made in good faith",
-            "supported_languages": ["en", "de", "fr", "es", "it", "pt", "ru", "ja", "zh", "ar", "hi", "tr", "pl", "nl", "sv", "no", "da", "fi", "cs", "hu", "ro", "bg", "hr", "sk", "sl", "et", "lv", "lt", "el", "he", "th", "vi", "ko", "uk", "be", "mk", "sq", "sr", "bs", "hr", "sl", "sk", "cs", "pl", "hu", "ro", "bg", "el", "tr", "ar", "he", "fa", "ur", "hi", "bn", "ta", "te", "ml", "kn", "gu", "pa", "or", "as", "ne", "si", "my", "km", "lo", "th", "vi", "ko", "ja", "zh", "yue", "zh-min-nan", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical", "zh-yue", "yue", "nan", "hak", "gan", "wuu", "cdo", "mnp", "cjy", "hsn", "lzh", "zh-classical"]
-        }
-    ]
-    return JsonResponse({"models": models})
 
 
 @require_GET
