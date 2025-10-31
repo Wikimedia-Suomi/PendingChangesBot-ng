@@ -148,14 +148,12 @@ OAUTH_ENABLED = os.getenv("OAUTH_ENABLED", "False").lower() == "true"
 # For development: use meta.wikimedia.beta.wmcloud.org (separate login required)
 # For production: use meta.wikimedia.org
 SOCIAL_AUTH_MEDIAWIKI_URL = os.getenv(
-    "SOCIAL_AUTH_MEDIAWIKI_URL",
-    "https://meta.wikimedia.beta.wmcloud.org/w/index.php"
+    "SOCIAL_AUTH_MEDIAWIKI_URL", "https://meta.wikimedia.beta.wmcloud.org/w/index.php"
 )
 SOCIAL_AUTH_MEDIAWIKI_KEY = os.getenv("SOCIAL_AUTH_MEDIAWIKI_KEY", "")
 SOCIAL_AUTH_MEDIAWIKI_SECRET = os.getenv("SOCIAL_AUTH_MEDIAWIKI_SECRET", "")
 SOCIAL_AUTH_MEDIAWIKI_CALLBACK = os.getenv(
-    "SOCIAL_AUTH_MEDIAWIKI_CALLBACK",
-    "http://127.0.0.1:8000/oauth/complete/mediawiki/"
+    "SOCIAL_AUTH_MEDIAWIKI_CALLBACK", "http://127.0.0.1:8000/oauth/complete/mediawiki/"
 )
 
 # Workaround for T353593 - protect user groups field
@@ -183,4 +181,5 @@ SOCIAL_AUTH_PIPELINE = (
     "social_core.pipeline.social_auth.associate_user",
     "social_core.pipeline.social_auth.load_extra_data",
     "social_core.pipeline.user.user_details",
+    "reviewer.oauth_pipeline.save_wikimedia_username",
 )

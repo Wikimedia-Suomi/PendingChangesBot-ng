@@ -1053,21 +1053,8 @@ def flaggedrevs_statistics_page(request: HttpRequest) -> HttpResponse:
     return render(request, "reviews/flaggedrevs_statistics.html", {"wikis": wikis_json})
 
 
-def configure_pywikibot_oauth(user, wiki_domain):
-    """
-    Configure Pywikibot with OAuth credentials from Django Social Auth.
-
-    Args:
-        user: Django User object with social_auth relationship
-        wiki_domain: Domain of the wiki (e.g., 'commons.wikimedia.beta.wmflabs.org')
-
-    Returns:
-        pywikibot.Site: Authenticated Pywikibot site object
-
-    Raises:
-        ValueError: If user is not authenticated via OAuth
-        Exception: If Pywikibot login fails
-    """
+def configure_pywikibot_oauth(user):
+    """Configure Pywikibot to use OAuth credentials for the given user."""
     import pywikibot
 
     if not user.is_authenticated:
@@ -1075,40 +1062,41 @@ def configure_pywikibot_oauth(user, wiki_domain):
 
     try:
         # Get OAuth tokens from Django Social Auth
-        social_auth = user.social_auth.get(provider='mediawiki')
-        access_token = social_auth.extra_data['access_token'].get('oauth_token')
-        access_secret = social_auth.extra_data['access_token'].get('oauth_token_secret')
+        social_auth = user.social_auth.get(provider="mediawiki")
+        access_token = social_auth.extra_data["access_token"].get("oauth_token")
+        access_secret = social_auth.extra_data["access_token"].get("oauth_token_secret")
 
         # Get consumer credentials from settings
         consumer_key = settings.SOCIAL_AUTH_MEDIAWIKI_KEY
         consumer_secret = settings.SOCIAL_AUTH_MEDIAWIKI_SECRET
+        oauth_url = settings.SOCIAL_AUTH_MEDIAWIKI_URL
 
         if not all([consumer_key, consumer_secret, access_token, access_secret]):
             raise ValueError("Missing OAuth credentials")
 
         # Configure Pywikibot with OAuth
         authenticate = (consumer_key, consumer_secret, access_token, access_secret)
-        pywikibot.config.authenticate[wiki_domain] = authenticate
 
-        # Extract family and code from domain (e.g., 'commons.wikimedia.beta.wmflabs.org')
-        if 'beta.wmflabs.org' in wiki_domain:
-            family = wiki_domain.split('.')[0]  # e.g., 'commons'
-            site = pywikibot.Site('beta', family)
+        # Determine if using beta or production based on OAuth URL
+        is_beta = "beta.wmcloud.org" in oauth_url
+
+        if is_beta:
+            # Beta environment: use 'beta' as family code, 'commons' as wiki code
+            pywikibot.config.usernames["commons"]["beta"] = user.first_name or user.username
+            pywikibot.config.authenticate["commons.wikimedia.beta.wmcloud.org"] = authenticate
+            site = pywikibot.Site("beta", "commons")
         else:
-            # Production wikis
-            parts = wiki_domain.split('.')
-            if len(parts) >= 2:
-                code = parts[0]  # e.g., 'en'
-                family = parts[1]  # e.g., 'wikipedia'
-                site = pywikibot.Site(code, family)
-            else:
-                raise ValueError(f"Cannot parse wiki domain: {wiki_domain}")
+            # Production environment: use 'commons' for both
+            pywikibot.config.usernames["commons"]["commons"] = user.first_name or user.username
+            pywikibot.config.authenticate["commons.wikimedia.org"] = authenticate
+            site = pywikibot.Site("commons", "commons")
 
-        # Login with OAuth
+        # Test the connection
         site.login()
 
         logger.info(
-            f"Successfully configured Pywikibot OAuth for user {user.username} on {wiki_domain}"
+            f"Successfully configured Pywikibot OAuth for user {user.first_name or user.username} "
+            f"on {'beta' if is_beta else 'production'} commons"
         )
         return site
 

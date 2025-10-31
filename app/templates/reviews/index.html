@@ -14,38 +14,56 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   </head>
   <body>
+    <!-- Navigation Bar -->
+    <nav class="navbar is-light" role="navigation" aria-label="main navigation">
+      <div class="navbar-brand">
+        <a class="navbar-item" href="/">
+          <strong>Pending Changes Review</strong>
+        </a>
+      </div>
+
+      <div class="navbar-menu">
+        <div class="navbar-end">
+          {% if request.user.is_authenticated %}
+          <div class="navbar-item">
+            <span class="tag is-light is-medium">
+              <span class="icon"><i class="fas fa-user"></i></span>
+              <span>{{ request.user.first_name|default:request.user.username }}</span>
+            </span>
+          </div>
+          <div class="navbar-item">
+            <div class="buttons">
+              <a href="{% url 'logout' %}" class="button is-danger is-light">
+                <span class="icon"><i class="fas fa-sign-out-alt"></i></span>
+                <span>Logout</span>
+              </a>
+            </div>
+          </div>
+          {% else %}
+          {% if OAUTH_ENABLED %}
+          <div class="navbar-item">
+            <div class="buttons">
+              <a href="{% url 'social:begin' 'mediawiki' %}" class="button is-primary">
+                <span class="icon"><i class="fas fa-sign-in-alt"></i></span>
+                <span>Login with Wikimedia</span>
+              </a>
+            </div>
+          </div>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </nav>
+
     {% verbatim %}
     <div id="app" class="container is-fluid py-4">
       <section class="hero is-light">
         <div class="hero-body">
           <div class="columns is-vcentered">
             <div class="column is-4">
-              <h1 class="title is-4">Pending Changes Review</h1>
+              <h1 class="title is-4">Review Dashboard</h1>
             </div>
             {% endverbatim %}
-            {% if request.user.is_authenticated %}
-            <div class="column is-narrow">
-              <div class="buttons">
-                <span class="button is-static is-small">
-                  <span class="icon"><i class="fas fa-user"></i></span>
-                  <span>{{ request.user.username }}</span>
-                </span>
-                <a href="{% url 'logout' %}" class="button is-small is-danger is-light">
-                  Logout
-                </a>
-              </div>
-            </div>
-            {% else %}
-            {% if OAUTH_ENABLED %}
-            <div class="column is-narrow">
-              <a href="{% url 'social:begin' 'mediawiki' %}" class="button is-small is-primary">
-                <span class="icon"><i class="fas fa-sign-in-alt"></i></span>
-                <span>Login with Wikimedia</span>
-              </a>
-            </div>
-            {% endif %}
-            {% endif %}
-            {% verbatim %}
             <div class="column">
               <div class="field has-addons">
                 <div class="control is-expanded">
