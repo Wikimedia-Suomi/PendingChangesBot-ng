@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pywikibot
 
@@ -16,7 +16,7 @@ def get_redirect_aliases(wiki: Wiki) -> list[str]:
     """Get and cache redirect aliases for a wiki."""
     config = wiki.configuration
     if config.redirect_aliases:
-        return config.redirect_aliases
+        return cast(list[str], config.redirect_aliases)  # JSONField returns Any
 
     try:
         site = pywikibot.Site(code=wiki.code, fam=wiki.family)
@@ -31,7 +31,7 @@ def get_redirect_aliases(wiki: Wiki) -> list[str]:
         magic_words = response.get("query", {}).get("magicwords", [])
         for magic_word in magic_words:
             if magic_word.get("name") == "redirect":
-                aliases = magic_word.get("aliases", [])
+                aliases: list[str] = magic_word.get("aliases", [])
                 config.redirect_aliases = aliases
                 config.save(update_fields=["redirect_aliases", "updated_at"])
                 return aliases

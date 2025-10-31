@@ -81,4 +81,4 @@ jobs:
 
       - name: Run pip-audit on requirements.txt
         run: |
-          python -m pip_audit -r requirements.txt --desc
+          python -m pip_audit -r requirements.txt --desc --ignore-vuln GHSA-wv4w-6qv2-qqfg

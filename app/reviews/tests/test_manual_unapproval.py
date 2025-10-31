@@ -85,6 +85,7 @@ class ManualUnapprovalTests(TestCase):
             (test for test in result["tests"] if test["id"] == "manual-unapproval"), None
         )
         self.assertIsNotNone(manual_unapproval_test)
+        assert manual_unapproval_test is not None  # for mypy
         self.assertEqual(manual_unapproval_test["status"], "fail")
 
     @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
@@ -135,6 +136,7 @@ class ManualUnapprovalTests(TestCase):
             (test for test in result["tests"] if test["id"] == "manual-unapproval"), None
         )
         self.assertIsNotNone(manual_unapproval_test)
+        assert manual_unapproval_test is not None  # for mypy
         self.assertEqual(manual_unapproval_test["status"], "ok")
 
         self.assertEqual(result["decision"]["status"], "approve")
