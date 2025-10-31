@@ -139,7 +139,7 @@ class RevertDetectionTests(TestCase):
 
         self.assertEqual(reviewed_revisions, [])
 
-    @patch("reviews.autoreview._find_reviewed_revisions_by_sha1")
+    @patch("reviews.autoreview.checks.revert_detection._find_reviewed_revisions_by_sha1")
     def test_revert_detection_approve(self, mock_find_reviewed):
         """Test revert detection when revert to reviewed content is found."""
         # Mock finding reviewed revisions
@@ -153,7 +153,7 @@ class RevertDetectionTests(TestCase):
         self.assertIn("Revert to previously reviewed content", result["message"])
         self.assertIn("abc123", result["message"])
 
-    @patch("reviews.autoreview._find_reviewed_revisions_by_sha1")
+    @patch("reviews.autoreview.checks.revert_detection._find_reviewed_revisions_by_sha1")
     def test_revert_detection_block(self, mock_find_reviewed):
         """Test revert detection when no reviewed content is found."""
         # Mock no reviewed revisions found
@@ -178,7 +178,7 @@ class RevertDetectionTests(TestCase):
 
     def test_revert_detection_metadata(self):
         """Test that revert detection returns proper metadata."""
-        with patch("reviews.autoreview._find_reviewed_revisions_by_sha1") as mock_find:
+        with patch("reviews.autoreview.checks.revert_detection._find_reviewed_revisions_by_sha1") as mock_find:
             mock_find.return_value = [{"sha1": "abc123"}]
 
             result = _check_revert_detection(self.revision, self.client)
