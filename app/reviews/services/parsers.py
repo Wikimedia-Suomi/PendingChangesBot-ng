@@ -81,6 +81,7 @@ def prepare_superset_metadata(entry: dict) -> dict:
     metadata = dict(entry)
     for key in (
         "change_tags",
+        "change_tags_params",
         "user_groups",
         "user_former_groups",
         "page_categories",

@@ -41,6 +41,13 @@ class PendingRevision(models.Model):
     def __str__(self) -> str:
         return f"{self.page.title}#{self.revid}"
 
+    @property
+    def change_tag_params(self) -> list[str]:
+        """Get change tag parameters from superset_data."""
+        if not self.superset_data:
+            return []
+        return self.superset_data.get("change_tags_params", [])
+
     def get_wikitext(self) -> str:
         """Return the revision wikitext, fetching it via the API when missing."""
         if self.wikitext:
