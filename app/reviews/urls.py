@@ -17,7 +17,6 @@ urlpatterns = [
         views.fetch_liftwing_predictions,
         name="fetch_liftwing_predictions",
     ),
-
     path(
         "api/wikis/<int:pk>/pages/<int:pageid>/revisions/",
         views.api_page_revisions,
