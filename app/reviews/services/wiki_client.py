@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import pywikibot
@@ -40,6 +41,39 @@ class WikiClient:
     def __init__(self, wiki: Wiki):
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
+
+    @lru_cache(maxsize=1000)
+    def check_global_bot_user(self, username: str) -> tuple[bool, bool]:
+        """Check if a user is a global bot using the efficient globaluserinfo API."""
+        try:
+            meta_site = pywikibot.Site("meta", "meta")
+            request = pywikibot.data.api.Request(
+                site=meta_site,
+                parameters={
+                    "action": "query",
+                    "list": "globalallusers",
+                    "agugroup": "global-bot",
+                    "agulimit": "max",
+                    "aguprop": "groups|existslocally",
+                },
+            )
+
+            response = request.submit()
+            user_info = response.get("query", {}).get("globaluserinfo", {})
+
+            if not user_info or "missing" in user_info or "name" not in user_info:
+                return (False, False)
+
+            current_groups = user_info.get("groups", [])
+            former_groups = user_info.get("formergroups", [])
+
+            is_global_bot = "global-bot" in current_groups
+            is_former_global_bot = "global-bot" in former_groups
+
+            return (is_global_bot, is_former_global_bot)
+        except Exception as e:
+            logger.exception("Failed to check global bot status for user %s: %s", username, e)
+            return (False, False)
 
     def has_manual_unapproval(self, page_title: str, revid: int) -> bool:
         """Check if the most recent review action for a revision is an un-approval."""
@@ -294,6 +328,8 @@ ORDER BY fp_pending_since, rev_id DESC
                 "is_blocked": False,
                 "is_bot": False,
                 "is_former_bot": False,
+                "is_global_bot": False,
+                "is_former_global_bot": False,
                 "is_autopatrolled": False,
                 "is_autoreviewed": False,
             },
@@ -311,12 +347,19 @@ ORDER BY fp_pending_since, rev_id DESC
         profile.is_autopatrolled = "autopatrolled" in groups
         profile.is_autoreviewed = bool(autoreviewed_groups & set(groups))
         profile.is_blocked = bool(superset_data.get("user_blocked", False))
+
+        is_global_bot, is_former_global_bot = self.check_global_bot_user(username)
+        profile.is_global_bot = is_global_bot
+        profile.is_former_global_bot = is_former_global_bot
+
         profile.save(
             update_fields=[
                 "usergroups",
                 "is_blocked",
                 "is_bot",
                 "is_former_bot",
+                "is_global_bot",
+                "is_former_global_bot",
                 "is_autopatrolled",
                 "is_autoreviewed",
                 "fetched_at",
