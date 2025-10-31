@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pywikibot
 from django.db import transaction
@@ -258,7 +258,7 @@ ORDER BY fp_pending_since, rev_id DESC
             return None
 
         age = dj_timezone.now() - payload.timestamp
-        defaults = {
+        defaults: dict[str, Any] = {
             "parentid": payload.parentid,
             "user_name": payload.user or "",
             "user_id": payload.userid,
