@@ -48,7 +48,7 @@ def detect_broken_wikicode_indicators(html_content: str, wiki_lang: str = "en") 
     # Extract only visible text (excluding code blocks, pre tags, etc.)
     visible_text = get_visible_text(html_content)
 
-    indicators = Counter()
+    indicators: Counter[str] = Counter()
 
     # Template syntax
     indicators["{{"] = visible_text.count("{{")
