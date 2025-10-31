@@ -1,6 +1,9 @@
 # Pre-commit config
 .pre-commit-config.yaml  @zache-fi @ad-an-26 @ Ademola @ ipr
 
+# Pip-audit ignore 
+.pip-audit-ignore        @zache-fi @ad-an-26 @ Ademola @ ipr
+
 # GitHub workflows
 .github/workflows/*      @zache-fi @ad-an-26 @ Ademola @ ipr
 

@@ -36,7 +36,7 @@ def matched_user_groups(
     if not allowed_groups:
         return set()
 
-    groups = []
+    groups: list[str] = []
     superset = revision.superset_data or {}
     superset_groups = superset.get("user_groups") or []
     if isinstance(superset_groups, list):
