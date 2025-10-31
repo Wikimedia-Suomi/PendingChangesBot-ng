@@ -13,7 +13,12 @@ def is_bot_user(revision: PendingRevision, profile: EditorProfile | None) -> boo
     if superset.get("rc_bot"):
         return True
 
-    if profile and (profile.is_bot or profile.is_former_bot or profile.is_global_bot or profile.is_former_global_bot):
+    if profile and (
+        profile.is_bot
+        or profile.is_former_bot
+        or profile.is_global_bot
+        or profile.is_former_global_bot
+    ):
         return True
 
     return False

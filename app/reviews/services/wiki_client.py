@@ -50,12 +50,12 @@ class WikiClient:
             request = pywikibot.data.api.Request(
                 site=meta_site,
                 parameters={
-                    'action': 'query',
-                    'list': 'globalallusers',
-                    'agugroup': 'global-bot',
-                    'agulimit': 'max',
-                    'aguprop': 'groups|existslocally'
-                }
+                    "action": "query",
+                    "list": "globalallusers",
+                    "agugroup": "global-bot",
+                    "agulimit": "max",
+                    "aguprop": "groups|existslocally",
+                },
             )
 
             response = request.submit()
