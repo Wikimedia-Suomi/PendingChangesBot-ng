@@ -6,6 +6,7 @@ This clears existing cache and fetches all data for the specified number of days
 
 import pywikibot
 from django.core.management.base import BaseCommand
+
 from reviews.models import Wiki
 from reviews.services.statistics import StatisticsClient
 

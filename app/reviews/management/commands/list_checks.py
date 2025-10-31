@@ -1,4 +1,5 @@
 from django.core.management.base import BaseCommand
+
 from reviews.autoreview.checks import AVAILABLE_CHECKS
 
 

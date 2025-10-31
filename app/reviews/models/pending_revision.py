@@ -96,3 +96,41 @@ class PendingRevision(models.Model):
                 if content is not None:
                     return str(content)
         return ""
+
+    def get_rendered_html(self, force: bool = False) -> str:
+        """
+        Get the rendered HTML for this revision.
+        Args:
+            force: If True, force refresh from API even if cached.
+        """
+        # Use cached version if available and not forcing refresh
+        if not force and self.rendered_html:
+            return self.rendered_html
+
+        # Fetch from API
+        site = pywikibot.Site(
+            code=self.page.wiki.code,
+            fam=self.page.wiki.family,
+        )
+        request = site.simple_request(
+            action="parse",
+            oldid=str(self.revid),
+            prop="text",
+            formatversion=2,
+        )
+        try:
+            response = request.submit()
+        except Exception:
+            logger.exception("Failed to fetch rendered HTML for revision %s", self.revid)
+            return ""
+
+        parse_result = response.get("parse", {})
+        html_text = parse_result.get("text", "")
+        rendered = html_text if isinstance(html_text, str) else ""
+
+        # Save to database if we fetched new content
+        if rendered and rendered != self.rendered_html:
+            self.rendered_html = rendered
+            self.save(update_fields=["rendered_html"])
+
+        return rendered

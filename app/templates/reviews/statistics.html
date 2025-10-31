@@ -41,52 +41,79 @@
       <div v-if="state.selectedWikiId">
         <div class="mb-4" v-if="state.statistics.metadata">
           <p class="is-size-7 has-text-grey">
+            <span v-if="state.statistics.metadata.last_data_loaded_at">
+              Last data loaded: {{ formatDateTime(state.statistics.metadata.last_data_loaded_at) }}
+            </span>
+            <span v-if="state.statistics.metadata.last_refreshed_at && state.statistics.metadata.last_data_loaded_at">
+              |
+            </span>
             <span v-if="state.statistics.metadata.last_refreshed_at">
               Last refreshed: {{ formatDateTime(state.statistics.metadata.last_refreshed_at) }}
             </span>
-            <span v-else>No statistics cached</span>
+            <span v-if="!state.statistics.metadata.last_data_loaded_at && !state.statistics.metadata.last_refreshed_at">
+              No statistics cached
+            </span>
             <span v-if="state.statistics.metadata.total_records > 0">
               | Total records: {{ state.statistics.metadata.total_records }}
             </span>
           </p>
         </div>
 
-        <div class="buttons mb-4">
-          <button
-            class="button is-primary"
-            @click="refreshStatistics"
-            :class="{ 'is-loading': state.statistics.refreshing }"
-            :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading"
-            title="Fetch only new review data since last refresh"
-          >
-            <span class="icon">
-              <i class="fas fa-sync"></i>
-            </span>
-            <span>Refresh (incremental)</span>
-          </button>
-          <button
-            class="button is-warning"
-            @click="clearAndReloadStatistics"
-            :class="{ 'is-loading': state.statistics.clearing }"
-            :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading"
-            title="Clear cache and reload all data for selected time period"
-          >
-            <span class="icon">
-              <i class="fas fa-trash-restore"></i>
-            </span>
-            <span>Clear & Reload</span>
-          </button>
-          <button
-            class="button is-info is-light"
-            @click="loadStatistics"
-            :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading"
-            title="Reload charts from locally cached data"
-          >
-            Reload from cache
-          </button>
-          <a href="/" class="button is-light">
-            ← Back to Pending Pages
-          </a>
+        <div class="mb-4">
+          <div class="field is-grouped">
+            <div class="control">
+              <button
+                class="button is-primary"
+                @click="refreshStatistics"
+                :class="{ 'is-loading': state.statistics.refreshing }"
+                :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading"
+                title="Fetch only new review data since last refresh"
+              >
+                <span class="icon">
+                  <i class="fas fa-sync"></i>
+                </span>
+                <span>Refresh (incremental)</span>
+              </button>
+            </div>
+            <div class="control">
+              <div class="select">
+                <select v-model.number="state.statistics.reloadDays" :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading">
+                  <option :value="30">30 days</option>
+                  <option :value="60">60 days</option>
+                  <option :value="90">90 days</option>
+                </select>
+              </div>
+            </div>
+            <div class="control">
+              <button
+                class="button is-warning"
+                @click="clearAndReloadStatistics"
+                :class="{ 'is-loading': state.statistics.clearing }"
+                :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading"
+                title="Clear cache and reload all data for selected time period"
+              >
+                <span class="icon">
+                  <i class="fas fa-trash-restore"></i>
+                </span>
+                <span>Clear & Reload</span>
+              </button>
+            </div>
+            <div class="control">
+              <button
+                class="button is-info is-light"
+                @click="loadStatistics"
+                :disabled="state.statistics.refreshing || state.statistics.clearing || state.statistics.loading"
+                title="Reload charts from locally cached data"
+              >
+                Reload from cache
+              </button>
+            </div>
+            <div class="control">
+              <a href="/" class="button is-light">
+                ← Back to Pending Pages
+              </a>
+            </div>
+          </div>
         </div>
 
         <div class="field mb-4" v-if="state.selectedWikiId">
@@ -119,6 +146,27 @@
                 </button>
                 <button
                   class="button is-small"
+                  :class="{ 'is-primary': state.statistics.timeFilter === '365' }"
+                  @click="setTimeFilter('365')"
+                >
+                  365 Days
+                </button>
+                <button
+                  class="button is-small"
+                  :class="{ 'is-primary': state.statistics.timeFilter === '90' }"
+                  @click="setTimeFilter('90')"
+                >
+                  90 Days
+                </button>
+                <button
+                  class="button is-small"
+                  :class="{ 'is-primary': state.statistics.timeFilter === '30' }"
+                  @click="setTimeFilter('30')"
+                >
+                  30 Days
+                </button>
+                <button
+                  class="button is-small"
                   :class="{ 'is-primary': state.statistics.timeFilter === 'week' }"
                   @click="setTimeFilter('week')"
                 >
@@ -139,8 +187,17 @@
         <div class="notification is-danger" v-if="state.statistics.error">
           {{ state.statistics.error }}
         </div>
+        <div class="notification is-success" v-if="state.statistics.successMessage">
+          {{ state.statistics.successMessage }}
+        </div>
         <div class="notification is-info" v-if="state.statistics.loading">
-          Loading statistics…
+          Loading statistics… this may take a few minutes for large datasets
+        </div>
+        <div class="notification is-info" v-if="state.statistics.refreshing">
+          Refreshing statistics… fetching new data since last update
+        </div>
+        <div class="notification is-info" v-if="state.statistics.clearing">
+          Clearing cache and reloading… this may take a few minutes
         </div>
 
         <!-- Overall Statistics -->

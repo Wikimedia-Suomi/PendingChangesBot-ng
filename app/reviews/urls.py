@@ -39,4 +39,24 @@ urlpatterns = [
         name="api_statistics_clear_and_reload",
     ),
     path("api/wikis/fetch-diff/", views.fetch_diff, name="fetch_diff"),
+    path(
+        "api/flaggedrevs-statistics/",
+        views.api_flaggedrevs_statistics,
+        name="api_flaggedrevs_statistics",
+    ),
+    path(
+        "api/flaggedrevs-statistics/available-months/",
+        views.api_flaggedrevs_months,
+        name="api_flaggedrevs_months",
+    ),
+    path(
+        "api/flaggedrevs-activity/",
+        views.api_flaggedrevs_activity,
+        name="api_flaggedrevs_activity",
+    ),
+    path(
+        "flaggedrevs-statistics/",
+        views.flaggedrevs_statistics_page,
+        name="flaggedrevs_statistics_page",
+    ),
 ]

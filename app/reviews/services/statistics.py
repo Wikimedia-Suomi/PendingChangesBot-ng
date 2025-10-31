@@ -104,6 +104,8 @@ class StatisticsClient:
                 "newest_timestamp": result["newest_timestamp"],
                 "max_log_id": result["max_log_id"] if result["max_log_id"] else last_log_id,
                 "is_incremental": True,
+                "batches_fetched": 1,  # Incremental refresh is always single batch
+                "batch_limit_reached": False,
             }
 
         except ReviewStatisticsMetadata.DoesNotExist:
@@ -201,12 +203,19 @@ class StatisticsClient:
 
             previous_max_log_id = current_max_log_id
 
-            # Safety limit: don't fetch more than 10 batches (100k records)
-            if batches_fetched >= 10:
-                logger.warning("Reached maximum batch limit (10 batches) for %s", self.wiki.code)
+            # Safety limit: don't fetch more than 50 batches (500k records)
+            if batches_fetched >= 50:
+                logger.warning(
+                    "Reached maximum batch limit (50 batches, %d records) for %s. "
+                    "Some data may be missing.",
+                    total_records,
+                    self.wiki.code,
+                )
                 break
 
         # Update metadata
+        from django.utils import timezone as dj_timezone
+
         with transaction.atomic():
             metadata, _ = ReviewStatisticsMetadata.objects.update_or_create(
                 wiki=self.wiki,
@@ -215,6 +224,7 @@ class StatisticsClient:
                     "oldest_review_timestamp": oldest_timestamp,
                     "newest_review_timestamp": newest_timestamp,
                     "max_log_id": max_log_id,
+                    "last_data_loaded_at": dj_timezone.now(),
                 },
             )
 
@@ -235,6 +245,7 @@ class StatisticsClient:
             "newest_timestamp": newest_timestamp,
             "max_log_id": max_log_id,
             "batches_fetched": batches_fetched,
+            "batch_limit_reached": batches_fetched >= 50,
         }
 
     def _fetch_statistics_batch(

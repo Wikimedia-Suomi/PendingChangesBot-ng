@@ -6,6 +6,7 @@ Fetches only new review data since last update (using max_log_id).
 
 import pywikibot
 from django.core.management.base import BaseCommand
+
 from reviews.models import Wiki
 from reviews.services.statistics import StatisticsClient
 

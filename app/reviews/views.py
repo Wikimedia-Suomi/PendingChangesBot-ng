@@ -25,6 +25,7 @@ from .models import (
     Wiki,
     WikiConfiguration,
 )
+from .models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
@@ -895,6 +896,8 @@ def api_statistics_refresh(request: HttpRequest, pk: int) -> JsonResponse:
                 result["newest_timestamp"].isoformat() if result["newest_timestamp"] else None
             ),
             "is_incremental": result.get("is_incremental", False),
+            "batches_fetched": result.get("batches_fetched", 0),
+            "batch_limit_reached": result.get("batch_limit_reached", False),
         }
     )
 
@@ -934,6 +937,108 @@ def api_statistics_clear_and_reload(request: HttpRequest, pk: int) -> JsonRespon
                 result["newest_timestamp"].isoformat() if result["newest_timestamp"] else None
             ),
             "batches_fetched": result.get("batches_fetched", 0),
+            "batch_limit_reached": result.get("batch_limit_reached", False),
             "days": days,
         }
     )
+
+
+@require_GET
+def api_flaggedrevs_statistics(request: HttpRequest) -> JsonResponse:
+    wiki_code = request.GET.get("wiki")
+    data_series = request.GET.get("series")
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+
+    queryset = FlaggedRevsStatistics.objects.select_related("wiki")
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    if start_date:
+        queryset = queryset.filter(date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(date__lte=end_date)
+
+    statistics = queryset.order_by("date")
+
+    data = []
+    for stat in statistics:
+        entry = {
+            "wiki": stat.wiki.code,
+            "date": stat.date.isoformat(),
+            "totalPages_ns0": stat.total_pages_ns0,
+            "syncedPages_ns0": stat.synced_pages_ns0,
+            "reviewedPages_ns0": stat.reviewed_pages_ns0,
+            "pendingLag_average": stat.pending_lag_average,
+            "pendingChanges": stat.pending_changes,
+        }
+
+        if data_series:
+            entry = {
+                "wiki": entry["wiki"],
+                "date": entry["date"],
+                data_series: entry.get(data_series),
+            }
+
+        data.append(entry)
+
+    return JsonResponse({"data": data})
+
+
+@require_GET
+def api_flaggedrevs_activity(request: HttpRequest) -> JsonResponse:
+    wiki_code = request.GET.get("wiki")
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+
+    queryset = ReviewActivity.objects.select_related("wiki")
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    if start_date:
+        queryset = queryset.filter(date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(date__lte=end_date)
+
+    activities = queryset.order_by("date")
+
+    data = []
+    for activity in activities:
+        entry = {
+            "wiki": activity.wiki.code,
+            "date": activity.date.isoformat(),
+            "number_of_reviewers": activity.number_of_reviewers,
+            "number_of_reviews": activity.number_of_reviews,
+            "number_of_pages": activity.number_of_pages,
+            "reviews_per_reviewer": activity.reviews_per_reviewer,
+        }
+        data.append(entry)
+
+    return JsonResponse({"data": data})
+
+
+@require_GET
+def api_flaggedrevs_months(request: HttpRequest) -> JsonResponse:
+    months_data = (
+        FlaggedRevsStatistics.objects.values_list("date", flat=True).distinct().order_by("-date")
+    )
+
+    months = []
+    for date in months_data:
+        month_value = date.strftime("%Y%m")
+
+        if not any(m["value"] == month_value for m in months):
+            months.append({"value": month_value, "label": month_value})
+
+    return JsonResponse({"months": months})
+
+
+def flaggedrevs_statistics_page(request: HttpRequest) -> HttpResponse:
+    """Render the statistics visualization page."""
+    wikis = Wiki.objects.all().order_by("code")
+    wikis_json = json.dumps([{"code": w.code, "name": w.name} for w in wikis])
+    return render(request, "reviews/flaggedrevs_statistics.html", {"wikis": wikis_json})

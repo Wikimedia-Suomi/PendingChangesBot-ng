@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .editor_profile import EditorProfile
+from .flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
 from .model_scores import ModelScores
 from .pending_page import PendingPage
 from .pending_revision import PendingRevision
@@ -18,4 +19,6 @@ __all__ = [
     "EditorProfile",
     "ReviewStatisticsCache",
     "ReviewStatisticsMetadata",
+    "FlaggedRevsStatistics",
+    "ReviewActivity",
 ]
