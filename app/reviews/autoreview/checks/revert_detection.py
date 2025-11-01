@@ -1,20 +1,21 @@
 from __future__ import annotations
 
+import json
+import logging
+from typing import Any
+
+from django.conf import settings
+
+import reviews.autoreview as autoreview
+
+from ..context import CheckContext
+
 """
 Revert detection check for already-reviewed edits.
 
 This check detects when a pending edit is a revert to previously reviewed content
 by matching SHA1 content hashes and checking for revert tags.
 """
-
-import json
-import logging
-from typing import Any
-
-import reviews.autoreview as autoreview
-from django.conf import settings
-
-from ..context import CheckContext
 
 logger = logging.getLogger(__name__)
 
