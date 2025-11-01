@@ -152,6 +152,7 @@ SELECT
    a.actor_name,
    a.actor_user,
    group_concat(DISTINCT(ctd_name)) AS change_tags,
+   group_concat(DISTINCT(ct_params)) AS change_tags_params,
    group_concat(DISTINCT(ug_group)) AS user_groups,
    group_concat(DISTINCT(ufg_group)) AS user_former_groups,
    group_concat(DISTINCT(cl_to)) AS page_categories,

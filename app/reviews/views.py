@@ -30,6 +30,7 @@ from .models import (
     WikiConfiguration,
 )
 from .services import WikiClient
+from .utils.approval_comment import generate_approval_comment
 
 logger = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 1
@@ -458,12 +459,30 @@ def api_autoreview(request: HttpRequest, pk: int, pageid: int) -> JsonResponse:
         pageid=pageid,
     )
     results = run_autoreview_for_page(page)
+    if not results:
+        return JsonResponse(
+            {
+                "pageid": page.pageid,
+                "title": page.title,
+                "mode": "dry-run",
+                "results": [],
+                "approval_summary": None,
+            }
+        )
+
+    # Generate consolidated approval comment and find highest approvable revision
+    max_approvable_revid, approval_comment = generate_approval_comment(results)
+
     return JsonResponse(
         {
             "pageid": page.pageid,
             "title": page.title,
             "mode": "dry-run",
             "results": results,
+            "approval_summary": {
+                "max_approvable_revid": max_approvable_revid,
+                "approval_comment": approval_comment,
+            },
         }
     )
 
