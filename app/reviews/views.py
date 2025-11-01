@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from http import HTTPStatus
+from urllib.parse import urlencode
 
 import requests
 from django.core.cache import cache
@@ -30,6 +32,10 @@ from .services import WikiClient
 
 logger = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 1
+
+# Constants for LiftWing feature
+VALIDATION_TIMEOUT = 8  # seconds
+USER_AGENT = "PendingChangesBot/1.0 (https://github.com/Wikimedia-Suomi/PendingChangesBot-ng)"
 
 
 def calculate_percentile(values: list[float], percentile: float) -> float:
@@ -658,6 +664,924 @@ def fetch_diff(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 
+def liftwing_page(request):
+    return render(request, "reviews/lift.html")
+
+
+@csrf_exempt
+def validate_article(request):
+    """
+    POST JSON: { "wiki": <wiki id|code|{id:,code:}>, "article": "Page title" }
+    Response JSON: { "valid": bool, "exists": bool, "pageid": int|null,
+        "normalized_title": str|null, "missing": bool, "error": null|str }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    article = payload.get("article")
+    wiki_payload = payload.get("wiki")
+
+    if not article or not isinstance(article, str) or not article.strip():
+        return JsonResponse({"valid": False, "error": "Empty article title"}, status=200)
+
+    try:
+        wiki = _resolve_wiki_from_payload(wiki_payload)
+    except LookupError as e:
+        return JsonResponse({"valid": False, "error": str(e)}, status=400)
+
+    api_endpoint = wiki.api_endpoint
+    if not api_endpoint:
+        return JsonResponse(
+            {"valid": False, "error": "Wiki has no configured api_endpoint"}, status=500
+        )
+
+    params = {
+        "action": "query",
+        "format": "json",
+        "formatversion": 2,
+        "titles": article,
+        "redirects": 1,
+        "prop": "info",
+    }
+
+    # Build query URL safely
+    if "?" not in api_endpoint:
+        query_url = f"{api_endpoint}?{urlencode(params)}"
+    else:
+        query_url = f"{api_endpoint}&{urlencode(params)}"
+
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        resp = requests.get(query_url, headers=headers, timeout=VALIDATION_TIMEOUT)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.exception("Failed to call MediaWiki API for validation: %s", exc)
+        return JsonResponse(
+            {"valid": False, "error": f"API request failed: {str(exc)}"},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+
+    try:
+        data = resp.json()
+    except ValueError:
+        logger.error("MediaWiki API returned non-json for %s", query_url)
+        return JsonResponse(
+            {"valid": False, "error": "API returned invalid JSON"},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+
+    query = data.get("query", {})
+    pages = query.get("pages", [])
+    if not pages:
+        return JsonResponse({"valid": False, "error": "Unexpected API response"}, status=500)
+
+    page = pages[0]
+    missing = bool(page.get("missing", False))
+    normalized_title = page.get("title")
+    pageid = page.get("pageid")
+
+    result = {
+        "valid": True,
+        "exists": not missing,
+        "missing": missing,
+        "pageid": pageid if pageid is not None else None,
+        "normalized_title": normalized_title,
+        "error": None,
+    }
+    return JsonResponse(result, status=200)
+
+
+def _resolve_wiki_from_payload(wiki_value):
+    """
+    Accept either integer pk, string code, or dictionary with 'id'/'code'.
+    Returns Wiki instance or raises LookupError.
+    """
+    from .models import Wiki
+
+    if wiki_value is None:
+        raise LookupError("Missing wiki parameter")
+
+    # If a dict was passed (from frontend), try keys
+    if isinstance(wiki_value, dict):
+        if "id" in wiki_value:
+            try:
+                return Wiki.objects.get(pk=int(wiki_value["id"]))
+            except Exception:
+                raise LookupError(f"Unknown wiki id {wiki_value['id']}")
+        if "code" in wiki_value:
+            try:
+                return Wiki.objects.get(code=str(wiki_value["code"]))
+            except Exception:
+                raise LookupError(f"Unknown wiki code {wiki_value['code']}")
+
+    # If numeric string or int -> assume pk
+    try:
+        pk = int(wiki_value)
+        try:
+            return Wiki.objects.get(pk=pk)
+        except Exception:  # noqa: S110
+            pass
+    except Exception:  # noqa: S110
+        pass
+
+    # Otherwise assume code
+    try:
+        return Wiki.objects.get(code=str(wiki_value))
+    except Exception:
+        raise LookupError(f"Unknown wiki identifier: {wiki_value!r}")
+
+
+@csrf_exempt
+def fetch_revisions(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        wiki = data.get("wiki", "en")
+        article = data.get("article", "")
+
+        if not article:
+            return JsonResponse({"error": "Missing article parameter"}, status=400)
+
+        base_url = f"https://{wiki}.wikipedia.org/w/api.php"
+        headers = {"User-Agent": USER_AGENT}
+
+        params = {
+            "action": "query",
+            "prop": "revisions",
+            "titles": article,
+            "rvlimit": "max",
+            "rvprop": "ids|timestamp|user|comment",
+            "format": "json",
+        }
+
+        revisions = []
+        cont = True
+        cont_token = None
+        max_iterations = 10  # Prevent infinite loops
+
+        while cont and max_iterations > 0:
+            if cont_token:
+                params["rvcontinue"] = cont_token
+
+            try:
+                response = requests.get(base_url, params=params, headers=headers, timeout=10)
+                response.raise_for_status()
+                api_data = response.json()
+            except requests.exceptions.Timeout:
+                return JsonResponse({"error": "Request to Wikipedia API timed out"}, status=504)
+            except requests.exceptions.JSONDecodeError as e:
+                return JsonResponse(
+                    {"error": f"Invalid JSON from Wikipedia API: {str(e)}"}, status=500
+                )
+            except requests.exceptions.RequestException as e:
+                return JsonResponse({"error": f"Wikipedia API error: {str(e)}"}, status=500)
+
+            pages = api_data.get("query", {}).get("pages", {})
+            for page_id, page_info in pages.items():
+                revs = page_info.get("revisions", [])
+                revisions.extend(revs)
+
+            cont_token = api_data.get("continue", {}).get("rvcontinue")
+            cont = bool(cont_token)
+            max_iterations -= 1
+
+        return JsonResponse({"title": article, "revisions": revisions})
+
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON in request body"}, status=400)
+    except Exception as e:
+        return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
+
+
+@csrf_exempt
+def fetch_liftwing_predictions(request):
+    """
+    POST JSON: { "wiki": "en", "model": "articlequality", "revisions": [12345, 67890] }
+    Response: { "predictions": { "12345": {...}, "67890": {...} } }
+
+    Optimized to use concurrent requests with ThreadPoolExecutor for parallel processing.
+    Much faster than sequential requests.
+    """
+    data = json.loads(request.body)
+    wiki = data.get("wiki", "en")
+    model = data.get("model", "articlequality")
+    revisions = data.get("revisions", [])
+
+    if not revisions:
+        return JsonResponse({"error": "Missing revisions list"}, status=400)
+
+    # Base URL for LiftWing API
+    base_url = (
+        f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+    )
+    headers = {"User-Agent": USER_AGENT}
+
+    def fetch_single_prediction(rev_id):
+        """Fetch prediction for a single revision ID"""
+        try:
+            payload = {"rev_id": rev_id}
+            resp = requests.post(base_url, json=payload, headers=headers, timeout=15)
+            resp.raise_for_status()
+            result = resp.json()
+            return (rev_id, result.get("output", result))
+        except requests.exceptions.Timeout:
+            return (rev_id, {"error": "Request timed out"})
+        except requests.exceptions.HTTPError as e:
+            return (rev_id, {"error": f"HTTP {e.response.status_code}: {str(e)}"})
+        except Exception as e:
+            return (rev_id, {"error": str(e)})
+
+    predictions = {}
+
+    # Use ThreadPoolExecutor for parallel requests (max 10 concurrent)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit all tasks
+        future_to_rev = {
+            executor.submit(fetch_single_prediction, rev_id): rev_id for rev_id in revisions
+        }
+
+        # Collect results as they complete
+        for future in as_completed(future_to_rev):
+            rev_id, prediction = future.result()
+            predictions[rev_id] = prediction
+
+    return JsonResponse({"predictions": predictions})
+
+
+@csrf_exempt
+def fetch_predictions(request):
+    """
+    POST JSON: { "wiki": "en", "article": "Allu Arjun", "model": "articlequality" }
+    Calls the LiftWing API to fetch predictions for an article.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    wiki = data.get("wiki", "en")
+    article = data.get("article", "")
+    model = data.get("model", "articlequality")
+
+    if not article:
+        return JsonResponse({"error": "Missing article title"}, status=400)
+
+    # LiftWing API endpoint for model inference
+    api_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+
+    # For simplicity, we fetch the latest revision ID of the article first
+    rev_api = f"https://{wiki}.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "titles": article,
+        "prop": "revisions",
+        "rvlimit": 1,
+        "rvprop": "ids",
+        "format": "json",
+    }
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        rev_resp = requests.get(rev_api, params=params, headers=headers, timeout=10)
+        rev_resp.raise_for_status()
+        rev_data = rev_resp.json()
+        pages = rev_data.get("query", {}).get("pages", {})
+        rev_id = None
+        for page_id, page_info in pages.items():
+            if "revisions" in page_info:
+                rev_id = page_info["revisions"][0]["revid"]
+                break
+    except Exception as e:
+        return JsonResponse({"error": f"Failed to fetch revision ID: {e}"}, status=500)
+
+    if not rev_id:
+        return JsonResponse({"error": "No revision found for this article"}, status=404)
+
+    # Call LiftWing API
+    payload = {"rev_id": rev_id}
+    headers = {"User-Agent": USER_AGENT}
+
+    try:
+        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        prediction = response.json()
+        return JsonResponse(
+            {
+                "wiki": wiki,
+                "article": article,
+                "rev_id": rev_id,
+                "model": model,
+                "prediction": prediction,
+            }
+        )
+    except requests.RequestException as e:
+        return JsonResponse({"error": f"LiftWing request failed: {str(e)}"}, status=500)
+
+
+@require_GET
+def liftwing_models(request, wiki_code):
+    """Return available LiftWing models for the given wiki."""
+    # Comprehensive list of available Wikimedia ML models
+    models = [
+        {
+            "name": "articlequality",
+            "version": "1.0.0",
+            "description": "Predicts the quality class of Wikipedia articles",
+            "supported_languages": [
+                "en",
+                "de",
+                "fr",
+                "es",
+                "it",
+                "pt",
+                "ru",
+                "ja",
+                "zh",
+                "ar",
+                "hi",
+                "tr",
+                "pl",
+                "nl",
+                "sv",
+                "no",
+                "da",
+                "fi",
+                "cs",
+                "hu",
+                "ro",
+                "bg",
+                "hr",
+                "sk",
+                "sl",
+                "et",
+                "lv",
+                "lt",
+                "el",
+                "he",
+                "th",
+                "vi",
+                "ko",
+                "uk",
+                "be",
+                "mk",
+                "sq",
+                "sr",
+                "bs",
+                "hr",
+                "sl",
+                "sk",
+                "cs",
+                "pl",
+                "hu",
+                "ro",
+                "bg",
+                "el",
+                "tr",
+                "ar",
+                "he",
+                "fa",
+                "ur",
+                "hi",
+                "bn",
+                "ta",
+                "te",
+                "ml",
+                "kn",
+                "gu",
+                "pa",
+                "or",
+                "as",
+                "ne",
+                "si",
+                "my",
+                "km",
+                "lo",
+                "th",
+                "vi",
+                "ko",
+                "ja",
+                "zh",
+                "yue",
+                "zh-min-nan",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+                "zh-yue",
+                "yue",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+            ],  # noqa: E501
+        },
+        {
+            "name": "draftquality",
+            "version": "1.0.0",
+            "description": "Predicts the quality of new article drafts",
+            "supported_languages": [
+                "en",
+                "de",
+                "fr",
+                "es",
+                "it",
+                "pt",
+                "ru",
+                "ja",
+                "zh",
+                "ar",
+                "hi",
+                "tr",
+                "pl",
+                "nl",
+                "sv",
+                "no",
+                "da",
+                "fi",
+                "cs",
+                "hu",
+                "ro",
+                "bg",
+                "hr",
+                "sk",
+                "sl",
+                "et",
+                "lv",
+                "lt",
+                "el",
+                "he",
+                "th",
+                "vi",
+                "ko",
+                "uk",
+                "be",
+                "mk",
+                "sq",
+                "sr",
+                "bs",
+                "hr",
+                "sl",
+                "sk",
+                "cs",
+                "pl",
+                "hu",
+                "ro",
+                "bg",
+                "el",
+                "tr",
+                "ar",
+                "he",
+                "fa",
+                "ur",
+                "hi",
+                "bn",
+                "ta",
+                "te",
+                "ml",
+                "kn",
+                "gu",
+                "pa",
+                "or",
+                "as",
+                "ne",
+                "si",
+                "my",
+                "km",
+                "lo",
+                "th",
+                "vi",
+                "ko",
+                "ja",
+                "zh",
+                "yue",
+                "zh-min-nan",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+                "zh-yue",
+                "yue",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+            ],  # noqa: E501
+        },
+        {
+            "name": "revertrisk",
+            "version": "1.0.0",
+            "description": "Predicts the likelihood of an edit being reverted",
+            "supported_languages": [
+                "en",
+                "de",
+                "fr",
+                "es",
+                "it",
+                "pt",
+                "ru",
+                "ja",
+                "zh",
+                "ar",
+                "hi",
+                "tr",
+                "pl",
+                "nl",
+                "sv",
+                "no",
+                "da",
+                "fi",
+                "cs",
+                "hu",
+                "ro",
+                "bg",
+                "hr",
+                "sk",
+                "sl",
+                "et",
+                "lv",
+                "lt",
+                "el",
+                "he",
+                "th",
+                "vi",
+                "ko",
+                "uk",
+                "be",
+                "mk",
+                "sq",
+                "sr",
+                "bs",
+                "hr",
+                "sl",
+                "sk",
+                "cs",
+                "pl",
+                "hu",
+                "ro",
+                "bg",
+                "el",
+                "tr",
+                "ar",
+                "he",
+                "fa",
+                "ur",
+                "hi",
+                "bn",
+                "ta",
+                "te",
+                "ml",
+                "kn",
+                "gu",
+                "pa",
+                "or",
+                "as",
+                "ne",
+                "si",
+                "my",
+                "km",
+                "lo",
+                "th",
+                "vi",
+                "ko",
+                "ja",
+                "zh",
+                "yue",
+                "zh-min-nan",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+                "zh-yue",
+                "yue",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+            ],  # noqa: E501
+        },
+        {
+            "name": "revertrisk-multilingual",
+            "version": "1.0.0",
+            "description": "Multilingual revert risk prediction",
+            "supported_languages": [
+                "en",
+                "de",
+                "fr",
+                "es",
+                "it",
+                "pt",
+                "ru",
+                "ja",
+                "zh",
+                "ar",
+                "hi",
+                "tr",
+                "pl",
+                "nl",
+                "sv",
+                "no",
+                "da",
+                "fi",
+                "cs",
+                "hu",
+                "ro",
+                "bg",
+                "hr",
+                "sk",
+                "sl",
+                "et",
+                "lv",
+                "lt",
+                "el",
+                "he",
+                "th",
+                "vi",
+                "ko",
+                "uk",
+                "be",
+                "mk",
+                "sq",
+                "sr",
+                "bs",
+                "hr",
+                "sl",
+                "sk",
+                "cs",
+                "pl",
+                "hu",
+                "ro",
+                "bg",
+                "el",
+                "tr",
+                "ar",
+                "he",
+                "fa",
+                "ur",
+                "hi",
+                "bn",
+                "ta",
+                "te",
+                "ml",
+                "kn",
+                "gu",
+                "pa",
+                "or",
+                "as",
+                "ne",
+                "si",
+                "my",
+                "km",
+                "lo",
+                "th",
+                "vi",
+                "ko",
+                "ja",
+                "zh",
+                "yue",
+                "zh-min-nan",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+                "zh-yue",
+                "yue",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+            ],  # noqa: E501
+        },
+        {
+            "name": "damaging",
+            "version": "1.0.0",
+            "description": "Predicts if an edit is damaging",
+            "supported_languages": [
+                "en",
+                "de",
+                "fr",
+                "es",
+                "it",
+                "pt",
+                "ru",
+                "ja",
+                "zh",
+                "ar",
+                "hi",
+                "tr",
+                "pl",
+                "nl",
+                "sv",
+                "no",
+                "da",
+                "fi",
+                "cs",
+                "hu",
+                "ro",
+                "bg",
+                "hr",
+                "sk",
+                "sl",
+                "et",
+                "lv",
+                "lt",
+                "el",
+                "he",
+                "th",
+                "vi",
+                "ko",
+                "uk",
+                "be",
+                "mk",
+                "sq",
+                "sr",
+                "bs",
+                "hr",
+                "sl",
+                "sk",
+                "cs",
+                "pl",
+                "hu",
+                "ro",
+                "bg",
+                "el",
+                "tr",
+                "ar",
+                "he",
+                "fa",
+                "ur",
+                "hi",
+                "bn",
+                "ta",
+                "te",
+                "ml",
+                "kn",
+                "gu",
+                "pa",
+                "or",
+                "as",
+                "ne",
+                "si",
+                "my",
+                "km",
+                "lo",
+                "th",
+                "vi",
+                "ko",
+                "ja",
+                "zh",
+                "yue",
+                "zh-min-nan",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+                "zh-yue",
+                "yue",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+            ],  # noqa: E501
+        },
+        {
+            "name": "goodfaith",
+            "version": "1.0.0",
+            "description": "Predicts if an edit is made in good faith",
+            "supported_languages": [
+                "en",
+                "de",
+                "fr",
+                "es",
+                "it",
+                "pt",
+                "ru",
+                "ja",
+                "zh",
+                "ar",
+                "hi",
+                "tr",
+                "pl",
+                "nl",
+                "sv",
+                "no",
+                "da",
+                "fi",
+                "cs",
+                "hu",
+                "ro",
+                "bg",
+                "hr",
+                "sk",
+                "sl",
+                "et",
+                "lv",
+                "lt",
+                "el",
+                "he",
+                "th",
+                "vi",
+                "ko",
+                "ja",
+                "zh",
+                "yue",
+                "zh-min-nan",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+                "zh-yue",
+                "yue",
+                "nan",
+                "hak",
+                "gan",
+                "wuu",
+                "cdo",
+                "mnp",
+                "cjy",
+                "hsn",
+                "lzh",
+                "zh-classical",
+            ],  # noqa: E501
+        },
+    ]
+    return JsonResponse({"models": models})
+
+
 @require_GET
 def api_statistics(request: HttpRequest, pk: int) -> JsonResponse:
     """Get cached review statistics for a wiki."""
@@ -943,10 +1867,112 @@ def api_statistics_clear_and_reload(request: HttpRequest, pk: int) -> JsonRespon
     )
 
 
+# Word-Level Annotation Views
+
+
+@require_GET
+def word_annotation_page(request: HttpRequest) -> HttpResponse:
+    """Render the word-level annotation visualization page."""
+    return render(request, "reviews/word_annotation.html")
+
+
+@require_GET
+def api_get_revisions(request: HttpRequest) -> JsonResponse:
+    """Get list of revisions for a page that have word annotations."""
+    from .models import PendingPage, WordAnnotation
+
+    page_id = request.GET.get("page_id")
+    if not page_id:
+        return JsonResponse({"error": "page_id is required"}, status=400)
+
+    try:
+        page = PendingPage.objects.get(pageid=page_id)
+    except PendingPage.DoesNotExist:
+        return JsonResponse({"error": "Page not found"}, status=404)
+
+    # Get only revisions that have word annotations
+    annotations = (
+        WordAnnotation.objects.filter(page=page)
+        .values("revision_id")
+        .distinct()
+        .order_by("-revision_id")
+    )
+
+    # Fetch revision details for each annotated revision
+    data = []
+    for ann in annotations[:100]:  # Limit to 100 latest revisions
+        revision_id = ann["revision_id"]
+        # Get word count for this revision
+        word_count = WordAnnotation.objects.filter(page=page, revision_id=revision_id).count()
+
+        data.append(
+            {
+                "revision_id": revision_id,
+                "word_count": word_count,
+                "timestamp": None,  # Could fetch from PendingRevision if needed
+                "user": None,
+                "comment": f"{word_count} words annotated",
+            }
+        )
+
+    return JsonResponse({"revisions": data})
+
+
+@require_GET
+def api_get_annotations(request: HttpRequest) -> JsonResponse:
+    """Get word annotations for a specific revision."""
+    from .models import PendingPage, WordAnnotation
+
+    page_id = request.GET.get("page_id")
+    revision_id = request.GET.get("revision_id")
+
+    if not page_id or not revision_id:
+        return JsonResponse({"error": "page_id and revision_id are required"}, status=400)
+
+    try:
+        page = PendingPage.objects.get(pageid=page_id)
+    except PendingPage.DoesNotExist:
+        return JsonResponse({"error": "Page not found"}, status=404)
+
+    annotations = WordAnnotation.objects.filter(page=page, revision_id=int(revision_id)).order_by(
+        "position"
+    )
+
+    # Filter by author if specified
+    author = request.GET.get("author")
+    if author:
+        annotations = annotations.filter(author_user_name=author)
+
+    # Get unique authors for filter dropdown
+    all_authors = (
+        WordAnnotation.objects.filter(page=page, revision_id=int(revision_id))
+        .values_list("author_user_name", flat=True)
+        .distinct()
+    )
+
+    data = {
+        "annotations": [
+            {
+                "word": ann.word,
+                "author": ann.author_user_name or "Anonymous",
+                "position": ann.position,
+                "is_moved": ann.is_moved,
+                "is_modified": ann.is_modified,
+                "is_deleted": ann.is_deleted,
+                "stable_word_id": ann.stable_word_id,
+            }
+            for ann in annotations
+        ],
+        "authors": list(all_authors),
+    }
+
+    return JsonResponse(data)
+
+
 @require_GET
 def api_flaggedrevs_statistics(request: HttpRequest) -> JsonResponse:
+    """Get FlaggedRevs statistics."""
     wiki_code = request.GET.get("wiki")
-    data_series = request.GET.get("series")
     start_date = request.GET.get("start_date")
     end_date = request.GET.get("end_date")
 
@@ -961,34 +1987,44 @@ def api_flaggedrevs_statistics(request: HttpRequest) -> JsonResponse:
     if end_date:
         queryset = queryset.filter(date__lte=end_date)
 
-    statistics = queryset.order_by("date")
+    queryset = queryset.order_by("date")
 
-    data = []
-    for stat in statistics:
-        entry = {
+    data = [
+        {
             "wiki": stat.wiki.code,
             "date": stat.date.isoformat(),
             "totalPages_ns0": stat.total_pages_ns0,
-            "syncedPages_ns0": stat.synced_pages_ns0,
             "reviewedPages_ns0": stat.reviewed_pages_ns0,
-            "pendingLag_average": stat.pending_lag_average,
+            "syncedPages_ns0": stat.synced_pages_ns0,
             "pendingChanges": stat.pending_changes,
+            "pendingLagAverage": (
+                float(stat.pending_lag_average) if stat.pending_lag_average else None
+            ),
         }
-
-        if data_series:
-            entry = {
-                "wiki": entry["wiki"],
-                "date": entry["date"],
-                data_series: entry.get(data_series),
-            }
-
-        data.append(entry)
+        for stat in queryset
+    ]
 
     return JsonResponse({"data": data})
 
 
 @require_GET
+def api_flaggedrevs_months(request: HttpRequest) -> JsonResponse:
+    """Get available months for FlaggedRevs statistics."""
+    wiki_code = request.GET.get("wiki")
+
+    queryset = FlaggedRevsStatistics.objects.all()
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    dates = queryset.values_list("date", flat=True).distinct().order_by("-date")
+
+    return JsonResponse({"months": [d.isoformat() for d in dates]})
+
+
+@require_GET
 def api_flaggedrevs_activity(request: HttpRequest) -> JsonResponse:
+    """Get FlaggedRevs review activity statistics."""
     wiki_code = request.GET.get("wiki")
     start_date = request.GET.get("start_date")
     end_date = request.GET.get("end_date")
@@ -1004,41 +2040,28 @@ def api_flaggedrevs_activity(request: HttpRequest) -> JsonResponse:
     if end_date:
         queryset = queryset.filter(date__lte=end_date)
 
-    activities = queryset.order_by("date")
+    queryset = queryset.order_by("date")
 
-    data = []
-    for activity in activities:
-        entry = {
+    data = [
+        {
             "wiki": activity.wiki.code,
             "date": activity.date.isoformat(),
-            "number_of_reviewers": activity.number_of_reviewers,
-            "number_of_reviews": activity.number_of_reviews,
-            "number_of_pages": activity.number_of_pages,
-            "reviews_per_reviewer": activity.reviews_per_reviewer,
+            "numberOfReviewers": activity.number_of_reviewers,
+            "numberOfReviews": activity.number_of_reviews,
+            "numberOfPages": activity.number_of_pages,
+            "reviewsPerReviewer": (
+                float(activity.reviews_per_reviewer) if activity.reviews_per_reviewer else None
+            ),
         }
-        data.append(entry)
+        for activity in queryset
+    ]
 
     return JsonResponse({"data": data})
 
 
 @require_GET
-def api_flaggedrevs_months(request: HttpRequest) -> JsonResponse:
-    months_data = (
-        FlaggedRevsStatistics.objects.values_list("date", flat=True).distinct().order_by("-date")
-    )
-
-    months = []
-    for date in months_data:
-        month_value = date.strftime("%Y%m")
-
-        if not any(m["value"] == month_value for m in months):
-            months.append({"value": month_value, "label": month_value})
-
-    return JsonResponse({"months": months})
-
-
 def flaggedrevs_statistics_page(request: HttpRequest) -> HttpResponse:
-    """Render the statistics visualization page."""
+    """Render FlaggedRevs statistics page."""
     wikis = Wiki.objects.all().order_by("code")
-    wikis_json = json.dumps([{"code": w.code, "name": w.name} for w in wikis])
-    return render(request, "reviews/flaggedrevs_statistics.html", {"wikis": wikis_json})
+    wikis_data = [{"code": wiki.code, "name": wiki.name} for wiki in wikis]
+    return render(request, "reviews/flaggedrevs_statistics.html", {"wikis": json.dumps(wikis_data)})

@@ -40,6 +40,11 @@ urlpatterns = [
     ),
     path("api/wikis/fetch-diff/", views.fetch_diff, name="fetch_diff"),
     path(
+        "api/wikis/<int:pk>/statistics/clear/",
+        views.api_statistics_clear_and_reload,
+        name="api_statistics_clear_and_reload",
+    ),
+    path(
         "api/flaggedrevs-statistics/",
         views.api_flaggedrevs_statistics,
         name="api_flaggedrevs_statistics",
@@ -59,4 +64,8 @@ urlpatterns = [
         views.flaggedrevs_statistics_page,
         name="flaggedrevs_statistics_page",
     ),
+    # Word-level annotation endpoints
+    path("word-annotation/", views.word_annotation_page, name="word_annotation_page"),
+    path("api/annotations/revisions/", views.api_get_revisions, name="api_get_revisions"),
+    path("api/annotations/words/", views.api_get_annotations, name="api_get_annotations"),
 ]

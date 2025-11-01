@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from reviews.models import EditorProfile, PendingRevision
+    from reviews.models import EditorProfile, PendingRevision, WikiConfiguration
     from reviews.services import WikiClient
 
 
@@ -13,8 +13,9 @@ class CheckContext:
     """Shared context passed to all check functions."""
 
     revision: PendingRevision
-    client: WikiClient
-    profile: EditorProfile | None
-    auto_groups: dict[str, str]
-    blocking_categories: dict[str, str]
-    redirect_aliases: list[str]
+    client: WikiClient | None = None
+    profile: EditorProfile | None = None
+    auto_groups: dict[str, str] | None = None
+    blocking_categories: dict[str, str] | None = None
+    redirect_aliases: list[str] | None = None
+    config: WikiConfiguration | None = None

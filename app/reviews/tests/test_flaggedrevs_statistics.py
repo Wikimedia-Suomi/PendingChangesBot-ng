@@ -189,7 +189,7 @@ class StatisticsAPITests(TestCase):
         self.assertIn("totalPages_ns0", data)
         self.assertIn("syncedPages_ns0", data)
         self.assertIn("reviewedPages_ns0", data)
-        self.assertIn("pendingLag_average", data)
+        self.assertIn("pendingLagAverage", data)
         self.assertIn("pendingChanges", data)
 
     def test_api_statistics_date_filtering(self):
@@ -250,10 +250,10 @@ class ReviewActivityAPITests(TestCase):
 
         self.assertIn("wiki", data)
         self.assertIn("date", data)
-        self.assertIn("number_of_reviewers", data)
-        self.assertIn("number_of_reviews", data)
-        self.assertIn("number_of_pages", data)
-        self.assertIn("reviews_per_reviewer", data)
+        self.assertIn("numberOfReviewers", data)
+        self.assertIn("numberOfReviews", data)
+        self.assertIn("numberOfPages", data)
+        self.assertIn("reviewsPerReviewer", data)
 
 
 class StatisticsPageTests(TestCase):
@@ -417,7 +417,7 @@ class StatisticsAPIIntegrationTests(TestCase):
 
         self.assertEqual(len(data["data"]), 1)
         self.assertEqual(data["data"][0]["wiki"], "fi")
-        self.assertEqual(data["data"][0]["number_of_reviewers"], 10)
+        self.assertEqual(data["data"][0]["numberOfReviewers"], 10)
 
     def test_data_consistency_across_apis(self):
         """Test that data is consistent between statistics and review activity APIs."""
