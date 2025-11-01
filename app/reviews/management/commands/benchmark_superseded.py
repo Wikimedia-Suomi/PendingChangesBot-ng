@@ -5,7 +5,7 @@ Compares the current similarity-based method against word-level diff tracking
 using the MediaWiki REST API.
 
 Usage:
-    python manage.py benchmark_superseded --wiki=1 --sample-size=50
+    python manage.py benchmark_superseded --wiki=fi --sample-size=50
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from typing import Any
 from django.core.management.base import BaseCommand
 from pywikibot.comms import http
 
-from app.reviews.models import PendingPage, PendingRevision, Wiki
+from reviews.models import PendingPage, PendingRevision, Wiki
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +31,9 @@ class Command(BaseCommand):
         """Add command arguments."""
         parser.add_argument(
             "--wiki",
-            type=int,
+            type=str,
             required=True,
-            help="Wiki ID to benchmark",
+            help="Wiki language code to benchmark (e.g., 'fi', 'en')",
         )
         parser.add_argument(
             "--sample-size",
@@ -56,15 +56,20 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         """Run the benchmark comparison."""
-        wiki_id = options["wiki"]
+        wiki_code = options["wiki"]
         sample_size = options["sample_size"]
         threshold = options["threshold"]
         output_file = options["output"]
 
         try:
-            wiki = Wiki.objects.get(pk=wiki_id)
+            wiki = Wiki.objects.get(code=wiki_code)
         except Wiki.DoesNotExist:
-            self.stdout.write(self.style.ERROR(f"Wiki with ID {wiki_id} not found"))
+            self.stdout.write(
+                self.style.ERROR(
+                    f"Wiki with code '{wiki_code}' not found. "
+                    f"Available wikis: {', '.join(Wiki.objects.values_list('code', flat=True))}"
+                )
+            )
             return
 
         self.stdout.write(
@@ -75,11 +80,29 @@ class Command(BaseCommand):
         self.stdout.write(f"Sample size: {sample_size}")
         self.stdout.write(f"Threshold: {threshold}")
 
+        # Warning about data requirements
+        self.stdout.write(
+            self.style.WARNING(
+                "\nNote: This command requires that pending revisions data has been "
+                "loaded into the database first. If you haven't done so, please load "
+                "data via the web interface before running this benchmark."
+            )
+        )
+
         # Get sample of pending revisions with parent revisions
         revisions = self._get_sample_revisions(wiki, sample_size)
 
         if not revisions:
-            self.stdout.write(self.style.WARNING("No suitable revisions found"))
+            self.stdout.write(
+                self.style.ERROR(
+                    "\nNo suitable revisions found for benchmarking. "
+                    "This may be because:\n"
+                    "  1. No data has been loaded for this wiki yet\n"
+                    "  2. There are no revisions with parent revisions available\n"
+                    "  3. There are no revisions that have been superseded\n\n"
+                    "Please ensure data has been loaded via the web interface first."
+                )
+            )
             return
 
         self.stdout.write(f"\nFound {len(revisions)} revisions to test")
@@ -148,12 +171,12 @@ class Command(BaseCommand):
         self, revision: PendingRevision, wiki: Wiki, threshold: float
     ) -> dict[str, Any]:
         """Compare similarity-based vs word-level diff methods."""
-        from app.reviews.autoreview import (
-            _extract_additions,
-            _get_parent_wikitext,
-            _is_addition_superseded,
-            _normalize_wikitext,
+        from reviews.autoreview.utils.wikitext import (
+            extract_additions,
+            get_parent_wikitext,
+            normalize_wikitext,
         )
+        from reviews.autoreview.utils.similarity import is_addition_superseded
 
         # Get stable revision
         stable_revision = PendingRevision.objects.filter(
@@ -167,9 +190,10 @@ class Command(BaseCommand):
 
         # Method 1: Current similarity-based approach
         try:
-            similarity_superseded = _is_addition_superseded(
+            result = is_addition_superseded(
                 revision, current_stable_wikitext, threshold
             )
+            similarity_superseded = result.get("is_superseded", False)
         except Exception as e:
             logger.error(f"Similarity method failed for r{revision.revid}: {e}")
             similarity_superseded = None
@@ -184,10 +208,10 @@ class Command(BaseCommand):
             wordlevel_superseded = None
 
         # Get addition details for analysis
-        parent_wikitext = _get_parent_wikitext(revision)
+        parent_wikitext = get_parent_wikitext(revision)
         pending_wikitext = revision.get_wikitext()
-        additions = _extract_additions(parent_wikitext, pending_wikitext)
-        normalized_additions = [_normalize_wikitext(a) for a in additions if len(_normalize_wikitext(a)) >= 20]
+        additions = extract_additions(parent_wikitext, pending_wikitext)
+        normalized_additions = [normalize_wikitext(a) for a in additions if len(normalize_wikitext(a)) >= 20]
 
         return {
             "revid": revision.revid,

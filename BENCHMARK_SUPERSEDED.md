@@ -14,20 +14,20 @@ The `benchmark_superseded` management command compares two methods for detecting
 
 ### How the Similarity Method Works
 
-Located in `app/reviews/autoreview.py:755-813`, the current implementation:
+Located in `app/reviews/autoreview/utils/similarity.py` and `app/reviews/autoreview/utils/wikitext.py`, the current implementation:
 
-1. **Extracts Additions** (`_extract_additions`):
+1. **Extracts Additions** (`extract_additions`):
    - Uses Python's `difflib.SequenceMatcher` to compare parent → pending revision
    - Identifies inserted or replaced text blocks
    - Returns list of text additions
 
-2. **Normalizes Text** (`_normalize_wikitext`):
+2. **Normalizes Text** (`normalize_wikitext`):
    - Removes wiki markup: `<ref>` tags, templates `{{}}`, categories, file links
    - Strips formatting: bold `'''`, italics `''`, internal links `[[]]`
    - Normalizes whitespace
    - Purpose: Compare semantic content, not formatting
 
-3. **Checks Supersession** (`_is_addition_superseded`):
+3. **Checks Supersession** (`is_addition_superseded`):
    - For each significant addition (>20 chars after normalization):
      - Calculates what percentage appears in latest stable version
      - Uses `SequenceMatcher` to find matching blocks (≥4 chars)
@@ -86,15 +86,19 @@ Uses MediaWiki REST API (`/w/rest.php/v1/revision/{from}/compare/{to}`):
 
 ## Usage
 
+### Prerequisites
+
+**Important**: Before running this command, ensure that pending revisions data has been loaded into the database via the web interface. The command will display a warning if no suitable data is found.
+
 ### Basic Command
 
 ```bash
-python manage.py benchmark_superseded --wiki=1 --sample-size=50
+python manage.py benchmark_superseded --wiki=fi --sample-size=50
 ```
 
 ### Parameters
 
-- `--wiki=<id>` (required): Wiki ID from database
+- `--wiki=<code>` (required): Wiki language code (e.g., 'fi', 'en', 'sv')
 - `--sample-size=<n>`: Number of revisions to test (default: 50)
 - `--threshold=<0.0-1.0>`: Similarity threshold to test (default: 0.2)
 - `--output=<file>`: JSON output file (default: benchmark_results.json)
@@ -104,19 +108,19 @@ python manage.py benchmark_superseded --wiki=1 --sample-size=50
 #### Test 100 revisions on Finnish Wikipedia
 
 ```bash
-python manage.py benchmark_superseded --wiki=1 --sample-size=100 --output=fi_wiki_results.json
+python manage.py benchmark_superseded --wiki=fi --sample-size=100 --output=fi_wiki_results.json
 ```
 
 #### Test stricter threshold
 
 ```bash
-python manage.py benchmark_superseded --wiki=1 --sample-size=50 --threshold=0.1
+python manage.py benchmark_superseded --wiki=fi --sample-size=50 --threshold=0.1
 ```
 
 #### Test with custom output location
 
 ```bash
-python manage.py benchmark_superseded --wiki=2 --sample-size=200 --output=reports/en_wiki_benchmark.json
+python manage.py benchmark_superseded --wiki=en --sample-size=200 --output=reports/en_wiki_benchmark.json
 ```
 
 ## Output Format
