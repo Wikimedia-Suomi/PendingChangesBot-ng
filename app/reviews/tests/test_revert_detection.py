@@ -17,6 +17,7 @@ from reviews.autoreview import (
     _find_reviewed_revisions_by_sha1,
     _parse_revert_params,
 )
+from reviews.autoreview.context import CheckContext
 from reviews.models import PendingPage, PendingRevision, Wiki, WikiConfiguration
 from reviews.services import WikiClient
 
@@ -72,7 +73,16 @@ class RevertDetectionTests(TestCase):
     def test_revert_detection_disabled(self):
         """Test that revert detection is skipped when disabled."""
         with self.settings(ENABLE_REVERT_DETECTION=False):
-            result = _check_revert_detection(self.revision, self.client)
+            context = CheckContext(
+                revision=self.revision,
+                client=self.client,
+                profile=None,
+                auto_groups={},
+                blocking_categories={},
+                redirect_aliases=[],
+                config=self.config,
+            )
+            result = _check_revert_detection(context)
 
             self.assertEqual(result["status"], "skip")
             self.assertEqual(result["message"], "Revert detection is disabled")
@@ -82,7 +92,16 @@ class RevertDetectionTests(TestCase):
         self.revision.change_tags = ["mw-edit"]
         self.revision.save()
 
-        result = _check_revert_detection(self.revision, self.client)
+        context = CheckContext(
+            revision=self.revision,
+            client=self.client,
+            profile=None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+            config=self.config,
+        )
+        result = _check_revert_detection(context)
 
         self.assertEqual(result["status"], "skip")
         self.assertEqual(result["message"], "No revert tags found")
@@ -110,7 +129,7 @@ class RevertDetectionTests(TestCase):
         reverted_ids = _parse_revert_params(self.revision)
         self.assertEqual(reverted_ids, [])
 
-    @patch("reviews.autoreview.SupersetQuery")
+    @patch("reviews.autoreview.checks.revert_detection.SupersetQuery")
     def test_find_reviewed_revisions_by_sha1_success(self, mock_superset):
         """Test finding reviewed revisions by SHA1."""
         # Mock SupersetQuery results
@@ -130,7 +149,7 @@ class RevertDetectionTests(TestCase):
         self.assertEqual(reviewed_revisions[0]["sha1"], "abc123")
         self.assertEqual(reviewed_revisions[0]["max_reviewed_id"], 150)
 
-    @patch("reviews.autoreview.SupersetQuery")
+    @patch("reviews.autoreview.checks.revert_detection.SupersetQuery")
     def test_find_reviewed_revisions_by_sha1_no_results(self, mock_superset):
         """Test when no reviewed revisions are found."""
         mock_superset.return_value.query.return_value = []
@@ -140,7 +159,7 @@ class RevertDetectionTests(TestCase):
 
         self.assertEqual(reviewed_revisions, [])
 
-    @patch("reviews.autoreview._find_reviewed_revisions_by_sha1")
+    @patch("reviews.autoreview.checks.revert_detection._find_reviewed_revisions_by_sha1")
     def test_revert_detection_approve(self, mock_find_reviewed):
         """Test revert detection when revert to reviewed content is found."""
         # Mock finding reviewed revisions
@@ -148,19 +167,37 @@ class RevertDetectionTests(TestCase):
             {"sha1": "abc123", "max_reviewed_id": 150, "max_reviewable_id": 180, "page_id": 12345}
         ]
 
-        result = _check_revert_detection(self.revision, self.client)
+        context = CheckContext(
+            revision=self.revision,
+            client=self.client,
+            profile=None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+            config=self.config,
+        )
+        result = _check_revert_detection(context)
 
         self.assertEqual(result["status"], "approve")
         self.assertIn("Revert to previously reviewed content", result["message"])
         self.assertIn("abc123", result["message"])
 
-    @patch("reviews.autoreview._find_reviewed_revisions_by_sha1")
+    @patch("reviews.autoreview.checks.revert_detection._find_reviewed_revisions_by_sha1")
     def test_revert_detection_block(self, mock_find_reviewed):
         """Test revert detection when no reviewed content is found."""
         # Mock no reviewed revisions found
         mock_find_reviewed.return_value = []
 
-        result = _check_revert_detection(self.revision, self.client)
+        context = CheckContext(
+            revision=self.revision,
+            client=self.client,
+            profile=None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+            config=self.config,
+        )
+        result = _check_revert_detection(context)
 
         self.assertEqual(result["status"], "block")
         self.assertEqual(
@@ -172,17 +209,35 @@ class RevertDetectionTests(TestCase):
         self.revision.change_tag_params = []
         self.revision.save()
 
-        result = _check_revert_detection(self.revision, self.client)
+        context = CheckContext(
+            revision=self.revision,
+            client=self.client,
+            profile=None,
+            auto_groups={},
+            blocking_categories={},
+            redirect_aliases=[],
+            config=self.config,
+        )
+        result = _check_revert_detection(context)
 
         self.assertEqual(result["status"], "skip")
         self.assertEqual(result["message"], "No reverted revision IDs found in change tags")
 
     def test_revert_detection_metadata(self):
         """Test that revert detection returns proper metadata."""
-        with patch("reviews.autoreview._find_reviewed_revisions_by_sha1") as mock_find:
+        with patch("reviews.autoreview.checks.revert_detection._find_reviewed_revisions_by_sha1") as mock_find:
             mock_find.return_value = [{"sha1": "abc123"}]
 
-            result = _check_revert_detection(self.revision, self.client)
+            context = CheckContext(
+                revision=self.revision,
+                client=self.client,
+                profile=None,
+                auto_groups={},
+                blocking_categories={},
+                redirect_aliases=[],
+                config=self.config,
+            )
+            result = _check_revert_detection(context)
 
             self.assertIn("reverted_rev_ids", result["metadata"])
             self.assertIn("revert_tags", result["metadata"])
@@ -243,7 +298,7 @@ class RevertDetectionIntegrationTests(TestCase):
         client.site = Mock()
 
         # Test with SupersetQuery mock
-        with patch("reviews.autoreview.SupersetQuery") as mock_superset:
+        with patch("reviews.autoreview.checks.revert_detection.SupersetQuery") as mock_superset:
             mock_superset.return_value.query.return_value = [
                 {
                     "content_sha1": "test_sha1",
@@ -253,7 +308,16 @@ class RevertDetectionIntegrationTests(TestCase):
                 }
             ]
 
-            result = _check_revert_detection(revision, client)
+            context = CheckContext(
+                revision=revision,
+                client=client,
+                profile=None,
+                auto_groups={},
+                blocking_categories={},
+                redirect_aliases=[],
+                config=self.config,
+            )
+            result = _check_revert_detection(context)
 
             self.assertEqual(result["status"], "approve")
             self.assertIn("test_sha1", result["message"])
