@@ -7,9 +7,9 @@ SQL queries and compares the results to verify they're similar enough to switch.
 
 import pywikibot
 from django.core.management.base import BaseCommand
-
 from reviews.models import Wiki
-from reviews.services.statistics import StatisticsClient
+
+from review_statistics.services import StatisticsClient
 
 
 class Command(BaseCommand):

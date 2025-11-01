@@ -14,18 +14,21 @@ from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
+from review_statistics.models import (
+    FlaggedRevsStatistics,
+    ReviewActivity,
+    ReviewStatisticsCache,
+    ReviewStatisticsMetadata,
+)
 
 from .autoreview.checks import AVAILABLE_CHECKS
 from .autoreview.runner import run_autoreview_for_page
 from .models import (
     EditorProfile,
     PendingPage,
-    ReviewStatisticsCache,
-    ReviewStatisticsMetadata,
     Wiki,
     WikiConfiguration,
 )
-from .models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
 from .services import WikiClient
 
 logger = logging.getLogger(__name__)
@@ -668,6 +671,9 @@ def api_statistics(request: HttpRequest, pk: int) -> JsonResponse:
         metadata = ReviewStatisticsMetadata.objects.get(wiki=wiki)
         metadata_payload = {
             "last_refreshed_at": metadata.last_refreshed_at.isoformat(),
+            "last_data_loaded_at": (
+                metadata.last_data_loaded_at.isoformat() if metadata.last_data_loaded_at else None
+            ),
             "total_records": metadata.total_records,
             "oldest_review_timestamp": (
                 metadata.oldest_review_timestamp.isoformat()
@@ -683,6 +689,7 @@ def api_statistics(request: HttpRequest, pk: int) -> JsonResponse:
     except ReviewStatisticsMetadata.DoesNotExist:
         metadata_payload = {
             "last_refreshed_at": None,
+            "last_data_loaded_at": None,
             "total_records": 0,
             "oldest_review_timestamp": None,
             "newest_review_timestamp": None,
