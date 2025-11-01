@@ -1,4 +1,5 @@
 from django.contrib import admin
+from review_statistics.models import FlaggedRevsStatistics, ReviewActivity
 
 from .models import (
     EditorProfile,
@@ -8,7 +9,6 @@ from .models import (
     Wiki,
     WikiConfiguration,
 )
-from .models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
 
 
 @admin.register(Wiki)
