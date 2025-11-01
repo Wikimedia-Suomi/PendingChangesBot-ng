@@ -363,9 +363,7 @@ class Command(BaseCommand):
 
         return len(common) / len(total) if total else 0.0
 
-    def _test_with_rest_api(
-        self, revision: PendingRevision, stable_rev: PendingRevision
-    ) -> bool:
+    def _test_with_rest_api(self, revision: PendingRevision, stable_rev: PendingRevision) -> bool:
         """Test using MediaWiki REST API diff to check if additions are still present."""
         try:
             wiki = revision.page.wiki
@@ -466,9 +464,7 @@ class Command(BaseCommand):
             if not diff:
                 return False
 
-            deletions = [
-                line.get("text", "").strip() for line in diff if line.get("type") == 2
-            ]
+            deletions = [line.get("text", "").strip() for line in diff if line.get("type") == 2]
 
             # Check if block additions were deleted
             superseded_count = 0
@@ -518,7 +514,7 @@ class Command(BaseCommand):
         """Convert text to ASCII-safe string for console output."""
         try:
             # Try to encode/decode to catch encoding issues
-            return str(text).encode('ascii', errors='replace').decode('ascii')
+            return str(text).encode("ascii", errors="replace").decode("ascii")
         except Exception:
             return str(text)
 
@@ -533,18 +529,16 @@ class Command(BaseCommand):
         self.stdout.write(f"Discrepancies found: {len(results['discrepancies'])}")
 
         if results["discrepancies"]:
-            self.stdout.write(
-                self.style.WARNING("\n=== Discrepancies (Need Human Review) ===\n")
-            )
+            self.stdout.write(self.style.WARNING("\n=== Discrepancies (Need Human Review) ===\n"))
 
             for disc in results["discrepancies"]:
                 old_status = "SUPERSEDED" if disc["old_method"] else "NOT SUPERSEDED"
                 new_status = "SUPERSEDED" if disc["new_method"] else "NOT SUPERSEDED"
 
                 # Use ASCII-safe versions for console output
-                page_title = self._safe_str(disc['page_title'])
-                message = self._safe_str(disc['old_message'])
-                diff_url = self._safe_str(disc['diff_url'])
+                page_title = self._safe_str(disc["page_title"])
+                message = self._safe_str(disc["old_message"])
+                diff_url = self._safe_str(disc["diff_url"])
 
                 self.stdout.write(
                     f"\nRevision: {disc['revision_id']} on {page_title} ({disc['wiki']})"
@@ -557,6 +551,4 @@ class Command(BaseCommand):
         agreement_rate = (
             (results["both_agree"] / results["total"] * 100) if results["total"] > 0 else 0
         )
-        self.stdout.write(
-            self.style.SUCCESS(f"\n\nAgreement rate: {agreement_rate:.1f}%")
-        )
+        self.stdout.write(self.style.SUCCESS(f"\n\nAgreement rate: {agreement_rate:.1f}%"))
