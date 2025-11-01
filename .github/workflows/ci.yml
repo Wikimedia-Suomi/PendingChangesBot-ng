@@ -18,6 +18,7 @@ on:
 # 👇 Top-level permissions: safe defaults
 permissions:
   contents: read
+  contents: write
 
 jobs:
   # -------------------------------
