@@ -129,9 +129,10 @@ PYWIKIBOT_SITE_FAMILY = os.getenv("PYWIKIBOT_SITE_FAMILY", "wikipedia")
 # Enable/disable dry-run mode for pending changes approval
 # When True, only allows approvals on test pages (Merkityt_versiot_-kokeilu/*)
 # When False, allows approvals on all pages
-PENDING_CHANGES_DRY_RUN = (
-    os.getenv("PENDING_CHANGES_DRY_RUN", "True").lower()
-    in ("true", "1", "yes")
+PENDING_CHANGES_DRY_RUN = os.getenv("PENDING_CHANGES_DRY_RUN", "True").lower() in (
+    "true",
+    "1",
+    "yes",
 )
 
 # ORES model thresholds (global defaults, per-wiki config takes precedence)
