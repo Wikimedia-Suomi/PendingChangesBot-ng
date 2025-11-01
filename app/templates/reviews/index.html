@@ -304,10 +304,14 @@
                                 <li v-for="test in getRevisionReview(page, revision).tests" :key="test.id" class="mb-1">
                                   <span class="tag" :class="statusTagClass(test.status)">{{ formatTestStatus(test.status) }}</span>
                                   <span class="ml-2 has-text-weight-semibold">{{ test.title }}</span>
+                                  <span v-if="test.duration_ms != null" class="ml-2 has-text-grey is-size-7">({{ formatDuration(test.duration_ms) }})</span>
                                   <span class="ml-2">{{ test.message }}</span>
                                 </li>
                               </ul>
                               <p class="has-text-weight-semibold">{{ formatDecision(getRevisionReview(page, revision).decision) }}</p>
+                              <p v-if="getRevisionReview(page, revision).total_duration_ms != null" class="has-text-grey is-size-7 mt-2">
+                                <strong>Total processing time:</strong> {{ formatDuration(getRevisionReview(page, revision).total_duration_ms) }}
+                              </p>
                             </div>
                           </td>
                         </tr>

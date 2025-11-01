@@ -1092,6 +1092,19 @@ createApp({
       return "is-light";
     }
 
+    function formatDuration(ms) {
+      if (ms == null || ms === undefined) {
+        return "";
+      }
+      if (ms < 1) {
+        return `${(ms * 1000).toFixed(0)}μs`;
+      }
+      if (ms < 1000) {
+        return `${ms.toFixed(0)}ms`;
+      }
+      return `${(ms / 1000).toFixed(2)}s`;
+    }
+
     function formatDecision(decision) {
       if (!decision) {
         return "";
@@ -1261,6 +1274,7 @@ createApp({
       isAutoreviewRunning,
       formatTestStatus,
       statusTagClass,
+      formatDuration,
       formatDecision,
       saveDiffsToLocalStorage,
     };
