@@ -1,12 +1,12 @@
 """
 Tests for approval utility function.
-This module tests the generate_approval_comment_and_revision function that
+This module tests the generate_approval_comment function that
 determines the highest approvable revision ID and generates consolidated approval comments.
 """
 
 from django.test import TestCase
 
-from reviews.autoreview import generate_approval_comment_and_revision
+from reviews.utils.approval_comment import generate_approval_comment
 
 
 class ApprovalUtilityTests(TestCase):
@@ -19,7 +19,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12346, "decision": {"status": "manual", "reason": "requires human review"}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertIsNone(rev_id)
         self.assertEqual(comment, "No revisions can be approved")
@@ -30,7 +30,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12345, "decision": {"status": "approve", "reason": "user was bot"}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12345)
         self.assertEqual(comment, "rev_id 12345 approved because user was bot")
@@ -43,7 +43,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12347, "decision": {"status": "approve", "reason": "user was bot"}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12347)  # Highest revision ID
         self.assertEqual(comment, "rev_id 12345, 12346, 12347 approved because user was bot")
@@ -59,7 +59,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12347, "decision": {"status": "approve", "reason": "user was autoreviewed"}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12347)  # Highest revision ID
         # Check that all reasons are included
@@ -76,7 +76,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12348, "decision": {"status": "manual", "reason": "requires human review"}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12347)  # Highest approved revision ID
         self.assertIn("rev_id 12345 approved because user was bot", comment)
@@ -96,7 +96,7 @@ class ApprovalUtilityTests(TestCase):
             },
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12345)
         self.assertEqual(
@@ -115,7 +115,7 @@ class ApprovalUtilityTests(TestCase):
             },
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12345)
         self.assertEqual(
@@ -133,7 +133,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12349, "decision": {"status": "approve", "reason": "user was autoreviewed"}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12349)  # Highest revision ID
         self.assertIn("rev_id 12345, 12346 approved because user was bot", comment)
@@ -147,7 +147,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12349, "decision": {"status": "approve", "reason": "user was bot"}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12349)  # Highest revision ID
         self.assertEqual(comment, "rev_id 12345, 12347, 12349 approved because user was bot")
@@ -156,7 +156,7 @@ class ApprovalUtilityTests(TestCase):
         """Test with empty results list."""
         results = []
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertIsNone(rev_id)
         self.assertEqual(comment, "No revisions can be approved")
@@ -180,7 +180,7 @@ class ApprovalUtilityTests(TestCase):
             },
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12349)
         # Verify the format matches the issue example
@@ -205,7 +205,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12347, "decision": {"status": "approve", "reason": "user was bot"}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12349)  # Highest revision ID
         self.assertEqual(comment, "rev_id 12345, 12347, 12349 approved because user was bot")
@@ -220,7 +220,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12345, "decision": {"status": "approve", "reason": long_reason}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12345)
         self.assertEqual(comment, f"rev_id 12345 approved because {long_reason}")
@@ -233,7 +233,7 @@ class ApprovalUtilityTests(TestCase):
             {"revid": 12347, "decision": {"status": "approve", "reason": "reason C"}},
         ]
 
-        rev_id, comment = generate_approval_comment_and_revision(results)
+        rev_id, comment = generate_approval_comment(results)
 
         self.assertEqual(rev_id, 12347)
         self.assertIn("rev_id 12345 approved because reason A", comment)
