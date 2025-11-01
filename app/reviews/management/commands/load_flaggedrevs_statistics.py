@@ -69,10 +69,12 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        from datetime import datetime
+
         wiki_code = options.get("wiki")
         clear = options.get("clear")
         full_refresh = options.get("full_refresh")
-        start_year = options.get("start_year", 2010)
+        start_year = options.get("start_year")
         resolution = options.get("resolution", "monthly")
         start_date = options.get("start_date")
         end_date = options.get("end_date")
@@ -83,6 +85,39 @@ class Command(BaseCommand):
             ReviewActivity.objects.all().delete()
             self.stdout.write(self.style.SUCCESS("Statistics data cleared."))
             return
+
+        # Auto-continue from last month if no parameters provided and data exists
+        if not start_date and not start_year and not full_refresh:
+            # Check if there's existing data
+            existing_data = FlaggedRevsStatistics.objects.all()
+            if existing_data.exists():
+                # Get the latest date from existing data
+                latest_stat = existing_data.order_by("-date").first()
+                if latest_stat:
+                    latest_date = latest_stat.date
+                    # Calculate next month from the latest date
+                    if latest_date.month == 12:
+                        next_year = latest_date.year + 1
+                        next_month = 1
+                    else:
+                        next_year = latest_date.year
+                        next_month = latest_date.month + 1
+
+                    # Set start_date to the first day of the next month
+                    start_date = datetime(next_year, next_month, 1).strftime("%Y-%m-%d")
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"Auto-continuing from last available data (last date: {latest_date}). "
+                            f"Loading from {start_date} onwards."
+                        )
+                    )
+            else:
+                # No existing data, use default start year
+                start_year = 2010
+
+        # Use default start_year if not set
+        if not start_year:
+            start_year = 2010
 
         if wiki_code:
             try:
@@ -132,7 +167,7 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"  ⚠ Review activity loading skipped (Superset timeout/error): "
+                        f"  Review activity loading skipped (Superset timeout/error): "
                         f"{str(e)[:100]}"
                     )
                 )

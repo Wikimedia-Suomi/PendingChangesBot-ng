@@ -70,6 +70,53 @@ createApp({
       state.selectedWikis = [defaultWiki.code];
     }
 
+    // Function to generate a distinct color for a wiki code
+    // Uses a hash function to generate consistent colors for each wiki
+    const getWikiColor = (wikiCode) => {
+      // Predefined colors for better visual distinction
+      const predefinedColors = [
+        '#3273dc', '#48c774', '#ffdd57', '#f14668', '#00d1b2',
+        '#ff3860', '#209cee', '#ff6348', '#9b59b6', '#e74c3c',
+        '#3498db', '#2ecc71', '#f39c12', '#e67e22', '#1abc9c',
+        '#34495e', '#16a085', '#27ae60', '#2980b9', '#8e44ad',
+        '#c0392b', '#d35400', '#f1c40f', '#2ecc71', '#3498db'
+      ];
+
+      // Predefined mapping for common wikis (keep these recognizable)
+      const wikiColorMap = {
+        'de': '#FF0000',  // Red
+        'en': '#00FF00',  // Green
+        'fi': '#0000FF',  // Blue
+        'pl': '#FF00FF',  // Magenta
+        'ru': '#FFFF00',  // Yellow
+        'fr': '#FFA500',  // Orange
+        'es': '#800080',  // Purple
+        'it': '#00FFFF',  // Cyan
+        'pt': '#FF1493',  // Deep Pink
+        'ja': '#FFD700',  // Gold
+        'zh': '#FF4500',  // Orange Red
+        'ar': '#32CD32',  // Lime Green
+        'nl': '#9370DB',  // Medium Purple
+        'sv': '#00CED1',  // Dark Turquoise
+        'no': '#FF69B4',  // Hot Pink
+      };
+
+      // Return predefined color if available
+      if (wikiColorMap[wikiCode]) {
+        return wikiColorMap[wikiCode];
+      }
+
+      // Generate color using hash function for consistent colors
+      let hash = 0;
+      for (let i = 0; i < wikiCode.length; i++) {
+        hash = wikiCode.charCodeAt(i) + ((hash << 5) - hash);
+      }
+
+      // Use hash to pick from predefined colors
+      const colorIndex = Math.abs(hash) % predefinedColors.length;
+      return predefinedColors[colorIndex];
+    };
+
     // Computed properties
     const availableWikis = computed(() => AVAILABLE_WIKIS);
 
@@ -83,12 +130,172 @@ createApp({
     });
 
     const filteredTableData = computed(() => {
-      return state.tableData.filter(entry => {
+      let filtered = state.tableData.filter(entry => {
         if (state.selectedWikis.length > 0 && !state.selectedWikis.includes(entry.wiki)) {
           return false;
         }
         return true;
       });
+
+      // Aggregate data based on resolution
+      if (state.dataResolution === 'yearly') {
+        // Group by year and wiki, calculate averages
+        const groupedByYear = {};
+        filtered.forEach(entry => {
+          const year = entry.date.substring(0, 4);
+          const key = `${entry.wiki}_${year}`;
+          if (!groupedByYear[key]) {
+            groupedByYear[key] = {
+              wiki: entry.wiki,
+              date: year + '-01-01',
+              pendingLag_average: [],
+              totalPages_ns0: [],
+              reviewedPages_ns0: [],
+              syncedPages_ns0: [],
+              pendingChanges: [],
+              number_of_reviewers: [],
+              number_of_reviews: [],
+              reviews_per_reviewer: []
+            };
+          }
+          if (entry.pendingLag_average !== null && entry.pendingLag_average !== undefined) {
+            groupedByYear[key].pendingLag_average.push(entry.pendingLag_average);
+          }
+          if (entry.totalPages_ns0 !== null && entry.totalPages_ns0 !== undefined) {
+            groupedByYear[key].totalPages_ns0.push(entry.totalPages_ns0);
+          }
+          if (entry.reviewedPages_ns0 !== null && entry.reviewedPages_ns0 !== undefined) {
+            groupedByYear[key].reviewedPages_ns0.push(entry.reviewedPages_ns0);
+          }
+          if (entry.syncedPages_ns0 !== null && entry.syncedPages_ns0 !== undefined) {
+            groupedByYear[key].syncedPages_ns0.push(entry.syncedPages_ns0);
+          }
+          if (entry.pendingChanges !== null && entry.pendingChanges !== undefined) {
+            groupedByYear[key].pendingChanges.push(entry.pendingChanges);
+          }
+          if (entry.number_of_reviewers !== null && entry.number_of_reviewers !== undefined) {
+            groupedByYear[key].number_of_reviewers.push(entry.number_of_reviewers);
+          }
+          if (entry.number_of_reviews !== null && entry.number_of_reviews !== undefined) {
+            groupedByYear[key].number_of_reviews.push(entry.number_of_reviews);
+          }
+          if (entry.reviews_per_reviewer !== null && entry.reviews_per_reviewer !== undefined) {
+            groupedByYear[key].reviews_per_reviewer.push(entry.reviews_per_reviewer);
+          }
+        });
+
+        // Calculate averages
+        return Object.values(groupedByYear).map(yearData => ({
+          ...yearData,
+          pendingLag_average: yearData.pendingLag_average.length > 0
+            ? yearData.pendingLag_average.reduce((a, b) => a + b, 0) / yearData.pendingLag_average.length
+            : null,
+          totalPages_ns0: yearData.totalPages_ns0.length > 0
+            ? Math.round(yearData.totalPages_ns0.reduce((a, b) => a + b, 0) / yearData.totalPages_ns0.length)
+            : null,
+          reviewedPages_ns0: yearData.reviewedPages_ns0.length > 0
+            ? Math.round(yearData.reviewedPages_ns0.reduce((a, b) => a + b, 0) / yearData.reviewedPages_ns0.length)
+            : null,
+          syncedPages_ns0: yearData.syncedPages_ns0.length > 0
+            ? Math.round(yearData.syncedPages_ns0.reduce((a, b) => a + b, 0) / yearData.syncedPages_ns0.length)
+            : null,
+          pendingChanges: yearData.pendingChanges.length > 0
+            ? Math.round(yearData.pendingChanges.reduce((a, b) => a + b, 0) / yearData.pendingChanges.length)
+            : null,
+          number_of_reviewers: yearData.number_of_reviewers.length > 0
+            ? Math.round(yearData.number_of_reviewers.reduce((a, b) => a + b, 0) / yearData.number_of_reviewers.length)
+            : null,
+          number_of_reviews: yearData.number_of_reviews.length > 0
+            ? Math.round(yearData.number_of_reviews.reduce((a, b) => a + b, 0) / yearData.number_of_reviews.length)
+            : null,
+          reviews_per_reviewer: yearData.reviews_per_reviewer.length > 0
+            ? yearData.reviews_per_reviewer.reduce((a, b) => a + b, 0) / yearData.reviews_per_reviewer.length
+            : null
+        })).sort((a, b) => {
+          const dateCompare = a.date.localeCompare(b.date);
+          return dateCompare !== 0 ? dateCompare : a.wiki.localeCompare(b.wiki);
+        });
+      } else if (state.dataResolution === 'monthly') {
+        // Group by year-month and wiki, calculate averages
+        const groupedByMonth = {};
+        filtered.forEach(entry => {
+          const yearMonth = entry.date.substring(0, 7); // YYYY-MM
+          const key = `${entry.wiki}_${yearMonth}`;
+          if (!groupedByMonth[key]) {
+            groupedByMonth[key] = {
+              wiki: entry.wiki,
+              date: yearMonth + '-01',
+              pendingLag_average: [],
+              totalPages_ns0: [],
+              reviewedPages_ns0: [],
+              syncedPages_ns0: [],
+              pendingChanges: [],
+              number_of_reviewers: [],
+              number_of_reviews: [],
+              reviews_per_reviewer: []
+            };
+          }
+          if (entry.pendingLag_average !== null && entry.pendingLag_average !== undefined) {
+            groupedByMonth[key].pendingLag_average.push(entry.pendingLag_average);
+          }
+          if (entry.totalPages_ns0 !== null && entry.totalPages_ns0 !== undefined) {
+            groupedByMonth[key].totalPages_ns0.push(entry.totalPages_ns0);
+          }
+          if (entry.reviewedPages_ns0 !== null && entry.reviewedPages_ns0 !== undefined) {
+            groupedByMonth[key].reviewedPages_ns0.push(entry.reviewedPages_ns0);
+          }
+          if (entry.syncedPages_ns0 !== null && entry.syncedPages_ns0 !== undefined) {
+            groupedByMonth[key].syncedPages_ns0.push(entry.syncedPages_ns0);
+          }
+          if (entry.pendingChanges !== null && entry.pendingChanges !== undefined) {
+            groupedByMonth[key].pendingChanges.push(entry.pendingChanges);
+          }
+          if (entry.number_of_reviewers !== null && entry.number_of_reviewers !== undefined) {
+            groupedByMonth[key].number_of_reviewers.push(entry.number_of_reviewers);
+          }
+          if (entry.number_of_reviews !== null && entry.number_of_reviews !== undefined) {
+            groupedByMonth[key].number_of_reviews.push(entry.number_of_reviews);
+          }
+          if (entry.reviews_per_reviewer !== null && entry.reviews_per_reviewer !== undefined) {
+            groupedByMonth[key].reviews_per_reviewer.push(entry.reviews_per_reviewer);
+          }
+        });
+
+        // Calculate averages
+        return Object.values(groupedByMonth).map(monthData => ({
+          ...monthData,
+          pendingLag_average: monthData.pendingLag_average.length > 0
+            ? monthData.pendingLag_average.reduce((a, b) => a + b, 0) / monthData.pendingLag_average.length
+            : null,
+          totalPages_ns0: monthData.totalPages_ns0.length > 0
+            ? Math.round(monthData.totalPages_ns0.reduce((a, b) => a + b, 0) / monthData.totalPages_ns0.length)
+            : null,
+          reviewedPages_ns0: monthData.reviewedPages_ns0.length > 0
+            ? Math.round(monthData.reviewedPages_ns0.reduce((a, b) => a + b, 0) / monthData.reviewedPages_ns0.length)
+            : null,
+          syncedPages_ns0: monthData.syncedPages_ns0.length > 0
+            ? Math.round(monthData.syncedPages_ns0.reduce((a, b) => a + b, 0) / monthData.syncedPages_ns0.length)
+            : null,
+          pendingChanges: monthData.pendingChanges.length > 0
+            ? Math.round(monthData.pendingChanges.reduce((a, b) => a + b, 0) / monthData.pendingChanges.length)
+            : null,
+          number_of_reviewers: monthData.number_of_reviewers.length > 0
+            ? Math.round(monthData.number_of_reviewers.reduce((a, b) => a + b, 0) / monthData.number_of_reviewers.length)
+            : null,
+          number_of_reviews: monthData.number_of_reviews.length > 0
+            ? Math.round(monthData.number_of_reviews.reduce((a, b) => a + b, 0) / monthData.number_of_reviews.length)
+            : null,
+          reviews_per_reviewer: monthData.reviews_per_reviewer.length > 0
+            ? monthData.reviews_per_reviewer.reduce((a, b) => a + b, 0) / monthData.reviews_per_reviewer.length
+            : null
+        })).sort((a, b) => {
+          const dateCompare = a.date.localeCompare(b.date);
+          return dateCompare !== 0 ? dateCompare : a.wiki.localeCompare(b.wiki);
+        });
+      }
+
+      // For daily resolution, return as-is
+      return filtered;
     });
 
     const enabledSeries = computed(() => {
@@ -183,17 +390,45 @@ createApp({
     const frsKeyTableDates = computed(() => {
       if (state.filterMode !== 'frs_key' || !state.tableData.length) return [];
 
-      // Get unique dates and format them as YYYYMM
-      let dates = [...new Set(state.tableData.map(d => d.date))].sort();
+      // Get unique dates based on resolution
+      let dateGroups = [];
 
-      // If a specific date is filtered, show only that date
-      if (state.filteredDate) {
-        dates = dates.filter(date => date === state.filteredDate);
+      if (state.dataResolution === 'yearly') {
+        // Group by year
+        const years = [...new Set(state.tableData.map(d => d.date.substring(0, 4)))].sort();
+        dateGroups = years.map(year => ({ group: year, date: year + '-01-01' }));
+      } else if (state.dataResolution === 'monthly') {
+        // Group by year-month
+        const yearMonths = [...new Set(state.tableData.map(d => d.date.substring(0, 7)))].sort();
+        dateGroups = yearMonths.map(ym => ({ group: ym, date: ym + '-01' }));
+      } else {
+        // Daily - use full dates
+        const dates = [...new Set(state.tableData.map(d => d.date))].sort();
+        dateGroups = dates.map(date => ({ group: date, date: date }));
       }
 
-      return dates.map(date => {
-        // Convert 2023-10-01 to 202310
-        return date.replace('-', '').substring(0, 6);
+      // If a specific date is filtered, show only matching group
+      if (state.filteredDate) {
+        if (state.dataResolution === 'yearly') {
+          const filteredYear = state.filteredDate.substring(0, 4);
+          dateGroups = dateGroups.filter(d => d.group === filteredYear);
+        } else if (state.dataResolution === 'monthly') {
+          const filteredYearMonth = state.filteredDate.substring(0, 7);
+          dateGroups = dateGroups.filter(d => d.group === filteredYearMonth);
+        } else {
+          dateGroups = dateGroups.filter(d => d.group === state.filteredDate);
+        }
+      }
+
+      // Format for display
+      return dateGroups.map(d => {
+        if (state.dataResolution === 'yearly') {
+          return d.group; // Just the year
+        } else if (state.dataResolution === 'monthly') {
+          return d.group.replace('-', ''); // YYYYMM
+        } else {
+          return d.date.replace('-', '').substring(0, 6); // YYYYMM
+        }
       });
     });
 
@@ -209,8 +444,159 @@ createApp({
       // If a specific date is filtered, show only that date
       if (state.filteredWikiDate) {
         filteredData = filteredData.filter(entry => entry.date === state.filteredWikiDate);
+        return filteredData;
       }
 
+      // Aggregate data based on resolution
+      if (state.dataResolution === 'yearly') {
+        // Group by year and calculate averages
+        const groupedByYear = {};
+        filteredData.forEach(entry => {
+          const year = entry.date.substring(0, 4);
+          if (!groupedByYear[year]) {
+            groupedByYear[year] = {
+              wiki: entry.wiki,
+              date: year + '-01-01', // Use first day of year for date
+              pendingLag_average: [],
+              totalPages_ns0: [],
+              reviewedPages_ns0: [],
+              syncedPages_ns0: [],
+              pendingChanges: [],
+              number_of_reviewers: [],
+              number_of_reviews: [],
+              reviews_per_reviewer: []
+            };
+          }
+          if (entry.pendingLag_average !== null && entry.pendingLag_average !== undefined) {
+            groupedByYear[year].pendingLag_average.push(entry.pendingLag_average);
+          }
+          if (entry.totalPages_ns0 !== null && entry.totalPages_ns0 !== undefined) {
+            groupedByYear[year].totalPages_ns0.push(entry.totalPages_ns0);
+          }
+          if (entry.reviewedPages_ns0 !== null && entry.reviewedPages_ns0 !== undefined) {
+            groupedByYear[year].reviewedPages_ns0.push(entry.reviewedPages_ns0);
+          }
+          if (entry.syncedPages_ns0 !== null && entry.syncedPages_ns0 !== undefined) {
+            groupedByYear[year].syncedPages_ns0.push(entry.syncedPages_ns0);
+          }
+          if (entry.pendingChanges !== null && entry.pendingChanges !== undefined) {
+            groupedByYear[year].pendingChanges.push(entry.pendingChanges);
+          }
+          if (entry.number_of_reviewers !== null && entry.number_of_reviewers !== undefined) {
+            groupedByYear[year].number_of_reviewers.push(entry.number_of_reviewers);
+          }
+          if (entry.number_of_reviews !== null && entry.number_of_reviews !== undefined) {
+            groupedByYear[year].number_of_reviews.push(entry.number_of_reviews);
+          }
+          if (entry.reviews_per_reviewer !== null && entry.reviews_per_reviewer !== undefined) {
+            groupedByYear[year].reviews_per_reviewer.push(entry.reviews_per_reviewer);
+          }
+        });
+
+        // Calculate averages
+        return Object.values(groupedByYear).map(yearData => ({
+          ...yearData,
+          pendingLag_average: yearData.pendingLag_average.length > 0
+            ? yearData.pendingLag_average.reduce((a, b) => a + b, 0) / yearData.pendingLag_average.length
+            : null,
+          totalPages_ns0: yearData.totalPages_ns0.length > 0
+            ? Math.round(yearData.totalPages_ns0.reduce((a, b) => a + b, 0) / yearData.totalPages_ns0.length)
+            : null,
+          reviewedPages_ns0: yearData.reviewedPages_ns0.length > 0
+            ? Math.round(yearData.reviewedPages_ns0.reduce((a, b) => a + b, 0) / yearData.reviewedPages_ns0.length)
+            : null,
+          syncedPages_ns0: yearData.syncedPages_ns0.length > 0
+            ? Math.round(yearData.syncedPages_ns0.reduce((a, b) => a + b, 0) / yearData.syncedPages_ns0.length)
+            : null,
+          pendingChanges: yearData.pendingChanges.length > 0
+            ? Math.round(yearData.pendingChanges.reduce((a, b) => a + b, 0) / yearData.pendingChanges.length)
+            : null,
+          number_of_reviewers: yearData.number_of_reviewers.length > 0
+            ? Math.round(yearData.number_of_reviewers.reduce((a, b) => a + b, 0) / yearData.number_of_reviewers.length)
+            : null,
+          number_of_reviews: yearData.number_of_reviews.length > 0
+            ? Math.round(yearData.number_of_reviews.reduce((a, b) => a + b, 0) / yearData.number_of_reviews.length)
+            : null,
+          reviews_per_reviewer: yearData.reviews_per_reviewer.length > 0
+            ? yearData.reviews_per_reviewer.reduce((a, b) => a + b, 0) / yearData.reviews_per_reviewer.length
+            : null
+        })).sort((a, b) => a.date.localeCompare(b.date));
+      } else if (state.dataResolution === 'monthly') {
+        // Group by year-month and calculate averages
+        const groupedByMonth = {};
+        filteredData.forEach(entry => {
+          const yearMonth = entry.date.substring(0, 7); // YYYY-MM
+          if (!groupedByMonth[yearMonth]) {
+            groupedByMonth[yearMonth] = {
+              wiki: entry.wiki,
+              date: yearMonth + '-01', // Use first day of month for date
+              pendingLag_average: [],
+              totalPages_ns0: [],
+              reviewedPages_ns0: [],
+              syncedPages_ns0: [],
+              pendingChanges: [],
+              number_of_reviewers: [],
+              number_of_reviews: [],
+              reviews_per_reviewer: []
+            };
+          }
+          if (entry.pendingLag_average !== null && entry.pendingLag_average !== undefined) {
+            groupedByMonth[yearMonth].pendingLag_average.push(entry.pendingLag_average);
+          }
+          if (entry.totalPages_ns0 !== null && entry.totalPages_ns0 !== undefined) {
+            groupedByMonth[yearMonth].totalPages_ns0.push(entry.totalPages_ns0);
+          }
+          if (entry.reviewedPages_ns0 !== null && entry.reviewedPages_ns0 !== undefined) {
+            groupedByMonth[yearMonth].reviewedPages_ns0.push(entry.reviewedPages_ns0);
+          }
+          if (entry.syncedPages_ns0 !== null && entry.syncedPages_ns0 !== undefined) {
+            groupedByMonth[yearMonth].syncedPages_ns0.push(entry.syncedPages_ns0);
+          }
+          if (entry.pendingChanges !== null && entry.pendingChanges !== undefined) {
+            groupedByMonth[yearMonth].pendingChanges.push(entry.pendingChanges);
+          }
+          if (entry.number_of_reviewers !== null && entry.number_of_reviewers !== undefined) {
+            groupedByMonth[yearMonth].number_of_reviewers.push(entry.number_of_reviewers);
+          }
+          if (entry.number_of_reviews !== null && entry.number_of_reviews !== undefined) {
+            groupedByMonth[yearMonth].number_of_reviews.push(entry.number_of_reviews);
+          }
+          if (entry.reviews_per_reviewer !== null && entry.reviews_per_reviewer !== undefined) {
+            groupedByMonth[yearMonth].reviews_per_reviewer.push(entry.reviews_per_reviewer);
+          }
+        });
+
+        // Calculate averages
+        return Object.values(groupedByMonth).map(monthData => ({
+          ...monthData,
+          pendingLag_average: monthData.pendingLag_average.length > 0
+            ? monthData.pendingLag_average.reduce((a, b) => a + b, 0) / monthData.pendingLag_average.length
+            : null,
+          totalPages_ns0: monthData.totalPages_ns0.length > 0
+            ? Math.round(monthData.totalPages_ns0.reduce((a, b) => a + b, 0) / monthData.totalPages_ns0.length)
+            : null,
+          reviewedPages_ns0: monthData.reviewedPages_ns0.length > 0
+            ? Math.round(monthData.reviewedPages_ns0.reduce((a, b) => a + b, 0) / monthData.reviewedPages_ns0.length)
+            : null,
+          syncedPages_ns0: monthData.syncedPages_ns0.length > 0
+            ? Math.round(monthData.syncedPages_ns0.reduce((a, b) => a + b, 0) / monthData.syncedPages_ns0.length)
+            : null,
+          pendingChanges: monthData.pendingChanges.length > 0
+            ? Math.round(monthData.pendingChanges.reduce((a, b) => a + b, 0) / monthData.pendingChanges.length)
+            : null,
+          number_of_reviewers: monthData.number_of_reviewers.length > 0
+            ? Math.round(monthData.number_of_reviewers.reduce((a, b) => a + b, 0) / monthData.number_of_reviewers.length)
+            : null,
+          number_of_reviews: monthData.number_of_reviews.length > 0
+            ? Math.round(monthData.number_of_reviews.reduce((a, b) => a + b, 0) / monthData.number_of_reviews.length)
+            : null,
+          reviews_per_reviewer: monthData.reviews_per_reviewer.length > 0
+            ? monthData.reviews_per_reviewer.reduce((a, b) => a + b, 0) / monthData.reviews_per_reviewer.length
+            : null
+        })).sort((a, b) => a.date.localeCompare(b.date));
+      }
+
+      // For daily resolution, return as-is
       return filteredData;
     });
 
@@ -233,26 +619,53 @@ createApp({
       return date.toLocaleString();
     });
 
-    // Method to get FRS Key value for a specific wiki and date
+    // Method to get FRS Key value for a specific wiki and date (aggregated based on resolution)
     function getFrsKeyValue(wiki, date) {
-      // Convert YYYYMM back to YYYY-MM-DD format for lookup
-      const year = date.substring(0, 4);
-      const month = date.substring(4, 6);
-      const lookupDate = `${year}-${month}-01`;
+      let matchingEntries = [];
 
-      const entry = state.tableData.find(d => d.wiki === wiki && d.date === lookupDate);
-      if (!entry) return 'N/A';
+      if (state.dataResolution === 'yearly') {
+        // Date is just the year (YYYY)
+        const year = date;
+        matchingEntries = state.tableData.filter(d =>
+          d.wiki === wiki && d.date.startsWith(year)
+        );
+      } else if (state.dataResolution === 'monthly') {
+        // Date is YYYYMM, convert to YYYY-MM
+        const year = date.substring(0, 4);
+        const month = date.substring(4, 6);
+        const yearMonth = `${year}-${month}`;
+        matchingEntries = state.tableData.filter(d =>
+          d.wiki === wiki && d.date.startsWith(yearMonth)
+        );
+      } else {
+        // Daily - date is YYYYMM, convert to YYYY-MM-DD format for lookup
+        const year = date.substring(0, 4);
+        const month = date.substring(4, 6);
+        const lookupDate = `${year}-${month}-01`;
+        matchingEntries = state.tableData.filter(d =>
+          d.wiki === wiki && d.date === lookupDate
+        );
+      }
 
-      const value = entry[state.selectedFrsKey];
-      if (value === null || value === undefined) return 'N/A';
+      if (matchingEntries.length === 0) return 'N/A';
+
+      // Aggregate values based on resolution
+      const values = matchingEntries
+        .map(entry => entry[state.selectedFrsKey])
+        .filter(v => v !== null && v !== undefined);
+
+      if (values.length === 0) return 'N/A';
+
+      // Calculate average
+      const average = values.reduce((a, b) => a + b, 0) / values.length;
 
       // Format based on data type
       if (state.selectedFrsKey === 'pendingLag_average' || state.selectedFrsKey === 'reviews_per_reviewer') {
-        return value.toFixed(1);
+        return average.toFixed(1);
       } else if (state.selectedFrsKey.includes('Pages') || state.selectedFrsKey === 'pendingChanges') {
-        return value.toLocaleString();
+        return Math.round(average).toLocaleString();
       } else {
-        return value.toString();
+        return Math.round(average).toString();
       }
     }
 
@@ -788,17 +1201,7 @@ createApp({
         // Only create charts for enabled series
         const seriesToRender = seriesConfig.filter(series => state.series[series.key]);
 
-        // Fixed color mapping for each wiki
-        const wikiColorMap = {
-          'de': '#FF0000',        // Red
-          'en': '#00FF00',        // Green
-          'fi': '#0000FF',        // Blue
-          'pl': '#FF00FF',        // Magenta
-          'ru': '#FFFF00',        // Yellow
-          'fr': '#FFA500',        // Orange
-          'es': '#800080',        // Purple
-          'it': '#00FFFF'         // Cyan
-        };
+        // Colors are generated dynamically using getWikiColor function
 
         // Wait for Vue to render all canvas elements
         await nextTick();
@@ -882,8 +1285,8 @@ createApp({
               datasets.push({
                 label: `${wiki}wiki_p`,
                 data: seriesData,
-                borderColor: wikiColorMap[wiki] || '#000000',
-                backgroundColor: (wikiColorMap[wiki] || '#000000') + "20",
+                borderColor: getWikiColor(wiki),
+                backgroundColor: getWikiColor(wiki) + "20",
                 tension: 0.4,
                 pointRadius: 0,
                 fill: false,
@@ -1455,17 +1858,7 @@ createApp({
       console.log('Labels created:', labels);
       console.log('Selected wikis:', selectedWikis);
 
-      // Fixed color mapping for each wiki
-      const wikiColorMap = {
-        'de': '#FF0000',        // Red
-        'en': '#00FF00',        // Green
-        'fi': '#0000FF',        // Blue
-        'pl': '#FF00FF',        // Magenta
-        'ru': '#FFFF00',        // Yellow
-        'fr': '#FFA500',        // Orange
-        'es': '#800080',        // Purple
-        'it': '#00FFFF'         // Cyan
-      };
+      // Colors are generated dynamically using getWikiColor function
 
       const datasets = [];
 
@@ -1480,8 +1873,8 @@ createApp({
           datasets.push({
             label: `${wiki}wiki_p`,
             data: seriesData,
-            borderColor: wikiColorMap[wiki] || '#000000',
-            backgroundColor: (wikiColorMap[wiki] || '#000000') + "20",
+            borderColor: getWikiColor(wiki),
+            backgroundColor: getWikiColor(wiki) + "20",
             tension: 0.4,
             borderWidth: 3,
             pointRadius: 0,
@@ -1564,14 +1957,10 @@ createApp({
         return;
       }
 
-      if (state.tableData.length === 0) {
-        console.log('No table data, returning');
-        return;
-      }
-
-      // If no wikis selected, destroy chart and return
-      if (state.selectedWikis.length === 0) {
-        console.log('No wikis selected, destroying chart');
+      // If no wikis selected or no data, destroy chart and return
+      if (state.selectedWikis.length === 0 || state.tableData.length === 0) {
+        console.log('No wikis selected or no table data, destroying chart');
+        // Destroy existing chart
         if (state.singleChart) {
           try {
             state.singleChart.destroy();
@@ -1579,6 +1968,23 @@ createApp({
             console.log('Error destroying chart:', error);
           }
           state.singleChart = null;
+        }
+        // Also destroy any chart that Chart.js might have registered for this canvas
+        try {
+          const canvas = document.getElementById('singleFrsKeyChart');
+          if (canvas) {
+            const existingChart = Chart.getChart(canvas);
+            if (existingChart) {
+              existingChart.destroy();
+            }
+            // Clear the canvas
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+          }
+        } catch (error) {
+          console.log('Error destroying registered chart:', error);
         }
         return;
       }
@@ -1705,7 +2111,10 @@ createApp({
       } else {
         data = JSON.parse(JSON.stringify(state.tableData));
       }
+      // Ensure we're using the current selectedWikis from state
       const selectedWikis = [...state.selectedWikis];
+      console.log('Creating FRS Key chart with selectedWikis:', selectedWikis);
+      console.log('Available data wikis:', [...new Set(data.map(d => d.wiki))]);
 
       // Get unique dates based on resolution
       let labels = [];
@@ -1718,17 +2127,7 @@ createApp({
         labels = [...new Set(data.map(d => d.date.substring(0, 7)))].sort();
       }
 
-      // Fixed color mapping for each wiki
-      const wikiColorMap = {
-        'de': '#FF0000',        // Red
-        'en': '#00FF00',        // Green
-        'fi': '#0000FF',        // Blue
-        'pl': '#FF00FF',        // Magenta
-        'ru': '#FFFF00',        // Yellow
-        'fr': '#FFA500',        // Orange
-        'es': '#800080',        // Purple
-        'it': '#00FFFF'         // Cyan
-      };
+      // Colors are generated dynamically using getWikiColor function
 
       const datasets = [];
 
@@ -1738,6 +2137,23 @@ createApp({
           let matchingEntries = [];
           if (state.dataResolution === 'yearly') {
             matchingEntries = data.filter(d => d.wiki === wiki && d.date.startsWith(label));
+            // For yearly, aggregate all entries in the year
+            if (matchingEntries.length > 0) {
+              const values = matchingEntries
+                .map(e => e[state.selectedFrsKey])
+                .filter(v => v !== null && v !== undefined);
+              if (values.length > 0) {
+                // Calculate average for the year
+                const avg = values.reduce((a, b) => a + b, 0) / values.length;
+                // For counts/pages, round; for averages, return as float
+                if (state.selectedFrsKey === 'pendingLag_average' || state.selectedFrsKey === 'reviews_per_reviewer') {
+                  return avg;
+                } else {
+                  return Math.round(avg);
+                }
+              }
+            }
+            return null;
           } else if (state.dataResolution === 'daily') {
             matchingEntries = data.filter(d => d.wiki === wiki && d.date === label);
           } else {
@@ -1760,8 +2176,8 @@ createApp({
           datasets.push({
             label: `${wiki}wiki_p`,
             data: seriesData,
-            borderColor: wikiColorMap[wiki] || '#000000',
-            backgroundColor: (wikiColorMap[wiki] || '#000000') + "20",
+            borderColor: getWikiColor(wiki),
+            backgroundColor: getWikiColor(wiki) + "20",
             tension: 0.4,
             borderWidth: 3,
             pointRadius: 0,
@@ -2550,16 +2966,8 @@ createApp({
         updateUrl();
 
         // Call the appropriate chart update function based on filter mode
-        if (state.filterMode === 'frs_key') {
-          // Just update the chart without reloading all data
-          await nextTick();
-          // Add a small delay to ensure the previous chart is fully destroyed
-          setTimeout(() => {
-            updateFrsKeyChart();
-          }, 100);
-        } else {
-          loadData();
-        }
+        // Always reload data when wikis change to ensure we have data for newly selected wikis
+        await loadData();
       }, 200); // Wait 200ms before updating
     }, { deep: true });
 
