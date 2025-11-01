@@ -64,7 +64,7 @@ class ApprovalUtilityTests(TestCase):
         self.assertEqual(rev_id, 12347)  # Highest revision ID
         # Check that all reasons are included
         self.assertIn("rev_id 12345 approved because user was bot", comment)
-        self.assertIn("rev_id 12346 approved because no content change in last article", comment)
+        self.assertIn("rev_id 12346 approved because no content change", comment)
         self.assertIn("rev_id 12347 approved because user was autoreviewed", comment)
 
     def test_mixed_approved_and_non_approved_revisions(self):
@@ -186,7 +186,7 @@ class ApprovalUtilityTests(TestCase):
         # Verify the format matches the issue example
         expected_parts = [
             "rev_id 12345 approved because user was bot",
-            "rev_id 12346 approved because no content change in last article",
+            "rev_id 12346 approved because no content change",
             "rev_id 12347, 12348 approved because user was autoreviewed",
             "rev_id 12349 approved because ORES score goodfaith=0.53, damaging: 0.251",
         ]
