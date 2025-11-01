@@ -60,9 +60,7 @@ class Command(BaseCommand):
 
             if result["success"]:
                 self.stdout.write(
-                    self.style.SUCCESS(
-                        f"OK ({result['words_annotated']} words annotated)"
-                    )
+                    self.style.SUCCESS(f"OK ({result['words_annotated']} words annotated)")
                 )
                 processed += 1
             else:

@@ -55,9 +55,9 @@ class Command(BaseCommand):
             return
 
         # Get annotations
-        annotations = WordAnnotation.objects.filter(
-            page=page, revision_id=revision_id
-        ).order_by("position")
+        annotations = WordAnnotation.objects.filter(page=page, revision_id=revision_id).order_by(
+            "position"
+        )
 
         if author_filter:
             annotations = annotations.filter(author_user_name=author_filter)

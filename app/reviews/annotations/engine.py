@@ -53,16 +53,12 @@ class WordAnnotationEngine:
             logger.exception(f"Error annotating revision {revision.revid}: {e}")
             return {"success": False, "error": str(e)}
 
-    def _get_parent_revision(
-        self, revision: PendingRevision
-    ) -> PendingRevision | None:
+    def _get_parent_revision(self, revision: PendingRevision) -> PendingRevision | None:
         """Get parent revision."""
         if not revision.parentid:
             return None
 
-        return PendingRevision.objects.filter(
-            page=revision.page, revid=revision.parentid
-        ).first()
+        return PendingRevision.objects.filter(page=revision.page, revid=revision.parentid).first()
 
     def _get_diff(self, from_revid: int, to_revid: int) -> dict | None:
         """Fetch diff from MediaWiki REST API."""
@@ -83,9 +79,7 @@ class WordAnnotationEngine:
             logger.exception(f"Error fetching diff from REST API: {e}")
             return None
 
-    def _annotate_first_revision(
-        self, revision: PendingRevision
-    ) -> dict[str, Any]:
+    def _annotate_first_revision(self, revision: PendingRevision) -> dict[str, Any]:
         """Annotate first revision - all words attributed to author."""
         wikitext = revision.get_wikitext()
         if not wikitext:
@@ -212,19 +206,19 @@ class WordAnnotationEngine:
     def _tokenize(self, text: str) -> list[str]:
         """Tokenize text into words with basic wikitext handling."""
         # Remove templates {{...}}
-        text = re.sub(r'\{\{[^}]+\}\}', '', text)
+        text = re.sub(r"\{\{[^}]+\}\}", "", text)
         # Extract link text [[Article|text]] -> text or [[Article]] -> Article
-        text = re.sub(r'\[\[(?:[^|\]]+\|)?([^\]]+)\]\]', r'\1', text)
+        text = re.sub(r"\[\[(?:[^|\]]+\|)?([^\]]+)\]\]", r"\1", text)
         # Remove references
-        text = re.sub(r'<ref[^>]*>.*?</ref>', '', text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r'<ref[^>]*/?>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r"<ref[^>]*>.*?</ref>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<ref[^>]*/?>", "", text, flags=re.IGNORECASE)
         # Remove HTML tags
-        text = re.sub(r'<[^>]+>', '', text)
+        text = re.sub(r"<[^>]+>", "", text)
         # Remove category tags
-        text = re.sub(r'\[\[Category:[^\]]+\]\]', '', text, flags=re.IGNORECASE)
-        
+        text = re.sub(r"\[\[Category:[^\]]+\]\]", "", text, flags=re.IGNORECASE)
+
         # Tokenize on whitespace
-        words = re.split(r'(\s+)', text)
+        words = re.split(r"(\s+)", text)
         # Filter out empty strings but keep whitespace for formatting
         return [w for w in words if w.strip() or w in ["\n", "\t", " "]]
 
@@ -234,9 +228,7 @@ class WordAnnotationEngine:
         # Use a stronger hash to satisfy security linters while keeping short IDs
         return hashlib.sha256(content.encode()).hexdigest()[:16]
 
-    def _get_parent_annotations(
-        self, parent_revision: PendingRevision
-    ) -> list[dict[str, Any]]:
+    def _get_parent_annotations(self, parent_revision: PendingRevision) -> list[dict[str, Any]]:
         """Get annotations from parent revision."""
         annotations = WordAnnotation.objects.filter(
             page=self.page, revision_id=parent_revision.revid

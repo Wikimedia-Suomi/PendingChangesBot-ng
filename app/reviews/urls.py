@@ -1,4 +1,5 @@
 from django.urls import path
+
 from . import views
 
 urlpatterns = [
@@ -63,7 +64,6 @@ urlpatterns = [
         views.flaggedrevs_statistics_page,
         name="flaggedrevs_statistics_page",
     ),
-    
     # Word-level annotation endpoints
     path("word-annotation/", views.word_annotation_page, name="word_annotation_page"),
     path("api/annotations/revisions/", views.api_get_revisions, name="api_get_revisions"),
