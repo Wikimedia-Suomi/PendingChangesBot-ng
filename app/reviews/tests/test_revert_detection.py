@@ -98,7 +98,6 @@ class RevertDetectionTests(TestCase):
             auto_groups={},
             blocking_categories={},
             redirect_aliases=[],
-            config=self.config,
         )
         result = _check_revert_detection(context)
 
@@ -173,7 +172,6 @@ class RevertDetectionTests(TestCase):
             auto_groups={},
             blocking_categories={},
             redirect_aliases=[],
-            config=self.config,
         )
         result = _check_revert_detection(context)
 
@@ -194,7 +192,6 @@ class RevertDetectionTests(TestCase):
             auto_groups={},
             blocking_categories={},
             redirect_aliases=[],
-            config=self.config,
         )
         result = _check_revert_detection(context)
 
@@ -215,7 +212,6 @@ class RevertDetectionTests(TestCase):
             auto_groups={},
             blocking_categories={},
             redirect_aliases=[],
-            config=self.config,
         )
         result = _check_revert_detection(context)
 
@@ -297,7 +293,7 @@ class RevertDetectionIntegrationTests(TestCase):
         client.site = Mock()
 
         # Test with SupersetQuery mock
-        with patch("reviews.autoreview.checks.revert_detection.SupersetQuery") as mock_superset:
+        with patch("pywikibot.data.superset.SupersetQuery") as mock_superset:
             mock_superset.return_value.query.return_value = [
                 {
                     "content_sha1": "test_sha1",
