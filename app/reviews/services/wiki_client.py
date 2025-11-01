@@ -9,6 +9,7 @@ import pywikibot
 from django.db import transaction
 from django.utils import timezone as dj_timezone
 from pywikibot.data.superset import SupersetQuery
+from review_statistics.services import StatisticsClient
 
 from .parsers import (
     parse_optional_int,
@@ -16,7 +17,6 @@ from .parsers import (
     parse_superset_timestamp,
     prepare_superset_metadata,
 )
-from .statistics import StatisticsClient
 from .types import RevisionPayload
 from .user_blocks import was_user_blocked_after
 

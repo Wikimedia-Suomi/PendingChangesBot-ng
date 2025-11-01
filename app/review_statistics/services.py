@@ -17,7 +17,6 @@ from .parsers import parse_superset_timestamp
 
 if TYPE_CHECKING:
     import pywikibot
-
     from reviews.models import Wiki
 
 logger = logging.getLogger(__name__)
@@ -50,7 +49,7 @@ class StatisticsClient:
         """
         from django.db import transaction
 
-        from reviews.models import ReviewStatisticsCache, ReviewStatisticsMetadata
+        from review_statistics.models import ReviewStatisticsCache, ReviewStatisticsMetadata
 
         # Check if we have existing metadata with max_log_id
         try:
@@ -134,7 +133,7 @@ class StatisticsClient:
         from django.db import transaction
         from django.utils import timezone as dj_timezone
 
-        from reviews.models import ReviewStatisticsCache, ReviewStatisticsMetadata
+        from review_statistics.models import ReviewStatisticsCache, ReviewStatisticsMetadata
 
         logger.info("Fetching %d days of statistics for %s", days, self.wiki.code)
 
@@ -271,7 +270,7 @@ class StatisticsClient:
             dict: Contains 'total_records', 'oldest_timestamp', 'newest_timestamp',
                   'max_log_id'
         """
-        from reviews.models import ReviewStatisticsCache
+        from review_statistics.models import ReviewStatisticsCache
 
         limit = int(limit)
         if limit <= 0:
@@ -502,7 +501,7 @@ ORDER BY l.log_id ASC
             dict: Contains 'total_records', 'oldest_timestamp', 'newest_timestamp'
                   If save_to_db=False, also includes 'records' list
         """
-        from reviews.models import ReviewStatisticsCache
+        from review_statistics.models import ReviewStatisticsCache
 
         limit = int(limit)
         if limit <= 0:
@@ -705,7 +704,7 @@ WHERE
             dict: Contains 'total_records', 'oldest_timestamp', 'newest_timestamp'
                   If save_to_db=False, also includes 'records' list
         """
-        from reviews.models import ReviewStatisticsCache, ReviewStatisticsMetadata
+        from review_statistics.models import ReviewStatisticsCache, ReviewStatisticsMetadata
 
         limit = int(limit)
         if limit <= 0:
