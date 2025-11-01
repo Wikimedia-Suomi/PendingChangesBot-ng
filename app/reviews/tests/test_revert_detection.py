@@ -9,6 +9,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
+from django.utils import timezone
 
 from reviews.autoreview import (
     _check_revert_detection,
@@ -46,17 +47,23 @@ class RevertDetectionTests(TestCase):
             user_name="TestUser",
             user_id=1000,
             change_tags=["mw-manual-revert"],
-            change_tag_params=[
-                json.dumps(
-                    {
-                        "revertId": 200,
-                        "oldestRevertedRevId": 180,
-                        "newestRevertedRevId": 190,
-                        "originalRevisionId": 175,
-                    }
-                )
-            ],
+            timestamp=timezone.now(),
+            fetched_at=timezone.now(),
+            age_at_fetch=0.0,
+            sha1="test_sha1",
+            wikitext="test wikitext",
         )
+        self.revision.change_tag_params = [
+            json.dumps(
+                {
+                    "revertId": 200,
+                    "oldestRevertedRevId": 180,
+                    "newestRevertedRevId": 190,
+                    "originalRevisionId": 175,
+                }
+            )
+        ]
+        self.revision.save()
 
         self.client = Mock(spec=WikiClient)
         self.client.site = Mock()
@@ -212,17 +219,23 @@ class RevertDetectionIntegrationTests(TestCase):
             user_name="TestUser",
             user_id=1000,
             change_tags=["mw-manual-revert", "mw-reverted"],
-            change_tag_params=[
-                json.dumps(
-                    {
-                        "revertId": 200,
-                        "oldestRevertedRevId": 180,
-                        "newestRevertedRevId": 190,
-                        "originalRevisionId": 175,
-                    }
-                )
-            ],
+            timestamp=timezone.now(),
+            fetched_at=timezone.now(),
+            age_at_fetch=0.0,
+            sha1="test_sha1",
+            wikitext="test wikitext",
         )
+        revision.change_tag_params = [
+            json.dumps(
+                {
+                    "revertId": 200,
+                    "oldestRevertedRevId": 180,
+                    "newestRevertedRevId": 190,
+                    "originalRevisionId": 175,
+                }
+            )
+        ]
+        revision.save()
 
         # Mock the client
         client = Mock(spec=WikiClient)
