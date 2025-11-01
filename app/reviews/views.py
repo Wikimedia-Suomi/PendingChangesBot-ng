@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from http import HTTPStatus
 from urllib.parse import urlencode
 
-
 import requests
 from django.core.cache import cache
 from django.db.models import Count
@@ -549,14 +548,10 @@ def api_enabled_checks(request: HttpRequest, pk: int) -> JsonResponse:
     )
 
 
->>>>>>> upstream/main
 def fetch_diff(request):
     url = request.GET.get("url")
     if not url:
-        return JsonResponse(
-            {
-                "error": "Missing 'url' parameter"
-            }, status=400)
+        return JsonResponse({"error": "Missing 'url' parameter"}, status=400)
 
     cached_html = cache.get(url)
     if cached_html:
@@ -583,8 +578,6 @@ def fetch_diff(request):
 def liftwing_page(request):
     return render(request, "reviews/lift.html")
 
-def test_endpoints_page(request):
-    return render(request, "reviews/test_endpoints.html")
 
 @csrf_exempt
 def validate_article(request):
@@ -712,20 +705,21 @@ def _resolve_wiki_from_payload(wiki_value):
         return Wiki.objects.get(code=str(wiki_value))
     except Exception:
         raise LookupError(f"Unknown wiki identifier: {wiki_value!r}")
-    
+
+
 @csrf_exempt
 def fetch_revisions(request):
-    if request.method != 'POST':
+    if request.method != "POST":
         return JsonResponse({"error": "Invalid method"}, status=405)
-    
+
     try:
         data = json.loads(request.body)
-        wiki = data.get('wiki', 'en')
-        article = data.get('article', '')
-        
+        wiki = data.get("wiki", "en")
+        article = data.get("article", "")
+
         if not article:
             return JsonResponse({"error": "Missing article parameter"}, status=400)
-        
+
         base_url = f"https://{wiki}.wikipedia.org/w/api.php"
         headers = {"User-Agent": USER_AGENT}
 
@@ -735,7 +729,7 @@ def fetch_revisions(request):
             "titles": article,
             "rvlimit": "max",
             "rvprop": "ids|timestamp|user|comment",
-            "format": "json"
+            "format": "json",
         }
 
         revisions = []
@@ -745,7 +739,7 @@ def fetch_revisions(request):
 
         while cont and max_iterations > 0:
             if cont_token:
-                params['rvcontinue'] = cont_token
+                params["rvcontinue"] = cont_token
 
             try:
                 response = requests.get(base_url, params=params, headers=headers, timeout=10)
@@ -754,7 +748,9 @@ def fetch_revisions(request):
             except requests.exceptions.Timeout:
                 return JsonResponse({"error": "Request to Wikipedia API timed out"}, status=504)
             except requests.exceptions.JSONDecodeError as e:
-                return JsonResponse({"error": f"Invalid JSON from Wikipedia API: {str(e)}"}, status=500)
+                return JsonResponse(
+                    {"error": f"Invalid JSON from Wikipedia API: {str(e)}"}, status=500
+                )
             except requests.exceptions.RequestException as e:
                 return JsonResponse({"error": f"Wikipedia API error: {str(e)}"}, status=500)
 
@@ -768,18 +764,19 @@ def fetch_revisions(request):
             max_iterations -= 1
 
         return JsonResponse({"title": article, "revisions": revisions})
-    
+
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON in request body"}, status=400)
     except Exception as e:
         return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
-    
+
+
 @csrf_exempt
 def fetch_liftwing_predictions(request):
     """
     POST JSON: { "wiki": "en", "model": "articlequality", "revisions": [12345, 67890] }
     Response: { "predictions": { "12345": {...}, "67890": {...} } }
-    
+
     Optimized to use concurrent requests with ThreadPoolExecutor for parallel processing.
     Much faster than sequential requests.
     """
@@ -792,9 +789,11 @@ def fetch_liftwing_predictions(request):
         return JsonResponse({"error": "Missing revisions list"}, status=400)
 
     # Base URL for LiftWing API
-    base_url = f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+    base_url = (
+        f"https://api.wikimedia.org/service/lw/inference/v1/models/{wiki}wiki-{model}/predict"
+    )
     headers = {"User-Agent": USER_AGENT}
-    
+
     def fetch_single_prediction(rev_id):
         """Fetch prediction for a single revision ID"""
         try:
@@ -809,21 +808,23 @@ def fetch_liftwing_predictions(request):
             return (rev_id, {"error": f"HTTP {e.response.status_code}: {str(e)}"})
         except Exception as e:
             return (rev_id, {"error": str(e)})
-    
+
     predictions = {}
-    
+
     # Use ThreadPoolExecutor for parallel requests (max 10 concurrent)
     with ThreadPoolExecutor(max_workers=10) as executor:
         # Submit all tasks
-        future_to_rev = {executor.submit(fetch_single_prediction, rev_id): rev_id 
-                        for rev_id in revisions}
-        
+        future_to_rev = {
+            executor.submit(fetch_single_prediction, rev_id): rev_id for rev_id in revisions
+        }
+
         # Collect results as they complete
         for future in as_completed(future_to_rev):
             rev_id, prediction = future.result()
             predictions[rev_id] = prediction
 
     return JsonResponse({"predictions": predictions})
+
 
 @csrf_exempt
 def fetch_predictions(request):
@@ -859,14 +860,7 @@ def fetch_predictions(request):
         "rvprop": "ids",
         "format": "json",
     }
-    verify=False
-    response = requests.get(
-    "https://en.wikipedia.org/w/api.php",
-    headers=headers,
-    params=params
-    )
-    response.raise_for_status()
-    
+    headers = {"User-Agent": USER_AGENT}
 
     try:
         rev_resp = requests.get(rev_api, params=params, timeout=10)
@@ -886,23 +880,23 @@ def fetch_predictions(request):
 
     # Call LiftWing API
     payload = {"rev_id": rev_id}
-    headers = {"User-Agent": "PendingChangesBot/1.0 (LiftWingIntegration)"}
 
     try:
         response = requests.post(api_url, headers=headers, json=payload, timeout=10)
         response.raise_for_status()
         prediction = response.json()
-        return JsonResponse({
-            "wiki": wiki,
-            "article": article,
-            "rev_id": rev_id,
-            "model": model,
-            "prediction": prediction
-        })
+        return JsonResponse(
+            {
+                "wiki": wiki,
+                "article": article,
+                "rev_id": rev_id,
+                "model": model,
+                "prediction": prediction,
+            }
+        )
     except requests.RequestException as e:
         return JsonResponse({"error": f"LiftWing request failed: {str(e)}"}, status=500)
 
-    
 
 @require_GET
 def liftwing_models(request, wiki_code):
@@ -912,13 +906,13 @@ def liftwing_models(request, wiki_code):
         {
             "name": "articlequality",
             "version": "1.0.0",
-            "description": "Predicts the quality class of Wikipedia articles"
+            "description": "Predicts the quality class of Wikipedia articles",
         },
         {
             "name": "draftquality",
             "version": "1.0.0",
-            "description": "Predicts the quality of new article drafts"
-        }
+            "description": "Predicts the quality of new article drafts",
+        },
     ]
     return JsonResponse({"models": models})
 
