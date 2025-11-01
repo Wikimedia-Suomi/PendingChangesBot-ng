@@ -99,6 +99,37 @@
               </div>
             </div>
             <div class="content mt-4">
+              <h3 class="title is-6">Lift Wing ML Model Configuration</h3>
+              <p class="help">Choose which Wikimedia Lift Wing ML model to use for auto-review decisions. Set threshold to 0 to disable.</p>
+            </div>
+            <div class="columns">
+              <div class="column">
+                <div class="field">
+                  <label class="label">ML Model Type</label>
+                  <div class="select is-fullwidth">
+                    <select v-model="forms.mlModelType">
+                      <option value="revertrisk">Revert Risk (language-agnostic)</option>
+                      <option value="damaging">Damaging Edit Detection</option>
+                      <option value="goodfaith">Good Faith Prediction</option>
+                      <option value="articlequality">Article Quality Assessment</option>
+                      <option value="articletopic">Article Topic Classification</option>
+                    </select>
+                  </div>
+                  <p class="help">
+                    Select which Wikimedia Lift Wing ML model to use.
+                    <a href="https://meta.wikimedia.org/wiki/Machine_learning_models" target="_blank" rel="noopener">Learn more</a>
+                  </p>
+                </div>
+              </div>
+              <div class="column">
+                <div class="field">
+                  <label class="label">ML Model Threshold (0.0-1.0)</label>
+                  <input class="input" type="number" step="0.01" min="0" max="1" v-model.number="forms.mlModelThreshold" placeholder="0.0">
+                  <p class="help">Edits with scores above this threshold will not be auto-approved. Set to 0.0 to disable Lift Wing ML checking.</p>
+                </div>
+              </div>
+            </div>
+            <div class="content mt-4">
               <h3 class="title is-6">ORES Edit Quality Thresholds</h3>
               <p class="help">Set to 0 to disable checks. Values range from 0.0 to 1.0.</p>
             </div>
