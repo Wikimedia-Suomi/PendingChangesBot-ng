@@ -55,7 +55,6 @@
       </div>
     </nav>
 
-    {% verbatim %}
     <div id="app" class="container is-fluid py-4">
       <section class="hero is-light">
         <div class="hero-body">
@@ -63,7 +62,6 @@
             <div class="column is-4">
               <h1 class="title is-4">Review Dashboard</h1>
             </div>
-            {% endverbatim %}
             <div class="column">
               <div class="field has-addons">
                 <div class="control is-expanded">
@@ -124,7 +122,7 @@
             <div class="level-right">
               <div class="level-item">
                 <button class="button is-small is-text" @click="toggleConfiguration">
-                  {{ state.configurationOpen ? 'Hide' : 'Show' }}
+                  <span v-text="state.configurationOpen ? 'Hide' : 'Show'"></span>
                 </button>
               </div>
             </div>
@@ -252,15 +250,15 @@
                       class="has-text-link"
                       target="_blank"
                       rel="noreferrer noopener"
+                      v-text="formatTitle(page.title)"
                     >
-                      {{ formatTitle(page.title) }}
                     </a>
                   </span>
                   <span
                     class="is-size-6 has-text-grey ml-3"
                     v-if="page.pending_since"
                   >
-                    Pending since {{ formatDate(page.pending_since) }}
+                    Pending since <span v-text="formatDate(page.pending_since)"></span>
                   </span>
                 </p>
               </header>
@@ -305,10 +303,10 @@
                               class="has-text-link"
                               target="_blank"
                               rel="noreferrer noopener"
+                              v-text="formatDate(revision.timestamp)"
                             >
-                              {{ formatDate(revision.timestamp) }}
                             </a>
-                            <span v-else>{{ formatDate(revision.timestamp) }}</span>
+                            <span v-else v-text="formatDate(revision.timestamp)"></span>
                           </td>
                           <td>
                             <template v-if="buildUserContributionsUrl(revision)">
@@ -322,7 +320,7 @@
                               </a>
                             </template>
                             <template v-else>
-                              {{ revision.user_name || 'Unknown' }}
+                              <span v-text="revision.user_name || 'Unknown'"></span>
                             </template>
                             <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
                             <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
@@ -344,12 +342,12 @@
                               <p class="has-text-weight-semibold">Autoreview test results</p>
                               <ul class="mb-2">
                                 <li v-for="test in getRevisionReview(page, revision).tests" :key="test.id" class="mb-1">
-                                  <span class="tag" :class="statusTagClass(test.status)">{{ formatTestStatus(test.status) }}</span>
-                                  <span class="ml-2 has-text-weight-semibold">{{ test.title }}</span>
-                                  <span class="ml-2">{{ test.message }}</span>
+                                  <span class="tag" :class="statusTagClass(test.status)" v-text="formatTestStatus(test.status)"></span>
+                                  <span class="ml-2 has-text-weight-semibold" v-text="test.title"></span>
+                                  <span class="ml-2" v-text="test.message"></span>
                                 </li>
                               </ul>
-                              <p class="has-text-weight-semibold">{{ formatDecision(getRevisionReview(page, revision).decision) }}</p>
+                              <p class="has-text-weight-semibold" v-text="formatDecision(getRevisionReview(page, revision).decision)"></p>
                             </div>
                           </td>
                         </tr>
@@ -369,7 +367,6 @@
         </div>
       </section>
     </div>
-    {% endverbatim %}
 
     {{ initial_wikis|json_script:"initial-wikis" }}
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
