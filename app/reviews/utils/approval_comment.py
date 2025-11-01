@@ -46,7 +46,9 @@ def generate_approval_comment(
         # Group revisions by their approval reason to create concise comments
         reason_groups = {}
         for result in approved_revisions:
-            reason = clean_approval_reason(result["decision"]["reason"])
+            decision = result.get("decision", {})
+            reason_raw = decision.get("reason", "no reason provided")
+            reason = clean_approval_reason(reason_raw)
             if reason not in reason_groups:
                 reason_groups[reason] = []
             reason_groups[reason].append(result["revid"])
