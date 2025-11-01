@@ -69,16 +69,16 @@ class Command(BaseCommand):
         # Test with processor
         if preview_only:
             result = preview_approval_comment(test_data, comment_prefix)
-            self.stdout.write(f'Preview mode: {result.get("message", "preview generated")}')
+            self.stdout.write(f"Preview mode: {result.get('message', 'preview generated')}")
         else:
             result = process_and_approve_revisions(test_data, comment_prefix, dry_run=True)
-            self.stdout.write(f'Processing result: {result["message"]}')
+            self.stdout.write(f"Processing result: {result['message']}")
 
         # Show statistics
         stats = get_approval_statistics(test_data)
         self.stdout.write(
-            f'Statistics: {stats["approved_count"]}/{stats["total_revisions"]} '
-            f'approved ({stats["approval_rate"]:.1f}%)'
+            f"Statistics: {stats['approved_count']}/{stats['total_revisions']} "
+            f"approved ({stats['approval_rate']:.1f}%)"
         )
 
         if verbose:

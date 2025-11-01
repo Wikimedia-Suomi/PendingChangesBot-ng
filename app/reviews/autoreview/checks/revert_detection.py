@@ -60,7 +60,7 @@ def check_revert_detection(context: CheckContext) -> dict[str, Any]:
         return {
             "status": "approve",
             "message": (
-                "Revert to previously reviewed content " f"(SHA1: {reviewed_revisions[0]['sha1']})"
+                f"Revert to previously reviewed content (SHA1: {reviewed_revisions[0]['sha1']})"
             ),
             "metadata": {
                 "reverted_rev_ids": reverted_rev_ids,
