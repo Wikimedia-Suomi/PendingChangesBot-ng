@@ -225,7 +225,8 @@ class RevertDetectionTests(TestCase):
 
     def test_revert_detection_metadata(self):
         """Test that revert detection returns proper metadata."""
-        with patch("reviews.autoreview.checks.revert_detection._find_reviewed_revisions_by_sha1") as mock_find:
+        patch_path = "reviews.autoreview.checks.revert_detection._find_reviewed_revisions_by_sha1"
+        with patch(patch_path) as mock_find:
             mock_find.return_value = [{"sha1": "abc123"}]
 
             context = CheckContext(
