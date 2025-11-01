@@ -6,6 +6,7 @@ a pending edit is a revert to previously reviewed content.
 """
 
 import json
+from datetime import timedelta
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
@@ -49,7 +50,7 @@ class RevertDetectionTests(TestCase):
             change_tags=["mw-manual-revert"],
             timestamp=timezone.now(),
             fetched_at=timezone.now(),
-            age_at_fetch=0.0,
+            age_at_fetch=timedelta(0),
             sha1="test_sha1",
             wikitext="test wikitext",
         )
@@ -221,7 +222,7 @@ class RevertDetectionIntegrationTests(TestCase):
             change_tags=["mw-manual-revert", "mw-reverted"],
             timestamp=timezone.now(),
             fetched_at=timezone.now(),
-            age_at_fetch=0.0,
+            age_at_fetch=timedelta(0),
             sha1="test_sha1",
             wikitext="test wikitext",
         )
