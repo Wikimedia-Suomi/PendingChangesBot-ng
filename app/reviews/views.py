@@ -1993,11 +1993,11 @@ def api_flaggedrevs_statistics(request: HttpRequest) -> JsonResponse:
         {
             "wiki": stat.wiki.code,
             "date": stat.date.isoformat(),
-            "total_pages_ns0": stat.total_pages_ns0,
-            "reviewed_pages_ns0": stat.reviewed_pages_ns0,
-            "synced_pages_ns0": stat.synced_pages_ns0,
-            "pending_changes": stat.pending_changes,
-            "pending_lag_average": (
+            "totalPages_ns0": stat.total_pages_ns0,
+            "reviewedPages_ns0": stat.reviewed_pages_ns0,
+            "syncedPages_ns0": stat.synced_pages_ns0,
+            "pendingChanges": stat.pending_changes,
+            "pendingLagAverage": (
                 float(stat.pending_lag_average) if stat.pending_lag_average else None
             ),
         }
@@ -2046,10 +2046,10 @@ def api_flaggedrevs_activity(request: HttpRequest) -> JsonResponse:
         {
             "wiki": activity.wiki.code,
             "date": activity.date.isoformat(),
-            "number_of_reviewers": activity.number_of_reviewers,
-            "number_of_reviews": activity.number_of_reviews,
-            "number_of_pages": activity.number_of_pages,
-            "reviews_per_reviewer": (
+            "numberOfReviewers": activity.number_of_reviewers,
+            "numberOfReviews": activity.number_of_reviews,
+            "numberOfPages": activity.number_of_pages,
+            "reviewsPerReviewer": (
                 float(activity.reviews_per_reviewer) if activity.reviews_per_reviewer else None
             ),
         }
@@ -2062,4 +2062,6 @@ def api_flaggedrevs_activity(request: HttpRequest) -> JsonResponse:
 @require_GET
 def flaggedrevs_statistics_page(request: HttpRequest) -> HttpResponse:
     """Render FlaggedRevs statistics page."""
-    return render(request, "reviews/flaggedrevs_statistics.html")
+    wikis = Wiki.objects.all().order_by("code")
+    wikis_data = [{"code": wiki.code, "name": wiki.name} for wiki in wikis]
+    return render(request, "reviews/flaggedrevs_statistics.html", {"wikis": json.dumps(wikis_data)})
