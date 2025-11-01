@@ -80,7 +80,6 @@ class RevertDetectionTests(TestCase):
                 auto_groups={},
                 blocking_categories={},
                 redirect_aliases=[],
-                config=self.config,
             )
             result = _check_revert_detection(context)
 
@@ -129,7 +128,7 @@ class RevertDetectionTests(TestCase):
         reverted_ids = _parse_revert_params(self.revision)
         self.assertEqual(reverted_ids, [])
 
-    @patch("reviews.autoreview.checks.revert_detection.SupersetQuery")
+    @patch("pywikibot.data.superset.SupersetQuery")
     def test_find_reviewed_revisions_by_sha1_success(self, mock_superset):
         """Test finding reviewed revisions by SHA1."""
         # Mock SupersetQuery results
@@ -149,7 +148,7 @@ class RevertDetectionTests(TestCase):
         self.assertEqual(reviewed_revisions[0]["sha1"], "abc123")
         self.assertEqual(reviewed_revisions[0]["max_reviewed_id"], 150)
 
-    @patch("reviews.autoreview.checks.revert_detection.SupersetQuery")
+    @patch("pywikibot.data.superset.SupersetQuery")
     def test_find_reviewed_revisions_by_sha1_no_results(self, mock_superset):
         """Test when no reviewed revisions are found."""
         mock_superset.return_value.query.return_value = []
@@ -236,7 +235,6 @@ class RevertDetectionTests(TestCase):
                 auto_groups={},
                 blocking_categories={},
                 redirect_aliases=[],
-                config=self.config,
             )
             result = _check_revert_detection(context)
 
@@ -316,7 +314,6 @@ class RevertDetectionIntegrationTests(TestCase):
                 auto_groups={},
                 blocking_categories={},
                 redirect_aliases=[],
-                config=self.config,
             )
             result = _check_revert_detection(context)
 
