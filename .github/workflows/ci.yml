@@ -93,7 +93,24 @@ jobs:
 
       - name: Run tests
         working-directory: ./app
-        run: python manage.py test
+        run: |
+          coverage run --source='.' manage.py test
+          coverage report
+
+      - name: Generate coverage reports
+        if: always()
+        working-directory: ./app
+        run: |
+          coverage html
+          coverage xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: app/htmlcov/
+          retention-days: 7
 
 
   # -------------------------------
