@@ -63,16 +63,12 @@ class WikiClient:
                 if user.get("name") == username:
                     groups = user.get("groups", [])
                     is_global_bot = "global-bot" in groups
-                    is_former_global_bot = (
-                        False  # api does not return global former groups
-                    )
+                    is_former_global_bot = False  # api does not return global former groups
                     break
 
             return (is_global_bot, is_former_global_bot)
         except Exception as e:
-            logger.exception(
-                "Failed to check global bot status for user %s: %s", username, e
-            )
+            logger.exception("Failed to check global bot status for user %s: %s", username, e)
             return (False, False)
 
     def has_manual_unapproval(self, page_title: str, revid: int) -> bool:
@@ -122,9 +118,7 @@ class WikiClient:
             )
             return False
 
-    def is_user_blocked_after_edit(
-        self, username: str, edit_timestamp: datetime
-    ) -> bool:
+    def is_user_blocked_after_edit(self, username: str, edit_timestamp: datetime) -> bool:
         """Check if user was blocked after making an edit."""
         year = edit_timestamp.year
         return was_user_blocked_after(self.wiki.code, self.wiki.family, username, year)
@@ -240,9 +234,7 @@ ORDER BY fp_pending_since, rev_id DESC
 
                 page = pages_by_id.get(pageid_int)
                 if page is None:
-                    pending_since = parse_superset_timestamp(
-                        entry.get("fp_pending_since")
-                    )
+                    pending_since = parse_superset_timestamp(entry.get("fp_pending_since"))
                     page = PendingPage.objects.create(
                         wiki=self.wiki,
                         pageid=pageid_int,
@@ -264,9 +256,7 @@ ORDER BY fp_pending_since, rev_id DESC
                 except (TypeError, ValueError):
                     continue
 
-                superset_revision_timestamp = parse_superset_timestamp(
-                    entry.get("rev_timestamp")
-                )
+                superset_revision_timestamp = parse_superset_timestamp(entry.get("rev_timestamp"))
                 if superset_revision_timestamp is None:
                     superset_revision_timestamp = dj_timezone.now()
 
@@ -285,15 +275,11 @@ ORDER BY fp_pending_since, rev_id DESC
 
         return pages
 
-    def _save_revision(
-        self, page: PendingPage, payload: RevisionPayload
-    ) -> PendingRevision | None:
+    def _save_revision(self, page: PendingPage, payload: RevisionPayload) -> PendingRevision | None:
         from reviews.models import PendingPage, PendingRevision
 
         existing_page = (
-            PendingPage.objects.filter(pk=page.pk).only("id").first()
-            if page.pk
-            else None
+            PendingPage.objects.filter(pk=page.pk).only("id").first() if page.pk else None
         )
         if existing_page is None:
             logger.warning(

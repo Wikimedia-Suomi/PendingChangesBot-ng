@@ -63,7 +63,9 @@ class WikiClientTests(TestCase):
         self.mock_superset.query.return_value = []
 
     def test_parse_categories_extracts_unique_names(self):
-        wikitext = "Some text [[Category:Example]] and [[category:Second|label]] and [[Category:Example]]"
+        wikitext = (
+            "Some text [[Category:Example]] and [[category:Second|label]] and [[Category:Example]]"
+        )
         categories = parse_categories(wikitext)
         self.assertEqual(categories, ["Example", "Second"])
 
