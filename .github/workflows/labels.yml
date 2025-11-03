@@ -1,0 +1,62 @@
+name: PR Labels
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+# Prevent duplicate runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.pull_requests[0].number }}
+  cancel-in-progress: true
+
+# Explicit write permission for labels
+permissions:
+  pull-requests: write
+  contents: read
+  actions: read
+
+jobs:
+  # -------------------------------
+  #  Update PR Labels Based on CI Status
+  # -------------------------------
+  update-labels:
+    name: Update PR Labels
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.pull_requests[0]
+
+    steps:
+      - name: Get PR number
+        id: pr
+        run: |
+          echo "number=${{ github.event.workflow_run.pull_requests[0].number }}" >> $GITHUB_OUTPUT
+
+      - name: Add ready-for-review label on CI success
+        if: github.event.workflow_run.conclusion == 'success'
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          labels: ready-for-review
+          number: ${{ steps.pr.outputs.number }}
+
+      - name: Remove changes-required label on CI success
+        if: github.event.workflow_run.conclusion == 'success'
+        uses: actions-ecosystem/action-remove-labels@v1
+        with:
+          labels: changes-required
+          number: ${{ steps.pr.outputs.number }}
+        continue-on-error: true
+
+      - name: Add changes-required label on CI failure
+        if: github.event.workflow_run.conclusion == 'failure'
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          labels: changes-required
+          number: ${{ steps.pr.outputs.number }}
+
+      - name: Remove ready-for-review label on CI failure
+        if: github.event.workflow_run.conclusion == 'failure'
+        uses: actions-ecosystem/action-remove-labels@v1
+        with:
+          labels: ready-for-review
+          number: ${{ steps.pr.outputs.number }}
+        continue-on-error: true
