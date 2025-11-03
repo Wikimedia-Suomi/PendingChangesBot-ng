@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   # -------------------------------
-  # 🧪 Run tests (on PR code)
+  #  Run tests (on PR code)
   # -------------------------------
   test:
     name: Test and Lint
