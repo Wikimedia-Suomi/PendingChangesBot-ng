@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   # -------------------------------
-  # 🏷️ Update PR Labels Based on CI Status
+  #  Update PR Labels Based on CI Status
   # -------------------------------
   update-labels:
     name: Update PR Labels
