@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
-from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import pywikibot
@@ -42,33 +41,30 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
-    @lru_cache(maxsize=1000)
     def check_global_bot_user(self, username: str) -> tuple[bool, bool]:
         """Check if a user is a global bot using the efficient globaluserinfo API."""
         try:
             meta_site = pywikibot.Site("meta", "meta")
-            request = pywikibot.data.api.Request(
-                site=meta_site,
-                parameters={
-                    "action": "query",
-                    "list": "globalallusers",
-                    "agugroup": "global-bot",
-                    "agulimit": "max",
-                    "aguprop": "groups|existslocally",
-                },
+            request = meta_site.simple_request(
+                action="query",
+                list="globalallusers",
+                agugroup="global-bot",
+                agulimit="max",
+                aguprop="groups",
             )
 
             response = request.submit()
-            user_info = response.get("query", {}).get("globaluserinfo", {})
+            all_global_users = response.get("query", {}).get("globalallusers", [])
 
-            if not user_info or "missing" in user_info or "name" not in user_info:
-                return (False, False)
+            is_global_bot = False
+            is_former_global_bot = False
 
-            current_groups = user_info.get("groups", [])
-            former_groups = user_info.get("formergroups", [])
-
-            is_global_bot = "global-bot" in current_groups
-            is_former_global_bot = "global-bot" in former_groups
+            for user in all_global_users:
+                if user.get("name") == username:
+                    groups = user.get("groups", [])
+                    is_global_bot = "global-bot" in groups
+                    is_former_global_bot = False  # api does not return global former groups
+                    break
 
             return (is_global_bot, is_former_global_bot)
         except Exception as e:
