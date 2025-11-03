@@ -6,8 +6,6 @@ on:
   pull_request:
     branches: [ main ]
     types: [ opened, synchronize, reopened ]
-  pull_request_target:
-    types: [ opened, reopened, synchronize ]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -15,21 +13,22 @@ on:
         required: true
         type: number
 
-# 👇 Top-level permissions: safe defaults
+# Prevent duplicate runs for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Top-level permissions: safe defaults
 permissions:
   contents: read
 
 jobs:
   # -------------------------------
-  # 🧪 Run tests (on PR code)
+  #  Run tests (on PR code)
   # -------------------------------
   test:
     name: Test and Lint
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'pull_request'
 
     steps:
       - name: Get PR details for manual dispatch
@@ -111,44 +110,3 @@ jobs:
           name: coverage-report
           path: app/htmlcov/
           retention-days: 7
-
-
-  # -------------------------------
-  # 🏷️ Label PR (safe for forks)
-  # -------------------------------
-  label-pr:
-    name: Update PR Labels
-    runs-on: ubuntu-latest
-    needs: test
-    if: always() && github.event_name == 'pull_request_target'
-
-    # 🔒 Uses the base repo’s GITHUB_TOKEN, safe to modify labels
-    permissions:
-      pull-requests: write
-
-    steps:
-      - name: Add ready-for-review label on success
-        if: needs.test.result == 'success'
-        uses: actions-ecosystem/action-add-labels@v1
-        with:
-          labels: ready-for-review
-
-      - name: Remove changes-required label on success
-        if: needs.test.result == 'success'
-        uses: actions-ecosystem/action-remove-labels@v1
-        with:
-          labels: changes-required
-        continue-on-error: true
-
-      - name: Add changes-required label on failure
-        if: needs.test.result == 'failure'
-        uses: actions-ecosystem/action-add-labels@v1
-        with:
-          labels: changes-required
-
-      - name: Remove ready-for-review label on failure
-        if: needs.test.result == 'failure'
-        uses: actions-ecosystem/action-remove-labels@v1
-        with:
-          labels: ready-for-review
-        continue-on-error: true

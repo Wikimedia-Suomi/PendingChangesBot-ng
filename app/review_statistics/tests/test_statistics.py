@@ -5,13 +5,11 @@ from unittest import mock
 
 from django.test import Client, TestCase
 from django.urls import reverse
-
-from reviews.models import (
+from review_statistics.models import (
     ReviewStatisticsCache,
     ReviewStatisticsMetadata,
-    Wiki,
-    WikiConfiguration,
 )
+from reviews.models import Wiki, WikiConfiguration
 
 
 class StatisticsModelTests(TestCase):
@@ -152,7 +150,7 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(len(data["records"]), 1)
         self.assertEqual(data["records"][0]["reviewer_name"], "Reviewer1")
 
-    @mock.patch("reviews.views.WikiClient")
+    @mock.patch("review_statistics.views.WikiClient")
     def test_api_statistics_refresh_success(self, mock_client):
         """Test refreshing statistics successfully."""
         mock_client.return_value.refresh_review_statistics.return_value = {
@@ -167,8 +165,8 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(data["total_records"], 10)
         self.assertEqual(data["is_incremental"], True)
 
-    @mock.patch("reviews.views.logger")
-    @mock.patch("reviews.views.WikiClient")
+    @mock.patch("review_statistics.views.logger")
+    @mock.patch("review_statistics.views.WikiClient")
     def test_api_statistics_refresh_failure(self, mock_client, mock_logger):
         """Test statistics refresh error handling."""
         mock_client.return_value.refresh_review_statistics.side_effect = RuntimeError(
@@ -189,7 +187,7 @@ class StatisticsServiceTests(TestCase):
         )
         WikiConfiguration.objects.create(wiki=self.wiki)
 
-    @mock.patch("reviews.services.statistics.SupersetQuery")
+    @mock.patch("review_statistics.services.SupersetQuery")
     def test_fetch_review_statistics(self, mock_superset):
         """Test fetching review statistics from Superset."""
         from reviews.services import WikiClient
@@ -228,7 +226,7 @@ class StatisticsServiceTests(TestCase):
         metadata = ReviewStatisticsMetadata.objects.get(wiki=self.wiki)
         self.assertEqual(metadata.total_records, 1)
 
-    @mock.patch("reviews.services.statistics.SupersetQuery")
+    @mock.patch("review_statistics.services.SupersetQuery")
     def test_fetch_review_statistics_with_invalid_timestamp(self, mock_superset):
         """Test handling of invalid timestamps in statistics."""
         from reviews.services import WikiClient
@@ -365,7 +363,7 @@ class StatisticsFilteringTests(TestCase):
         self.assertIsNone(metadata.last_data_loaded_at)
 
         # Mock fetch to populate last_data_loaded_at
-        with mock.patch("reviews.services.statistics.SupersetQuery") as mock_superset:
+        with mock.patch("review_statistics.services.SupersetQuery") as mock_superset:
             mock_superset.return_value.query.return_value = [
                 {
                     "log_id": 12345,
@@ -392,7 +390,7 @@ class StatisticsFilteringTests(TestCase):
         """Test that batch_limit_reached is False for small datasets."""
         from reviews.services import WikiClient
 
-        with mock.patch("reviews.services.statistics.SupersetQuery") as mock_superset:
+        with mock.patch("review_statistics.services.SupersetQuery") as mock_superset:
             # First call returns data, second call returns empty (pagination stops)
             mock_superset.return_value.query.side_effect = [
                 [

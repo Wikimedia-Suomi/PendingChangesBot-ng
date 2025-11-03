@@ -7,8 +7,7 @@ from unittest.mock import MagicMock, patch
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
-
-from reviews.models.flaggedrevs_statistics import FlaggedRevsStatistics, ReviewActivity
+from review_statistics.models import FlaggedRevsStatistics, ReviewActivity
 from reviews.models.wiki import Wiki
 
 
@@ -287,9 +286,9 @@ class LoadStatisticsCommandTests(TestCase):
             api_endpoint="https://test.wikipedia.org/w/api.php",
         )
 
-    @patch("reviews.management.commands.load_flaggedrevs_statistics.logger")
-    @patch("reviews.management.commands.load_flaggedrevs_statistics.SupersetQuery")
-    @patch("reviews.management.commands.load_flaggedrevs_statistics.pywikibot.Site")
+    @patch("review_statistics.management.commands.load_flaggedrevs_statistics.logger")
+    @patch("review_statistics.management.commands.load_flaggedrevs_statistics.SupersetQuery")
+    @patch("review_statistics.management.commands.load_flaggedrevs_statistics.pywikibot.Site")
     def test_load_statistics_command(self, mock_site, mock_superset_query, mock_logger):
         """Test load_statistics management command."""
         # Mock the Superset response
@@ -318,8 +317,8 @@ class LoadStatisticsCommandTests(TestCase):
         self.assertEqual(stat.pending_lag_average, 2.5)
         self.assertEqual(stat.date, date(2024, 1, 1))
 
-    @patch("reviews.management.commands.load_flaggedrevs_statistics.SupersetQuery")
-    @patch("reviews.management.commands.load_flaggedrevs_statistics.pywikibot.Site")
+    @patch("review_statistics.management.commands.load_flaggedrevs_statistics.SupersetQuery")
+    @patch("review_statistics.management.commands.load_flaggedrevs_statistics.pywikibot.Site")
     def test_load_statistics_clear_command(self, mock_site, mock_superset_query):
         """Test load_statistics --clear command."""
         FlaggedRevsStatistics.objects.create(

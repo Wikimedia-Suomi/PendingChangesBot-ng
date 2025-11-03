@@ -737,14 +737,14 @@ class ViewTests(TestCase):
 
     def test_calculate_percentile_empty_list(self):
         """Test calculate_percentile with empty list."""
-        from reviews.views import calculate_percentile
+        from review_statistics.views import calculate_percentile
 
         result = calculate_percentile([], 50)
         self.assertEqual(result, 0.0)
 
     def test_get_time_filter_cutoff_week(self):
         """Test get_time_filter_cutoff with week filter."""
-        from reviews.views import get_time_filter_cutoff
+        from review_statistics.views import get_time_filter_cutoff
 
         cutoff = get_time_filter_cutoff("week")
         self.assertIsNotNone(cutoff)
@@ -1092,7 +1092,7 @@ class ViewTests(TestCase):
 
     def test_api_statistics_with_reviewer_filter(self):
         """Test api_statistics with reviewer filter."""
-        from reviews.models import ReviewStatisticsCache, ReviewStatisticsMetadata
+        from review_statistics.models import ReviewStatisticsCache, ReviewStatisticsMetadata
 
         # Create metadata
         ReviewStatisticsMetadata.objects.create(
@@ -1137,7 +1137,7 @@ class ViewTests(TestCase):
 
     def test_api_statistics_with_reviewed_user_filter(self):
         """Test api_statistics with reviewed_user filter."""
-        from reviews.models import ReviewStatisticsCache, ReviewStatisticsMetadata
+        from review_statistics.models import ReviewStatisticsCache, ReviewStatisticsMetadata
 
         ReviewStatisticsMetadata.objects.create(
             wiki=self.wiki,
@@ -1168,7 +1168,7 @@ class ViewTests(TestCase):
 
     def test_api_statistics_charts_with_exclude_auto_reviewers(self):
         """Test api_statistics_charts with exclude_auto_reviewers filter."""
-        from reviews.models import ReviewStatisticsCache, ReviewStatisticsMetadata
+        from review_statistics.models import ReviewStatisticsCache, ReviewStatisticsMetadata
 
         # Create auto-reviewed user
         EditorProfile.objects.create(wiki=self.wiki, username="AutoReviewer", is_autoreviewed=True)
@@ -1215,7 +1215,7 @@ class ViewTests(TestCase):
 
     def test_api_statistics_charts_with_time_filter(self):
         """Test api_statistics_charts with time filter."""
-        from reviews.models import ReviewStatisticsCache, ReviewStatisticsMetadata
+        from review_statistics.models import ReviewStatisticsCache, ReviewStatisticsMetadata
 
         ReviewStatisticsMetadata.objects.create(
             wiki=self.wiki,
@@ -1259,7 +1259,7 @@ class ViewTests(TestCase):
         # Should only count recent review
         self.assertEqual(data["overall_stats"]["total_reviews"], 1)
 
-    @mock.patch("reviews.views.WikiClient")
+    @mock.patch("review_statistics.views.WikiClient")
     def test_api_statistics_refresh_with_limit(self, mock_client):
         """Test api_statistics_refresh (now incremental refresh)."""
         mock_client.return_value.refresh_review_statistics.return_value = {
