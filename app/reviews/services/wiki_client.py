@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pywikibot
 from django.db import transaction
@@ -63,12 +63,16 @@ class WikiClient:
                 if user.get("name") == username:
                     groups = user.get("groups", [])
                     is_global_bot = "global-bot" in groups
-                    is_former_global_bot = False  # api does not return global former groups
+                    is_former_global_bot = (
+                        False  # api does not return global former groups
+                    )
                     break
 
             return (is_global_bot, is_former_global_bot)
         except Exception as e:
-            logger.exception("Failed to check global bot status for user %s: %s", username, e)
+            logger.exception(
+                "Failed to check global bot status for user %s: %s", username, e
+            )
             return (False, False)
 
     def has_manual_unapproval(self, page_title: str, revid: int) -> bool:
