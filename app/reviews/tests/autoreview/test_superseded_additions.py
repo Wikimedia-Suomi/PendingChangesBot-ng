@@ -169,6 +169,8 @@ class SupersededAdditionsTests(TestCase):
 
         result = check_superseded_additions(context)
         self.assertEqual(result.status, "ok")
+        self.assertIsNotNone(result.decision)
+        assert result.decision is not None  # for mypy
         self.assertEqual(result.decision.status, "approve")
         self.assertTrue(result.should_stop)
 

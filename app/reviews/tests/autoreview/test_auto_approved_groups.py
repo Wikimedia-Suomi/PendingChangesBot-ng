@@ -28,6 +28,8 @@ class AutoApprovedGroupsTests(TestCase):
 
         result = check_auto_approved_groups(context)
         self.assertEqual(result.status, "ok")
+        self.assertIsNotNone(result.decision)
+        assert result.decision is not None  # for mypy
         self.assertEqual(result.decision.status, "approve")
         self.assertTrue(result.should_stop)
         self.assertIn("sysop", result.message)
@@ -75,6 +77,8 @@ class AutoApprovedGroupsTests(TestCase):
 
         result = check_auto_approved_groups(context)
         self.assertEqual(result.status, "ok")
+        self.assertIsNotNone(result.decision)
+        assert result.decision is not None  # for mypy
         self.assertEqual(result.decision.status, "approve")
         self.assertTrue(result.should_stop)
         self.assertIn("Autoreviewed", result.message)

@@ -68,6 +68,8 @@ class AutoreviewBlockedUserTests(TestCase):
 
         # Assert
         self.assertEqual(result.status, "fail")
+        self.assertIsNotNone(result.decision)
+        assert result.decision is not None  # for mypy
         self.assertEqual(result.decision.status, "blocked")
         self.assertIn("blocked", result.message.lower())
 
@@ -106,5 +108,7 @@ class AutoreviewBlockedUserTests(TestCase):
 
         # Should handle exception and return fail status
         self.assertEqual(result.status, "fail")
+        self.assertIsNotNone(result.decision)
+        assert result.decision is not None  # for mypy
         self.assertEqual(result.decision.status, "error")
         self.assertIn("Could not verify", result.message)

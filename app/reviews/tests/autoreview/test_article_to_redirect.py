@@ -105,6 +105,8 @@ class ArticleToRedirectTests(TestCase):
 
         result = check_article_to_redirect(context)
         self.assertEqual(result.status, "fail")
+        self.assertIsNotNone(result.decision)
+        assert result.decision is not None  # for mypy
         self.assertEqual(result.decision.status, "blocked")
         self.assertTrue(result.should_stop)
         self.assertIn("autoreview rights", result.message)

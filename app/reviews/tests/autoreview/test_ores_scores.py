@@ -91,6 +91,8 @@ class OresScoreTests(TestCase):
         result = check_ores_scores(context)
 
         self.assertEqual(result.status, "fail")
+        self.assertIsNotNone(result.decision)
+        assert result.decision is not None  # for mypy
         self.assertEqual(result.decision.status, "blocked")
         self.assertIn("0.850", result.message)
 
@@ -138,6 +140,8 @@ class OresScoreTests(TestCase):
         result = check_ores_scores(context)
 
         self.assertEqual(result.status, "fail")
+        self.assertIsNotNone(result.decision)
+        assert result.decision is not None  # for mypy
         self.assertEqual(result.decision.status, "blocked")
         self.assertIn("0.250", result.message)
 
@@ -314,5 +318,7 @@ class OresScoreTests(TestCase):
         result = check_ores_scores(context)
 
         self.assertEqual(result.status, "fail")
+        self.assertIsNotNone(result.decision)
+        assert result.decision is not None  # for mypy
         self.assertEqual(result.decision.status, "blocked")
         self.assertIn("Could not verify", result.message)
