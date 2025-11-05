@@ -3,9 +3,9 @@ from __future__ import annotations
 import contextlib
 import io
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Iterable
 from urllib.parse import parse_qs, urlparse
 
 import pywikibot
