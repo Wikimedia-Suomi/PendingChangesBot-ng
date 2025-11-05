@@ -9,6 +9,7 @@ from .invalid_isbn import check_invalid_isbn
 from .manual_unapproval import check_manual_unapproval
 from .ores_scores import check_ores_scores
 from .render_errors import check_render_errors
+from .revert_detection import check_revert_detection
 from .superseded_additions import check_superseded_additions
 from .user_block import check_user_block
 
@@ -38,46 +39,52 @@ AVAILABLE_CHECKS = [
         "priority": 3,
     },
     {
+        "id": "revert-detection",
+        "name": "Revert to reviewed version",
+        "function": check_revert_detection,
+        "priority": 4,
+    },
+    {
         "id": "auto-approved-group",
         "name": "Auto-approved groups",
         "function": check_auto_approved_groups,
-        "priority": 4,
+        "priority": 5,
     },
     {
         "id": "article-to-redirect-conversion",
         "name": "Article-to-redirect conversion",
         "function": check_article_to_redirect,
-        "priority": 5,
+        "priority": 6,
     },
     {
         "id": "blocking-categories",
         "name": "Blocking categories",
         "function": check_blocking_categories,
-        "priority": 6,
+        "priority": 7,
     },
     {
         "id": "new-render-errors",
         "name": "New render errors",
         "function": check_render_errors,
-        "priority": 7,
+        "priority": 8,
     },
     {
         "id": "invalid-isbn",
         "name": "ISBN checksum validation",
         "function": check_invalid_isbn,
-        "priority": 8,
+        "priority": 9,
     },
     {
         "id": "superseded-additions",
         "name": "Superseded additions",
         "function": check_superseded_additions,
-        "priority": 9,
+        "priority": 10,
     },
     {
         "id": "ores-scores",
         "name": "ORES edit quality scores",
         "function": check_ores_scores,
-        "priority": 10,
+        "priority": 11,
     },
 ]
 
