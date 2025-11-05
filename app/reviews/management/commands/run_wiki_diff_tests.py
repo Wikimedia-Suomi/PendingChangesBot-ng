@@ -27,7 +27,6 @@ from reviews.models import (
 )
 from reviews.services import WikiClient
 
-
 LINE_PATTERN = re.compile(
     r"^\*\s+(?P<url>\S+)\s+(?P<test_id>[^:]+?)\s*:\s*(?P<expected>[^#]*?)"
     r"(?:\s+#\s*(?P<comment>.*))?$"
