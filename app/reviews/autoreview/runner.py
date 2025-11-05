@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from .checks import get_enabled_checks
@@ -23,6 +24,8 @@ def run_checks_pipeline(
     redirect_aliases: list[str],
 ) -> dict:
     """Run all enabled checks in order, stopping at blocking/approving checks."""
+    pipeline_start_time = time.perf_counter()
+
     context = CheckContext(
         revision=revision,
         client=client,
@@ -37,18 +40,27 @@ def run_checks_pipeline(
 
     tests = []
     for check_info in checks_to_run:
+        check_start_time = time.perf_counter()
         result = check_info["function"](context)
+        duration_ms = (time.perf_counter() - check_start_time) * 1000
+
         tests.append(
             {
                 "id": result.check_id,
                 "title": result.check_title,
                 "status": result.status,
                 "message": result.message,
+                "duration_ms": duration_ms,
             }
         )
 
         if result.should_stop:
-            return {"tests": tests, "decision": result.decision}
+            total_duration_ms = (time.perf_counter() - pipeline_start_time) * 1000
+            return {
+                "tests": tests,
+                "decision": result.decision,
+                "total_duration_ms": total_duration_ms,
+            }
 
         if (
             result.check_id == "article-to-redirect-conversion"
@@ -56,6 +68,7 @@ def run_checks_pipeline(
             and profile
             and profile.is_autopatrolled
         ):
+            total_duration_ms = (time.perf_counter() - pipeline_start_time) * 1000
             return {
                 "tests": tests,
                 "decision": AutoreviewDecision(
@@ -63,8 +76,10 @@ def run_checks_pipeline(
                     label="Would be auto-approved",
                     reason="The user has autopatrol rights that allow auto-approval.",
                 ),
+                "total_duration_ms": total_duration_ms,
             }
 
+    total_duration_ms = (time.perf_counter() - pipeline_start_time) * 1000
     return {
         "tests": tests,
         "decision": AutoreviewDecision(
@@ -72,6 +87,7 @@ def run_checks_pipeline(
             label="Requires human review",
             reason="In dry-run mode the edit would not be approved automatically.",
         ),
+        "total_duration_ms": total_duration_ms,
     }
 
 
@@ -120,6 +136,7 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
                     "label": revision_result["decision"].label,
                     "reason": revision_result["decision"].reason,
                 },
+                "total_duration_ms": revision_result["total_duration_ms"],
             }
         )
 

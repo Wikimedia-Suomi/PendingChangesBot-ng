@@ -15,3 +15,4 @@ class CheckResult:
     message: str
     decision: AutoreviewDecision | None = None
     should_stop: bool = False
+    duration_ms: float | None = None
