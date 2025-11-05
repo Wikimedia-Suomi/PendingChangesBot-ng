@@ -5,7 +5,7 @@ import io
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 from urllib.parse import parse_qs, urlparse
 
 import pywikibot
@@ -190,7 +190,7 @@ class Command(BaseCommand):
     def _fetch_wikitext(self, site: pywikibot.Site, title: str) -> str:
         page = pywikibot.Page(site, title)
         try:
-            return page.get()
+            return str(page.get())
         except Exception:  # pragma: no cover - network failures handled at runtime
             self.stderr.write(self.style.ERROR(f"Failed to fetch page '{title}'."))
             return ""
@@ -379,7 +379,7 @@ class Command(BaseCommand):
         if timestamp is None:
             return None
         if timezone.is_naive(timestamp):
-            timestamp = timezone.make_aware(timestamp, timezone=timezone.utc)
+            timestamp = timezone.make_aware(timestamp, timezone=dt_timezone.utc)
         return timestamp
 
     def _ensure_editor_profile(

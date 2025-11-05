@@ -18,7 +18,7 @@ class FakeRequest:
 
 class FakeSite:
     def __init__(self):
-        self.response = {"query": {"pages": []}}
+        self.response: dict[str, dict[str, list]] = {"query": {"pages": []}}
         self.users_data: dict[str, dict] = {}
         self.requests: list[dict] = []
 

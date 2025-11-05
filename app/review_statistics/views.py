@@ -263,9 +263,9 @@ def api_statistics_charts(request: HttpRequest, pk: int) -> JsonResponse:
     ).order_by("reviewed_timestamp")
 
     # Group data by date or hour depending on time filter
-    reviewers_by_date = defaultdict(set)
-    pending_by_date = defaultdict(int)
-    delays_by_date = defaultdict(list)
+    reviewers_by_date: dict[str, set[str]] = defaultdict(set)
+    pending_by_date: dict[str, int] = defaultdict(int)
+    delays_by_date: dict[str, list[float]] = defaultdict(list)
 
     # For "day" filter, group by hour; otherwise by date
     use_hourly = time_filter == "day"
@@ -487,7 +487,7 @@ def api_flaggedrevs_months(request: HttpRequest) -> JsonResponse:
         FlaggedRevsStatistics.objects.values_list("date", flat=True).distinct().order_by("-date")
     )
 
-    months = []
+    months: list[dict[str, str]] = []
     for date in months_data:
         month_value = date.strftime("%Y%m")
 
