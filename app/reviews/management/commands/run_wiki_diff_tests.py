@@ -108,9 +108,7 @@ class Command(BaseCommand):
             if not check_info:
                 failures += 1
                 self.stdout.write(
-                    self.style.ERROR(
-                        f"Unknown test id '{entry.test_id}' for URL {entry.url}."
-                    )
+                    self.style.ERROR(f"Unknown test id '{entry.test_id}' for URL {entry.url}.")
                 )
                 continue
 
@@ -118,9 +116,7 @@ class Command(BaseCommand):
             if not revision:
                 failures += 1
                 self.stdout.write(
-                    self.style.ERROR(
-                        f"Could not load revision {entry.revid} for URL {entry.url}."
-                    )
+                    self.style.ERROR(f"Could not load revision {entry.revid} for URL {entry.url}.")
                 )
                 continue
 
@@ -148,55 +144,37 @@ class Command(BaseCommand):
             expected = self._normalize_expected(entry.expected)
             actual = self._normalize_expected(result.status)
             decision_status = (
-                self._normalize_expected(result.decision.status)
-                if result.decision
-                else None
+                self._normalize_expected(result.decision.status) if result.decision else None
             )
 
             matches = expected in {actual, decision_status}
 
-            status_text = (
-                f"expected={entry.expected.strip()} actual={result.status}"
-            )
+            status_text = f"expected={entry.expected.strip()} actual={result.status}"
             if result.decision:
                 status_text += f" decision={result.decision.status}"
 
             if matches:
                 passes += 1
                 self.stdout.write(
-                    self.style.SUCCESS(
-                        f"PASS {entry.revid} {entry.test_id}: {status_text}"
-                    )
+                    self.style.SUCCESS(f"PASS {entry.revid} {entry.test_id}: {status_text}")
                 )
             else:
                 failures += 1
                 self.stdout.write(
-                    self.style.ERROR(
-                        f"FAIL {entry.revid} {entry.test_id}: {status_text}"
-                    )
+                    self.style.ERROR(f"FAIL {entry.revid} {entry.test_id}: {status_text}")
                 )
                 self.stdout.write(f"    Status: {result.status}")
                 self.stdout.write(f"    Message: {result.message}")
                 self.stdout.write(f"    Diff URL: {entry.url}")
-                diff_text = self._get_failure_diff(
-                    site, wiki, revision, entry
-                )
+                diff_text = self._get_failure_diff(site, wiki, revision, entry)
                 if diff_text:
                     self.stdout.write("    Diff:")
                     for line in diff_text.rstrip().splitlines():
                         self.stdout.write(f"        {line}")
 
         self.stdout.write("")
-        self.stdout.write(
-            self.style.SUCCESS(f"Passes: {passes}")
-            if passes
-            else "Passes: 0"
-        )
-        self.stdout.write(
-            self.style.ERROR(f"Failures: {failures}")
-            if failures
-            else "Failures: 0"
-        )
+        self.stdout.write(self.style.SUCCESS(f"Passes: {passes}") if passes else "Passes: 0")
+        self.stdout.write(self.style.ERROR(f"Failures: {failures}") if failures else "Failures: 0")
 
     def _ensure_wiki(self, code: str, family: str) -> Wiki:
         api_endpoint = f"https://{code}.wikipedia.org/w/api.php"
@@ -281,9 +259,7 @@ class Command(BaseCommand):
             )
             response = request.submit()
         except Exception as exc:  # pragma: no cover - network failures handled at runtime
-            self.stderr.write(
-                self.style.ERROR(f"Failed to fetch revision {revid} from API: {exc}")
-            )
+            self.stderr.write(self.style.ERROR(f"Failed to fetch revision {revid} from API: {exc}"))
             return revision
 
         pages = response.get("query", {}).get("pages", [])
@@ -307,9 +283,7 @@ class Command(BaseCommand):
             if update_page_defaults:
                 page_defaults["pending_since"] = None
             if update_page_defaults:
-                page_defaults["stable_revid"] = (
-                    oldid or revision_data.get("parentid") or 0
-                )
+                page_defaults["stable_revid"] = oldid or revision_data.get("parentid") or 0
 
             categories = [
                 category.get("title")
@@ -415,9 +389,7 @@ class Command(BaseCommand):
         if not username:
             return None
 
-        profile = (
-            EditorProfile.objects.filter(wiki=wiki, username=username).first()
-        )
+        profile = EditorProfile.objects.filter(wiki=wiki, username=username).first()
         if profile and not profile.is_expired:
             return profile
 
@@ -431,9 +403,7 @@ class Command(BaseCommand):
             )
             response = request.submit()
         except Exception as exc:  # pragma: no cover - network failures handled at runtime
-            self.stderr.write(
-                self.style.ERROR(f"Failed to fetch user data for {username}: {exc}")
-            )
+            self.stderr.write(self.style.ERROR(f"Failed to fetch user data for {username}: {exc}"))
             return profile
 
         users = response.get("query", {}).get("users", [])
