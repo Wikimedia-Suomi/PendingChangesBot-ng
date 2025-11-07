@@ -5,7 +5,7 @@ import re
 
 def validate_isbn_10(isbn: str) -> bool:
     """Validate ISBN-10 checksum."""
-    if len(isbn) != 10:
+    if not isbn or len(isbn) != 10:
         return False
 
     total = 0
@@ -24,7 +24,8 @@ def validate_isbn_10(isbn: str) -> bool:
 def validate_isbn_13(isbn: str) -> bool:
     """Validate ISBN-13 checksum."""
     if (
-        len(isbn) != 13
+        not isbn
+        or len(isbn) != 13
         or not isbn.isdigit()
         or not (isbn.startswith("978") or isbn.startswith("979"))
     ):
