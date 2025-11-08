@@ -1139,7 +1139,7 @@ createApp({
           const oldid = revision.parentid;
           const diffid = revision.revid;
 
-          const baseUrl = "https://fi.wikipedia.org";
+          const baseUrl = getWikiOrigin();
           const diffUrl = `${baseUrl}/w/index.php?title=${title}&diff=${diffid}&oldid=${oldid}&action=render&diffonly=1&uselang=en`;
 
           const apiUrl = `/api/wikis/fetch-diff/?url=${encodeURIComponent(diffUrl)}`;
@@ -1156,7 +1156,7 @@ createApp({
 
           if (link) {
               const relativeHref = link.getAttribute('href');
-              const domainUrl = "//fi.wikipedia.org";
+              const domainUrl = `//${new URL(getWikiOrigin()).hostname}`;
 
               if (relativeHref && relativeHref.startsWith('/w/')) {
                   link.setAttribute('href', `${domainUrl}${relativeHref}`);
