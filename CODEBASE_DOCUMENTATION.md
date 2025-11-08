@@ -30,7 +30,8 @@ PendingChangesBot-ng pulls pending revisions from configured wikis, stores them 
 - Cached editor metadata to avoid repeated API calls in `app/reviews/models/editor_profile.py`
 - Article quality signals (LiftWing predictions, Wikidata integration)
 - Render error and broken wikicode detection (`app/reviews/autoreview/utils/broken_wikicode.py`)
-- Statistics dashboards backed by Superset-derived caches (`app/reviews/models/flaggedrevs_statistics.py`, `app/reviews/models/review_statistics_cache.py`)
+- Statistics dashboards backed by Superset-derived caches in separate `review_statistics` app (`app/review_statistics/models.py`)
+- Revert detection for identifying reverted edits (`app/reviews/autoreview/checks/revert_detection.py`)
 - Test mode for development and testing
 
 ---
@@ -49,7 +50,7 @@ The system consists of a Vue.js user interface communicating over HTTP/JSON with
 
 ### Directory Structure
 
-Top-level Django project with settings and URLs; a "reviews" app containing models, services, views, auto-review logic, migrations, and tests; and folders for static assets and templates.
+Top-level Django project with settings and URLs; a `reviews` app containing models, services, auto-review logic, migrations, and tests; a separate `review_statistics` app for statistics models, views, and dashboards; and folders for static assets and templates.
 
 ---
 
@@ -100,6 +101,7 @@ The services layer handles external API interactions and business logic.
 ### StatisticsClient
 
 - **Purpose**: Fetches article and editor statistics from Wikimedia Superset where available
+- **Location**: `app/review_statistics/services.py`
 - **Key functions**:
   - Retrieves page-level analytics (views, edit counts, protection status)
   - Retrieves editor-level metrics
@@ -123,10 +125,11 @@ The auto-review system automatically approves or rejects edits based on configur
 
 1. **Broken wikicode check**: Compares HTML render errors between old and new versions; reject if errors increase
 2. **Superseded edit check**: Measures similarity with current content; reject if a pending edit is largely replaced
-3. **Editor reputation check**: Approves if an editor meets the trust criteria (high edit counts, no blocks, low warnings, not a former bot)
-4. **LiftWing quality check**: Approve if quality prediction exceeds the configured threshold
-5. **BLP check**: Require manual review for biographies of living persons
-6. **Large deletion check**: Require manual review for edits removing a large number of bytes
+3. **Revert detection check**: Identifies if an edit has been reverted; reject if detected (`app/reviews/autoreview/checks/revert_detection.py`)
+4. **Editor reputation check**: Approves if an editor meets the trust criteria (high edit counts, no blocks, low warnings, not a former bot)
+5. **LiftWing quality check**: Approve if quality prediction exceeds the configured threshold
+6. **BLP check**: Require manual review for biographies of living persons
+7. **Large deletion check**: Require manual review for edits removing a large number of bytes
 
 ### Configuration
 
@@ -151,7 +154,7 @@ The application exposes RESTful endpoints through Django views.
 
 ### Key Endpoints
 
-Declared in `app/reviews/urls.py`, implemented in `app/reviews/views.py`:
+**Reviews App** (declared in `app/reviews/urls.py`):
 
 - **GET `/api/wikis/`** — List wikis and configurations
 - **POST `/api/wikis/<pk>/refresh/`** — Refresh pending data from Superset
@@ -161,6 +164,10 @@ Declared in `app/reviews/urls.py`, implemented in `app/reviews/views.py`:
 - **POST `/api/wikis/<pk>/pages/<pageid>/autoreview/`** — Dry-run auto-review
 - **GET/PUT `/api/wikis/<pk>/configuration/`** — Read or update per-wiki config
 - **GET `/api/checks/`** and **GET/PUT `/api/wikis/<pk>/checks/`** — Inspect or modify enabled check lists
+- **GET `/api/wikis/fetch-diff/`** — Proxy MediaWiki diff HTML
+
+**Review Statistics App** (declared in `app/review_statistics/urls.py`, implemented in `app/review_statistics/views.py`):
+
 - **Statistics endpoints**:
   - `/api/wikis/<pk>/statistics/`
   - `/statistics/charts/`
@@ -170,7 +177,6 @@ Declared in `app/reviews/urls.py`, implemented in `app/reviews/views.py`:
   - `/api/flaggedrevs-statistics/`
   - `/available-months/`
   - `/api/flaggedrevs-activity/`
-- **GET `/api/wikis/fetch-diff/`** — Proxy MediaWiki diff HTML
 
 ### Authentication
 
@@ -209,18 +215,24 @@ The Vue.js frontend provides the reviewer experience.
 
 ## 8. Database Schema
 
-Migrations for this database schema can be found in `app/reviews/migrations/`.
+Migrations can be found in:
+- `app/reviews/migrations/` for core review models
+- `app/review_statistics/migrations/` for statistics models
 
 ### Migration Highlights
 
-- **0001**: Sets up core models
-- **0002–0008**: Add Superset payloads, categories, redirect aliases, render error counts, Wikidata IDs, and superseded thresholds
-- **Later migrations**: Introduce ORES thresholds, statistics caches, enabled checks, and metadata such as `max_log_id` and `last_data_loaded_at`
+- **Reviews app migrations**:
+  - **0001**: Sets up core models
+  - **0002–0008**: Add Superset payloads, categories, redirect aliases, render error counts, Wikidata IDs, and superseded thresholds
+  - **Later migrations**: Introduce ORES thresholds, enabled checks, and ReviewActivity tracking
+- **Review Statistics app migrations**:
+  - **0001**: Sets up FlaggedRevsStatistics and related statistics models
 
 ### Key Relationships
 
-- **Wiki** → many PendingPage, EditorProfile, ReviewStatisticsCache, FlaggedRevsStatistics, ReviewActivity
-- **Wiki** → one WikiConfiguration, one ReviewStatisticsMetadata
+- **Wiki** → many PendingPage, EditorProfile, ReviewActivity (in reviews app)
+- **Wiki** → many FlaggedRevsStatistics, ReviewStatisticsCache, ReviewStatisticsMetadata (in review_statistics app)
+- **Wiki** → one WikiConfiguration
 - **PendingPage** → many PendingRevision
 - **PendingRevision** → one ModelScores
 
