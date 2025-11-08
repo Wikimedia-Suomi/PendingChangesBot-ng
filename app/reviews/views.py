@@ -5,9 +5,11 @@ import logging
 from http import HTTPStatus
 
 import requests
+from django.conf import settings
+from django.contrib.auth import logout
 from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse, QueryDict
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
@@ -188,8 +190,15 @@ def index(request: HttpRequest) -> HttpResponse:
         "reviews/index.html",
         {
             "initial_wikis": payload,
+            "OAUTH_ENABLED": getattr(settings, "OAUTH_ENABLED", False),
         },
     )
+
+
+def logout_view(request: HttpRequest) -> HttpResponse:
+    """Log out the current user and redirect to home."""
+    logout(request)
+    return redirect("index")
 
 
 @require_GET
@@ -569,3 +578,57 @@ def fetch_diff(request):
         return HttpResponse(html_content, content_type="text/html")
     except requests.RequestException as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+def configure_pywikibot_oauth(user):
+    """Configure Pywikibot to use OAuth credentials for the given user."""
+    import pywikibot
+
+    if not user.is_authenticated:
+        raise ValueError("User must be authenticated")
+
+    try:
+        # Get OAuth tokens from Django Social Auth
+        social_auth = user.social_auth.get(provider="mediawiki")
+        access_token = social_auth.extra_data["access_token"].get("oauth_token")
+        access_secret = social_auth.extra_data["access_token"].get("oauth_token_secret")
+
+        # Get consumer credentials from settings
+        consumer_key = settings.SOCIAL_AUTH_MEDIAWIKI_KEY
+        consumer_secret = settings.SOCIAL_AUTH_MEDIAWIKI_SECRET
+        oauth_url = settings.SOCIAL_AUTH_MEDIAWIKI_URL
+
+        if not all([consumer_key, consumer_secret, access_token, access_secret]):
+            raise ValueError("Missing OAuth credentials")
+
+        # Configure Pywikibot with OAuth
+        authenticate = (consumer_key, consumer_secret, access_token, access_secret)
+
+        # Determine if using beta or production based on OAuth URL
+        is_beta = "beta.wmcloud.org" in oauth_url
+
+        if is_beta:
+            # Beta environment: use 'beta' as family code, 'commons' as wiki code
+            pywikibot.config.usernames["commons"]["beta"] = user.first_name or user.username
+            pywikibot.config.authenticate["commons.wikimedia.beta.wmcloud.org"] = authenticate
+            site = pywikibot.Site("beta", "commons")
+        else:
+            # Production environment: use 'commons' for both
+            pywikibot.config.usernames["commons"]["commons"] = user.first_name or user.username
+            pywikibot.config.authenticate["commons.wikimedia.org"] = authenticate
+            site = pywikibot.Site("commons", "commons")
+
+        # Test the connection
+        site.login()
+
+        logger.info(
+            f"Successfully configured Pywikibot OAuth for user {user.first_name or user.username} "
+            f"on {'beta' if is_beta else 'production'} commons"
+        )
+        return site
+
+    except user.social_auth.model.DoesNotExist:
+        raise ValueError("User has not authenticated via OAuth")
+    except Exception as e:
+        logger.error(f"Failed to configure Pywikibot OAuth: {e}")
+        raise

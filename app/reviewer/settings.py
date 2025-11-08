@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "social_django",
     "reviews",
     "review_statistics",
 ]
@@ -53,6 +54,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "social_django.middleware.SocialAuthExceptionMiddleware",
 ]
 
 ROOT_URLCONF = "reviewer.urls"
@@ -68,6 +70,8 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "social_django.context_processors.backends",
+                "social_django.context_processors.login_redirect",
             ],
         },
     },
@@ -144,3 +148,47 @@ ENABLE_REVERT_DETECTION = os.getenv("ENABLE_REVERT_DETECTION", "True").lower() i
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# OAuth Configuration
+# Enable/disable OAuth login (default: disabled for backward compatibility)
+OAUTH_ENABLED = os.getenv("OAUTH_ENABLED", "False").lower() == "true"
+
+# MediaWiki OAuth 1.0a settings
+# For development: use meta.wikimedia.beta.wmcloud.org (separate login required)
+# For production: use meta.wikimedia.org
+SOCIAL_AUTH_MEDIAWIKI_URL = os.getenv(
+    "SOCIAL_AUTH_MEDIAWIKI_URL", "https://meta.wikimedia.beta.wmcloud.org/w/index.php"
+)
+SOCIAL_AUTH_MEDIAWIKI_KEY = os.getenv("SOCIAL_AUTH_MEDIAWIKI_KEY", "")
+SOCIAL_AUTH_MEDIAWIKI_SECRET = os.getenv("SOCIAL_AUTH_MEDIAWIKI_SECRET", "")
+SOCIAL_AUTH_MEDIAWIKI_CALLBACK = os.getenv(
+    "SOCIAL_AUTH_MEDIAWIKI_CALLBACK", "http://127.0.0.1:8000/oauth/complete/mediawiki/"
+)
+
+# Workaround for T353593 - protect user groups field
+SOCIAL_AUTH_PROTECTED_USER_FIELDS = ["groups"]
+
+# Authentication backends
+AUTHENTICATION_BACKENDS = [
+    "social_core.backends.mediawiki.MediaWiki",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
+# OAuth URLs
+LOGIN_URL = "/oauth/login/mediawiki/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/"
+
+# Social auth pipeline (customize as needed)
+SOCIAL_AUTH_PIPELINE = (
+    "social_core.pipeline.social_auth.social_details",
+    "social_core.pipeline.social_auth.social_uid",
+    "social_core.pipeline.social_auth.auth_allowed",
+    "social_core.pipeline.social_auth.social_user",
+    "social_core.pipeline.user.get_username",
+    "social_core.pipeline.user.create_user",
+    "social_core.pipeline.social_auth.associate_user",
+    "social_core.pipeline.social_auth.load_extra_data",
+    "social_core.pipeline.user.user_details",
+    "reviewer.oauth_pipeline.save_wikimedia_username",
+)
