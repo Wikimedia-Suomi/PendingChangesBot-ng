@@ -5,6 +5,7 @@ import os
 
 import pywikibot
 from django.db import models
+from pywikibot.exceptions import APIError, NoPageError, ServerError
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +84,11 @@ class PendingRevision(models.Model):
         )
         try:
             response = request.submit()
-        except Exception:
-            logger.exception("Failed to fetch wikitext for revision %s", self.revid)
+        except (APIError, ServerError, NoPageError) as e:
+            logger.warning("API error fetching wikitext for revision %s: %s", self.revid, e)
+            return self.wikitext or ""
+        except Exception as e:
+            logger.exception("Unexpected error fetching wikitext for revision %s: %s", self.revid, e)
             return self.wikitext or ""
 
         pages = response.get("query", {}).get("pages", [])
@@ -120,8 +124,11 @@ class PendingRevision(models.Model):
         )
         try:
             response = request.submit()
-        except Exception:
-            logger.exception("Failed to fetch rendered HTML for revision %s", self.revid)
+        except (APIError, ServerError, NoPageError) as e:
+            logger.warning("API error fetching rendered HTML for revision %s: %s", self.revid, e)
+            return ""
+        except Exception as e:
+            logger.exception("Unexpected error fetching rendered HTML for revision %s: %s", self.revid, e)
             return ""
 
         parse_result = response.get("parse", {})

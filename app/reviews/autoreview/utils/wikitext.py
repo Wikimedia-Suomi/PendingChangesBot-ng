@@ -16,7 +16,9 @@ def normalize_wikitext(text: str) -> str:
     if not text:
         return ""
 
-    # TODO: check why text is not always suitable for re.
+    # Ensure text is a string before regex operations.
+    # In some cases, wikitext may be retrieved as bytes or other types
+    # from the MediaWiki API, so we explicitly convert to string.
     text = str(text)
     text = re.sub(r"<ref[^>]*>.*?</ref>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<ref[^>]*/>", "", text, flags=re.IGNORECASE)
