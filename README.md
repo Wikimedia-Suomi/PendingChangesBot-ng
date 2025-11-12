@@ -53,12 +53,42 @@ Vue.js interface for reviewing the results.
    pip3 install --upgrade pip
    pip3 install -r requirements.txt
    ```
-
+   
 6. **Install pre-commit hooks** (recommended for contributors)
    ```bash
    pre-commit install
    ```
    This will automatically format and lint your code before each commit.
+
+### Quick Start for Sublime Text Users
+   If you prefer using Sublime Text instead of VS Code:
+
+   - Open the repository folder in Sublime Text.
+   - Ensure your virtual environment is activated in the terminal inside Sublime Text.
+   - Use the terminal or Sublime's build system to run Django commands, for example:
+
+   ```bash
+   python manage.py runserver
+   ```
+   
+   You can install Sublime Text packages for Python linting and formatting to complement pre-commit hooks.
+
+   Troubleshooting Tips
+   Windows venv activation: If .venv\Scripts\activate doesn't work, try running PowerShell as Administrator or use:
+   ```bash
+   source .venv/Scripts/activate
+   ```
+   
+   pip errors: If installing dependencies fails, ensure your pip is upgraded:
+
+   ```bash
+   python -m pip install --upgrade pip
+   ```
+
+   Port conflicts: If runserver complains that port 8000 is in use, run:
+   ```bash
+   python manage.py runserver 8080
+   ```
 
 ## Configuring Pywikibot Superset OAuth
 

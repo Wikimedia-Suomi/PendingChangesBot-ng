@@ -409,13 +409,13 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 5)
+        self.assertEqual(len(result["tests"]), 6)  # Includes revert-detection check
         self.assertEqual(result["tests"][0]["status"], "ok")
         self.assertEqual(result["tests"][0]["id"], "broken-wikicode")
         self.assertEqual(result["tests"][1]["status"], "ok")
         self.assertEqual(result["tests"][1]["id"], "manual-unapproval")
-        self.assertEqual(result["tests"][4]["status"], "ok")
-        self.assertEqual(result["tests"][4]["id"], "auto-approved-group")
+        self.assertEqual(result["tests"][5]["status"], "ok")
+        self.assertEqual(result["tests"][5]["id"], "auto-approved-group")
 
     @mock.patch("reviews.services.wiki_client.pywikibot.Site")
     def test_api_autoreview_defaults_to_profile_rights(self, mock_site):
@@ -453,7 +453,7 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
-        self.assertEqual(len(result["tests"]), 6)
+        self.assertEqual(len(result["tests"]), 7)  # Includes revert-detection check
 
     @mock.patch.object(PendingRevision, "get_rendered_html", return_value="<p>Clean HTML</p>")
     @mock.patch("reviews.models.pending_revision.pywikibot.Site")
@@ -547,9 +547,9 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
-        self.assertEqual(len(result["tests"]), 7)
-        self.assertEqual(result["tests"][6]["status"], "fail")
-        self.assertEqual(result["tests"][6]["id"], "blocking-categories")
+        self.assertEqual(len(result["tests"]), 8)  # Includes revert-detection check
+        self.assertEqual(result["tests"][7]["status"], "fail")
+        self.assertEqual(result["tests"][7]["id"], "blocking-categories")
 
         revision.refresh_from_db()
         self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
@@ -737,14 +737,14 @@ class ViewTests(TestCase):
 
     def test_calculate_percentile_empty_list(self):
         """Test calculate_percentile with empty list."""
-        from reviews.views import calculate_percentile
+        from review_statistics.views import calculate_percentile
 
         result = calculate_percentile([], 50)
         self.assertEqual(result, 0.0)
 
     def test_get_time_filter_cutoff_week(self):
         """Test get_time_filter_cutoff with week filter."""
-        from reviews.views import get_time_filter_cutoff
+        from review_statistics.views import get_time_filter_cutoff
 
         cutoff = get_time_filter_cutoff("week")
         self.assertIsNotNone(cutoff)
@@ -1259,7 +1259,7 @@ class ViewTests(TestCase):
         # Should only count recent review
         self.assertEqual(data["overall_stats"]["total_reviews"], 1)
 
-    @mock.patch("reviews.views.WikiClient")
+    @mock.patch("review_statistics.views.WikiClient")
     def test_api_statistics_refresh_with_limit(self, mock_client):
         """Test api_statistics_refresh (now incremental refresh)."""
         mock_client.return_value.refresh_review_statistics.return_value = {

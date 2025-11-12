@@ -1092,6 +1092,19 @@ createApp({
       return "is-light";
     }
 
+    function formatDuration(ms) {
+      if (ms == null || ms === undefined) {
+        return "";
+      }
+      if (ms < 1) {
+        return `${(ms * 1000).toFixed(0)}μs`;
+      }
+      if (ms < 1000) {
+        return `${ms.toFixed(0)}ms`;
+      }
+      return `${(ms / 1000).toFixed(2)}s`;
+    }
+
     function formatDecision(decision) {
       if (!decision) {
         return "";
@@ -1126,7 +1139,7 @@ createApp({
           const oldid = revision.parentid;
           const diffid = revision.revid;
 
-          const baseUrl = "https://fi.wikipedia.org";
+          const baseUrl = getWikiOrigin();
           const diffUrl = `${baseUrl}/w/index.php?title=${title}&diff=${diffid}&oldid=${oldid}&action=render&diffonly=1&uselang=en`;
 
           const apiUrl = `/api/wikis/fetch-diff/?url=${encodeURIComponent(diffUrl)}`;
@@ -1143,7 +1156,7 @@ createApp({
 
           if (link) {
               const relativeHref = link.getAttribute('href');
-              const domainUrl = "//fi.wikipedia.org";
+              const domainUrl = `//${new URL(getWikiOrigin()).hostname}`;
 
               if (relativeHref && relativeHref.startsWith('/w/')) {
                   link.setAttribute('href', `${domainUrl}${relativeHref}`);
@@ -1261,6 +1274,7 @@ createApp({
       isAutoreviewRunning,
       formatTestStatus,
       statusTagClass,
+      formatDuration,
       formatDecision,
       saveDiffsToLocalStorage,
     };
