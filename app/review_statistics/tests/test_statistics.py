@@ -218,6 +218,7 @@ class StatisticsServiceTests(TestCase):
         # Check that cache was created
         cached = ReviewStatisticsCache.objects.filter(wiki=self.wiki)
         self.assertEqual(cached.count(), 1)
+        assert cached.first() is not None  # Type narrowing for mypy
         self.assertEqual(cached.first().reviewer_name, "Reviewer1")
         self.assertEqual(cached.first().reviewed_revision_id, 456)
         self.assertEqual(cached.first().pending_revision_id, 455)

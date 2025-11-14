@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from http import HTTPStatus
+from typing import cast
 
 import requests
 from django.core.cache import cache
@@ -496,7 +497,7 @@ def api_available_checks(request: HttpRequest) -> JsonResponse:
             "name": check["name"],
             "priority": check["priority"],
         }
-        for check in sorted(AVAILABLE_CHECKS, key=lambda c: c["priority"])
+        for check in sorted(AVAILABLE_CHECKS, key=lambda c: cast(int, c["priority"]))
     ]
     return JsonResponse({"checks": checks})
 
@@ -533,7 +534,7 @@ def api_enabled_checks(request: HttpRequest, pk: int) -> JsonResponse:
             configuration.enabled_checks = enabled_checks
             configuration.save(update_fields=["enabled_checks", "updated_at"])
 
-    all_check_ids = [c["id"] for c in sorted(AVAILABLE_CHECKS, key=lambda c: c["priority"])]
+    all_check_ids = [cast(str, c["id"]) for c in sorted(AVAILABLE_CHECKS, key=lambda c: cast(int, c["priority"]))]
     enabled = configuration.enabled_checks if configuration.enabled_checks else all_check_ids
 
     return JsonResponse(

@@ -24,21 +24,25 @@ class ParsersTests(TestCase):
     def test_parse_superset_timestamp_iso_format(self):
         result = parse_superset_timestamp("2024-01-01T12:00:00+00:00")
         self.assertIsNotNone(result)
+        assert result is not None  # Type narrowing for mypy
         self.assertEqual(result.year, 2024)
 
     def test_parse_superset_timestamp_with_z(self):
         result = parse_superset_timestamp("2024-01-01T12:00:00Z")
         self.assertIsNotNone(result)
+        assert result is not None  # Type narrowing for mypy
         self.assertEqual(result.tzinfo, timezone.utc)
 
     def test_parse_superset_timestamp_with_space(self):
         result = parse_superset_timestamp("2024-01-01 12:00:00")
         self.assertIsNotNone(result)
+        assert result is not None  # Type narrowing for mypy
         self.assertEqual(result.year, 2024)
 
     def test_parse_superset_timestamp_14_digit_format(self):
         result = parse_superset_timestamp("20240101120000")
         self.assertIsNotNone(result)
+        assert result is not None  # Type narrowing for mypy
         self.assertEqual(result.year, 2024)
         self.assertEqual(result.month, 1)
         self.assertEqual(result.day, 1)

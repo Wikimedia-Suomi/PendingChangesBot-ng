@@ -1,3 +1,5 @@
+from typing import cast
+
 from django.core.management.base import BaseCommand, CommandError
 
 from reviews.autoreview.checks import AVAILABLE_CHECKS
@@ -85,7 +87,7 @@ class Command(BaseCommand):
 
         if not config.enabled_checks:
             self.stdout.write(self.style.SUCCESS("  Status: All checks enabled (default)\n"))
-            for check in sorted(AVAILABLE_CHECKS, key=lambda c: c["priority"]):
+            for check in sorted(AVAILABLE_CHECKS, key=lambda c: cast(int, c["priority"])):
                 self.stdout.write(f"  ✓ {check['id']}")
         else:
             enabled_ids = set(config.enabled_checks)
@@ -95,7 +97,7 @@ class Command(BaseCommand):
                 )
             )
 
-            for check in sorted(AVAILABLE_CHECKS, key=lambda c: c["priority"]):
+            for check in sorted(AVAILABLE_CHECKS, key=lambda c: cast(int, c["priority"])):
                 status = "✓" if check["id"] in enabled_ids else "✗"
                 style = self.style.SUCCESS if check["id"] in enabled_ids else self.style.ERROR
                 self.stdout.write(style(f"  {status} {check['id']}"))

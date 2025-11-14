@@ -8,7 +8,7 @@ and caching them locally for analysis.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from django.db import transaction
 from pywikibot.data.superset import SupersetQuery
@@ -455,7 +455,7 @@ ORDER BY l.log_id ASC
                 max_log_id,
             )
 
-            result = {
+            result: dict[str, Any] = {
                 "total_records": total_records,
                 "oldest_timestamp": oldest_timestamp,
                 "newest_timestamp": newest_timestamp,
@@ -666,7 +666,7 @@ WHERE
                 newest_timestamp,
             )
 
-            result = {
+            result: dict[str, Any] = {
                 "total_records": total_records,
                 "oldest_timestamp": oldest_timestamp,
                 "newest_timestamp": newest_timestamp,
@@ -865,7 +865,7 @@ WHERE
                 newest_timestamp,
             )
 
-            result = {
+            result: dict[str, Any] = {
                 "total_records": total_records,
                 "oldest_timestamp": oldest_timestamp,
                 "newest_timestamp": newest_timestamp,
