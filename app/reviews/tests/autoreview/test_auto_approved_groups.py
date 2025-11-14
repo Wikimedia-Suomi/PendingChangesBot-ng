@@ -28,6 +28,7 @@ class AutoApprovedGroupsTests(TestCase):
 
         result = check_auto_approved_groups(context)
         self.assertEqual(result.status, "ok")
+        assert result.decision is not None  # Type narrowing for mypy
         self.assertEqual(result.decision.status, "approve")
         self.assertTrue(result.should_stop)
         self.assertIn("sysop", result.message)
@@ -74,6 +75,7 @@ class AutoApprovedGroupsTests(TestCase):
         )
 
         result = check_auto_approved_groups(context)
+        assert result.decision is not None  # Type narrowing for mypy
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.decision.status, "approve")
         self.assertTrue(result.should_stop)

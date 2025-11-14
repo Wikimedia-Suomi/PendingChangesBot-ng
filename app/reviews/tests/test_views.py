@@ -748,6 +748,7 @@ class ViewTests(TestCase):
 
         cutoff = get_time_filter_cutoff("week")
         self.assertIsNotNone(cutoff)
+        assert cutoff is not None  # Type narrowing for mypy
         self.assertLess((datetime.now(timezone.utc) - cutoff).days, 8)
 
     def test_statistics_page_no_wikis(self):

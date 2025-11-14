@@ -54,6 +54,7 @@ class InvalidISBNCheckTests(TestCase):
 
         result = check_invalid_isbn(context)
         self.assertEqual(result.status, "fail")
+        assert result.decision is not None  # Type narrowing for mypy
         self.assertEqual(result.decision.status, "blocked")
         self.assertTrue(result.should_stop)
         self.assertIn("invalid ISBN", result.message)

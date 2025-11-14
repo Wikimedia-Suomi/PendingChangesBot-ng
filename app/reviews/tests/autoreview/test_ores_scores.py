@@ -91,6 +91,7 @@ class OresScoreTests(TestCase):
         result = check_ores_scores(context)
 
         self.assertEqual(result.status, "fail")
+        assert result.decision is not None  # Type narrowing for mypy
         self.assertEqual(result.decision.status, "blocked")
         self.assertIn("0.850", result.message)
 
@@ -138,6 +139,7 @@ class OresScoreTests(TestCase):
         result = check_ores_scores(context)
 
         self.assertEqual(result.status, "fail")
+        assert result.decision is not None  # Type narrowing for mypy
         self.assertEqual(result.decision.status, "blocked")
         self.assertIn("0.250", result.message)
 
@@ -314,5 +316,6 @@ class OresScoreTests(TestCase):
         result = check_ores_scores(context)
 
         self.assertEqual(result.status, "fail")
+        assert result.decision is not None  # Type narrowing for mypy
         self.assertEqual(result.decision.status, "blocked")
         self.assertIn("Could not verify", result.message)

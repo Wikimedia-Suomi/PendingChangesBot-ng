@@ -1,3 +1,5 @@
+from typing import cast
+
 from django.core.management.base import BaseCommand
 
 from reviews.autoreview.checks import AVAILABLE_CHECKS
@@ -9,7 +11,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS("\nAvailable Autoreview Checks:\n"))
 
-        for check in sorted(AVAILABLE_CHECKS, key=lambda c: c["priority"]):
+        for check in sorted(AVAILABLE_CHECKS, key=lambda c: cast(int, c["priority"])):
             line = (
                 f"  {check['priority']:2d}. [{check['type']:9s}] "
                 f"{check['id']:35s} - {check['name']}"

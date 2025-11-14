@@ -311,6 +311,7 @@ class LoadStatisticsCommandTests(TestCase):
         self.assertEqual(stats.count(), 1)
 
         stat = stats.first()
+        assert stat is not None  # Type narrowing for mypy
         self.assertEqual(stat.total_pages_ns0, 1000)
         self.assertEqual(stat.synced_pages_ns0, 800)
         self.assertEqual(stat.reviewed_pages_ns0, 900)

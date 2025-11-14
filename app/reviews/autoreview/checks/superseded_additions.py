@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from ..base import CheckResult
 from ..context import CheckContext
@@ -32,16 +33,16 @@ def check_superseded_additions(context: CheckContext) -> CheckResult:
                     check_id="superseded-additions",
                     check_title="Superseded additions",
                     status="ok",
-                    message=result["message"],
+                    message=cast(str, result["message"]),
                     decision=AutoreviewDecision(
                         status="approve",
                         label="Would be auto-approved",
-                        reason=result["message"],
+                        reason=cast(str, result["message"]),
                     ),
                     should_stop=True,
                 )
 
-            result_message = result["message"]
+            result_message = cast(str, result["message"])
 
         return CheckResult(
             check_id="superseded-additions",
