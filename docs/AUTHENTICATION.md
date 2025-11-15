@@ -216,4 +216,3 @@ If your production setup requires direct Pywikibot API access (without Django), 
 - **Regenerate immediately** if credentials are accidentally exposed
 - **Minimal permissions**: Only request grants you actually need - avoid risky grants
 - **Review your OAuth clients** regularly at https://meta.wikimedia.org/wiki/Special:OAuthManageConsumers/proposed
-

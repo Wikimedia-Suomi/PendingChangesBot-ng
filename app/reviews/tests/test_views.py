@@ -358,6 +358,13 @@ class ViewTests(TestCase):
             categories=[],
             superset_data={"user_groups": ["bot"], "rc_bot": True},
         )
+        EditorProfile.objects.create(
+            wiki=self.wiki,
+            username="HelpfulBot",
+            is_bot=True,
+            is_global_bot=False,
+            is_former_global_bot=False,
+        )
 
         url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
         response = self.client.post(url)
@@ -446,6 +453,8 @@ class ViewTests(TestCase):
             username="AutoUser",
             usergroups=["autopatrolled"],
             is_autopatrolled=True,
+            is_global_bot=False,
+            is_former_global_bot=False,
         )
 
         url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
@@ -506,6 +515,7 @@ class ViewTests(TestCase):
         class FakeRequest:
             def __init__(self, data):
                 self._data = data
+                self.protocol = "https"
 
             def submit(self):
                 return self._data

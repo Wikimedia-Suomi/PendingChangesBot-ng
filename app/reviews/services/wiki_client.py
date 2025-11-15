@@ -41,6 +41,36 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
+    def check_global_bot_user(self, username: str) -> tuple[bool, bool]:
+        """Check if a user is a global bot using the efficient globaluserinfo API."""
+        try:
+            meta_site = pywikibot.Site("meta", "meta")
+            request = meta_site.simple_request(
+                action="query",
+                list="globalallusers",
+                agugroup="global-bot",
+                agulimit="max",
+                aguprop="groups",
+            )
+
+            response = request.submit()
+            all_global_users = response.get("query", {}).get("globalallusers", [])
+
+            is_global_bot = False
+            is_former_global_bot = False
+
+            for user in all_global_users:
+                if user.get("name") == username:
+                    groups = user.get("groups", [])
+                    is_global_bot = "global-bot" in groups
+                    is_former_global_bot = False  # api does not return global former groups
+                    break
+
+            return (is_global_bot, is_former_global_bot)
+        except Exception as e:
+            logger.exception("Failed to check global bot status for user %s: %s", username, e)
+            return (False, False)
+
     def has_manual_unapproval(self, page_title: str, revid: int) -> bool:
         """Check if the most recent review action for a revision is an un-approval."""
         try:
@@ -253,7 +283,9 @@ ORDER BY fp_pending_since, rev_id DESC
         )
         if existing_page is None:
             logger.warning(
-                "Pending page %s was deleted before saving revision %s", page.pk, payload.revid
+                "Pending page %s was deleted before saving revision %s",
+                page.pk,
+                payload.revid,
             )
             return None
 
@@ -294,6 +326,8 @@ ORDER BY fp_pending_since, rev_id DESC
                 "is_blocked": False,
                 "is_bot": False,
                 "is_former_bot": False,
+                "is_global_bot": False,
+                "is_former_global_bot": False,
                 "is_autopatrolled": False,
                 "is_autoreviewed": False,
             },
@@ -301,7 +335,14 @@ ORDER BY fp_pending_since, rev_id DESC
         if not superset_data:
             return profile
 
-        autoreviewed_groups = {"autoreview", "autoreviewer", "editor", "reviewer", "sysop", "bot"}
+        autoreviewed_groups = {
+            "autoreview",
+            "autoreviewer",
+            "editor",
+            "reviewer",
+            "sysop",
+            "bot",
+        }
         groups = sorted(superset_data.get("user_groups") or [])
         former_groups = sorted(superset_data.get("user_former_groups") or [])
 
@@ -311,12 +352,19 @@ ORDER BY fp_pending_since, rev_id DESC
         profile.is_autopatrolled = "autopatrolled" in groups
         profile.is_autoreviewed = bool(autoreviewed_groups & set(groups))
         profile.is_blocked = bool(superset_data.get("user_blocked", False))
+
+        is_global_bot, is_former_global_bot = self.check_global_bot_user(username)
+        profile.is_global_bot = is_global_bot
+        profile.is_former_global_bot = is_former_global_bot
+
         profile.save(
             update_fields=[
                 "usergroups",
                 "is_blocked",
                 "is_bot",
                 "is_former_bot",
+                "is_global_bot",
+                "is_former_global_bot",
                 "is_autopatrolled",
                 "is_autoreviewed",
                 "fetched_at",
