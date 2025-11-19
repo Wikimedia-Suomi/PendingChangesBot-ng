@@ -6,6 +6,7 @@ from .blocking_categories import check_blocking_categories
 from .bot_user import check_bot_user
 from .broken_wikicode import check_broken_wikicode_indicators
 from .invalid_isbn import check_invalid_isbn
+from .liftwing_scores import check_liftwing_scores
 from .manual_unapproval import check_manual_unapproval
 from .ores_scores import check_ores_scores
 from .render_errors import check_render_errors
@@ -84,6 +85,12 @@ AVAILABLE_CHECKS = [
         "id": "ores-scores",
         "name": "ORES edit quality scores",
         "function": check_ores_scores,
+        "priority": 11,
+    },
+    {
+        "id": "liftwing-scores",
+        "name": "Lift Wing ML model scores",
+        "function": check_liftwing_scores,
         "priority": 11,
     },
 ]
