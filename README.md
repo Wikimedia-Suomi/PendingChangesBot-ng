@@ -1,6 +1,6 @@
-Please check out the contribution guide ([CONTRIBUTION.md](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md)) before making any contributions.
-
 # PendingChangesBot
+
+> **Note:** Please check out the contribution guide ([CONTRIBUTING.md](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/blob/main/CONTRIBUTING.md)) before making any contributions.
 
 PendingChangesBot is a Django application that inspects pending changes on Wikimedia
 projects using the Flagged Revisions API. It fetches the 50 oldest pending pages for a
@@ -18,28 +18,37 @@ Vue.js interface for reviewing the results.
    git clone git@github.com:Wikimedia-Suomi/PendingChangesBot-ng.git
    cd PendingChangesBot-ng
    ```
+
    - Using HTTPS
+
    ```bash
    git clone https://github.com/Wikimedia-Suomi/PendingChangesBot-ng.git
    cd PendingChangesBot-ng
    ```
+
 3. **Check your python version** (recommended)
    - On **Windows**:
+
    ```bash
    python --version
    ```
+
    - On **macOS / Linux**:
+
    ```bash
    python3 --version
    ```
-   Install if not found \*for python3 you need to install pip3
+
+   > **Note:** Install if not found. For python3 you need to install pip3.
+
 4. **Create and activate a virtual environment** (recommended)
+
    ```bash
    python3 -m venv venv
-   source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
+   source venv/bin/activate  # On Windows use: .venv\Scripts\activate
    ```
-5. **Install Python dependencies**
 
+5. **Install Python dependencies**
    - On **Windows**:
 
    ```bash
@@ -55,48 +64,55 @@ Vue.js interface for reviewing the results.
    ```
 
 6. **Install pre-commit hooks** (recommended for contributors)
+
    ```bash
    pre-commit install
    ```
+
    This will automatically format and lint your code before each commit.
 
 ### Quick Start for Sublime Text Users
-   If you prefer using Sublime Text instead of VS Code:
 
-   - Open the repository folder in Sublime Text.
-   - Ensure your virtual environment is activated in the terminal inside Sublime Text.
-   - Use the terminal or Sublime's build system to run Django commands, for example:
+If you prefer using Sublime Text instead of VS Code:
 
-   ```bash
-   python manage.py runserver
-   ```
+- Open the repository folder in Sublime Text.
+- Ensure your virtual environment is activated in the terminal inside Sublime Text.
+- Use the terminal or Sublime's build system to run Django commands, for example:
 
-   You can install Sublime Text packages for Python linting and formatting to complement pre-commit hooks.
+  ```bash
+  python manage.py runserver
+  ```
 
-   Troubleshooting Tips
-   Windows venv activation: If .venv\Scripts\activate doesn't work, try running PowerShell as Administrator or use:
-   ```bash
-   source .venv/Scripts/activate
-   ```
+- You can install Sublime Text packages for Python linting and formatting to complement pre-commit hooks.
 
-   pip errors: If installing dependencies fails, ensure your pip is upgraded:
+### Troubleshooting Tips
 
-   ```bash
-   python -m pip install --upgrade pip
-   ```
+**Windows venv activation:** If `.venv\Scripts\activate` doesn't work, try running PowerShell as Administrator or use:
 
-   Port conflicts: If runserver complains that port 8000 is in use, run:
-   ```bash
-   python manage.py runserver 8080
-   ```
+```bash
+source .venv/Scripts/activate
+```
 
-## Configuring Pywikibot Superset OAuth
+**pip errors:** If installing dependencies fails, ensure your pip is upgraded:
 
-Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
-Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
-the steps below once per user account that will run PendingChangesBot:
+```bash
+python -m pip install --upgrade pip
+```
+
+**Port conflicts:** If runserver complains that port 8000 is in use, run:
+
+```bash
+python manage.py runserver 8080
+```
+
+## Authentication Configuration
+
+### Local Development Authentication
+
+For local development, Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow the steps below once per user account that will run PendingChangesBot:
 
 1. **Move to app directory**
+
    All pywikibot and manage.py commands should be run in the app directory.
 
    ```bash
@@ -110,56 +126,62 @@ the steps below once per user account that will run PendingChangesBot:
    ```
 
 3. **Log in with Pywikibot**
-
    - Using management command
 
-   ```bash
-   python manage.py auth_with_username_and_password
-   ```
-
+     ```bash
+     python manage.py auth_with_username_and_password
+     ```
 
    - On **Windows**:
 
-   ```bash
-   python -m pywikibot.scripts.login -site:meta
-   ```
+     ```bash
+     python -m pywikibot.scripts.login -site:meta
+     ```
 
    - On **macOS / Linux**:
 
-   ```bash
-   python3 -m pywikibot.scripts.login -site:meta
-   ```
+     ```bash
+     python3 -m pywikibot.scripts.login -site:meta
+     ```
 
-   The command should report `Logged in on metawiki` and create a persistent login
-   cookie at `~/.pywikibot/pywikibot.lwp`.
+   The command should report `Logged in on metawiki` and create a persistent login cookie at `~/.pywikibot/pywikibot.lwp`.
 
 4. **Approve Superset's OAuth client**
-   - While still logged in to Meta-Wiki in your browser, open
-     <https://superset.wmcloud.org/login/>.
-   - Authorize the OAuth request for Superset. After approval you should be redirected
-     to Superset's interface.
+   - While still logged in to Meta-Wiki in your browser, open <https://superset.wmcloud.org/login/>.
+   - Authorize the OAuth request for Superset. After approval you should be redirected to Superset's interface.
 
-## Running the database migrations
+### Production Authentication (Future)
+
+For production deployment with multi-user OAuth support:
+
+- **OAuth 1.0a** will be used for Django web UI authentication
+- Users will log in via their Wikimedia accounts
+- OAuth credentials will be passed to Pywikibot for API operations
+- Implementation is planned but not yet active in the codebase
+
+> **Note:** Production environments (Toolforge) can use direct SQL connections to database replicas instead of Superset.
+
+## Running the Database Migrations
 
 ```bash
 cd app
 ```
 
-On **Windows**:
+- On **Windows**:
 
-```bash
-python manage.py makemigrations
-python manage.py migrate
-```
+  ```bash
+  python manage.py makemigrations
+  python manage.py migrate
+  ```
 
 - On **macOS / Linux**:
 
-```bash
-python3 manage.py makemigrations
-python3 manage.py migrate
-```
+  ```bash
+  python3 manage.py makemigrations
+  python3 manage.py migrate
+  ```
 
-## Running the application
+## Running the Application
 
 The Django project serves both the API and the Vue.js frontend from the same codebase.
 
@@ -169,15 +191,15 @@ cd app
 
 - On **Windows**:
 
-```bash
-python manage.py runserver
-```
+  ```bash
+  python manage.py runserver
+  ```
 
 - On **macOS / Linux**:
 
-```bash
-python3 manage.py runserver
-```
+  ```bash
+  python3 manage.py runserver
+  ```
 
 Open <http://127.0.0.1:8000/> in your browser to use the interface. JSON endpoints are
 available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
@@ -191,7 +213,7 @@ Interactive API documentation is available via Swagger UI:
 
 For detailed API documentation, see [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md).
 
-## Running unit tests
+## Running Unit Tests
 
 Unit tests live in the Django backend project. Run them from the `app/` directory so Django can locate the correct settings module.
 
@@ -201,15 +223,15 @@ cd app
 
 - On **Windows**:
 
-```bash
-python manage.py test
-```
+  ```bash
+  python manage.py test
+  ```
 
 - On **macOS / Linux**:
 
-```bash
-python3 manage.py test
-```
+  ```bash
+  python3 manage.py test
+  ```
 
 ## Code Coverage
 
@@ -285,6 +307,76 @@ ruff check app/ --fix
 
 If you are working inside a virtual environment, ensure it is activated before executing the command.
 
-After these steps Pywikibot will be able to call Superset's SQL Lab API without running
-into `User not logged in` errors, and PendingChangesBot can fetch pending revisions
-successfully.
+After these steps Pywikibot will be able to call Superset's SQL Lab API without running into `User not logged in` errors, and PendingChangesBot can fetch pending revisions successfully.
+
+## Project Architecture
+
+### Technology Stack
+
+- **Backend**: Django 4.2+ (Python 3.8–3.12)
+- **Frontend**: Vue.js 3 served as static files
+- **Database**: SQLite for development, PostgreSQL for production
+- **External APIs**: MediaWiki Action API, Wikimedia Superset, Pywikibot
+
+### Key Features
+
+- Multi-wiki support with per-wiki configuration
+- Automated review suggestions based on ORES scores and configurable checks
+- Cached editor metadata to reduce API calls
+- Article quality signals (LiftWing predictions, Wikidata integration)
+- Render error and broken wikicode detection
+- Statistics dashboards
+- Test mode for development
+
+### Design Principles
+
+- **Separation of concerns** between models, services, and presentation
+- **Caching** to reduce external API load
+- **Error resilience** and graceful degradation when upstream services fail
+- **Extensibility** for adding wikis, signals, and review checks
+
+## Continuous Integration
+
+Tests run automatically in GitHub Actions on every push and pull request:
+
+- ✅ Python 3.9 setup
+- ✅ Dependency installation
+- ✅ Ruff linting and formatting checks
+- ✅ Database migration checks
+- ✅ Full Django test suite
+- ✅ Auto-labeling (adds `ready-for-review` or `changes-required` labels)
+
+### CI Improvements Roadmap
+
+**Test Coverage Reporting** (Recommended):
+```bash
+cd app
+coverage run --source='.' manage.py test
+coverage report
+coverage xml
+```
+
+**Type Checking** (In Progress):
+- Mypy configuration is set up in `pyproject.toml`
+- Currently in gradual adoption phase
+- See `pyproject.toml` for current settings
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines including:
+
+- Communication channels and mentor contacts
+- Setup instructions
+- Branching strategy and commit message format
+- Pull request guidelines
+- Issue reporting templates
+
+## License
+
+This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/Wikimedia-Suomi/PendingChangesBot-ng/issues)
+- **Phabricator**: [Main Board](https://phabricator.wikimedia.org/T405726)
+- **Slack**: Wikimediafi workspace (for Outreachy contributors)
