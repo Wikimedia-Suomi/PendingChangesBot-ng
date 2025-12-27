@@ -7,6 +7,12 @@ projects using the Flagged Revisions API. It fetches the 50 oldest pending pages
 selected wiki, caches their pending revisions together with editor metadata, and exposes a
 Vue.js interface for reviewing the results.
 
+## Documentation
+
+- [API Documentation](docs/API_DOCUMENTATION.md) - Complete REST API reference
+- [Authentication Setup](docs/AUTHENTICATION.md) - OAuth and Superset configuration
+- [Contributing Guide](CONTRIBUTING.md) - How to contribute to this project
+
 ## Installation
 
 1. **Fork the repository**
