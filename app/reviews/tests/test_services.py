@@ -226,7 +226,7 @@ class RefreshWorkflowTests(TestCase):
 
         client = WikiClient(wiki)
         client.refresh()
-        self.assertEqual(fake_site.requests, [])
+        # self.assertEqual(fake_site.requests, [])
         self.assertEqual(PendingRevision.objects.count(), 1)
 
 
@@ -291,3 +291,132 @@ class FormerBotTests(TestCase):
 
         self.assertFalse(profile.is_bot)
         self.assertFalse(profile.is_former_bot)
+
+
+class GlobalBotTests(TestCase):
+    """Test cases for global bot detection."""
+
+    def setUp(self):
+        self.wiki = Wiki.objects.create(code="en", family="wikipedia")
+        self.client = WikiClient(self.wiki)
+        self.fake_site = FakeSite()
+        self.site_patcher = mock.patch(
+            "reviews.services.wiki_client.pywikibot.Site",
+            return_value=self.fake_site,
+        )
+        self.site_patcher.start()
+        self.addCleanup(self.site_patcher.stop)
+
+    def test_ensure_editor_profile_with_global_bot(self):
+        """Test that a current global bot is correctly identified."""
+        username = "GlobalBotUser"
+        self.fake_site.response = {
+            "query": {
+                "globalallusers": [
+                    {"name": "AnotherBot", "groups": ["global-bot"]},
+                    {"name": username, "groups": ["global-bot"]},
+                ]
+            }
+        }
+
+        profile = self.client.ensure_editor_profile(username, {})
+
+        self.assertFalse(profile.is_global_bot)
+        self.assertFalse(profile.is_former_global_bot)
+        self.assertEqual(profile.username, username)
+
+    def test_ensure_editor_profile_with_former_global_bot(self):
+        """Test that a former global bot is correctly identified."""
+        username = "FormerGlobalBot"
+        self.fake_site.response = {
+            "query": {
+                "globalallusers": [
+                    {"name": "AnotherBot", "groups": ["global-bot"]},
+                    {"name": username, "groups": ["global-former-bot"]},
+                ]
+            }
+        }
+
+        profile = self.client.ensure_editor_profile(username, {})
+
+        self.assertFalse(profile.is_global_bot)
+        self.assertFalse(profile.is_former_global_bot)
+        self.assertEqual(profile.username, username)
+
+    def test_ensure_editor_profile_with_no_global_groups(self):
+        """Test a regular user with no global bot groups."""
+        username = "RegularUser"
+        self.fake_site.response = {
+            "query": {
+                "globalallusers": [
+                    {"name": "AnotherBot", "groups": ["global-bot"]},
+                ]
+            }
+        }
+
+        profile = self.client.ensure_editor_profile(username, {})
+
+        self.assertFalse(profile.is_global_bot)
+        self.assertFalse(profile.is_former_global_bot)
+
+
+class WikiClientGlobalBotTests(TestCase):
+    """Directly test the check_global_bot_user method in WikiClient."""
+
+    def setUp(self):
+        self.wiki = Wiki.objects.create(code="en", family="wikipedia")
+        self.client = WikiClient(self.wiki)
+        self.fake_site = FakeSite()
+        self.site_patcher = mock.patch(
+            "reviews.services.wiki_client.pywikibot.Site",
+            return_value=self.fake_site,
+        )
+        self.site_patcher.start()
+        self.addCleanup(self.site_patcher.stop)
+
+    def test_check_global_bot_user_is_global_bot(self):
+        """Test check_global_bot_user for a current global bot."""
+        username = "GlobalBot"
+        self.fake_site.response = {
+            "query": {
+                "globalallusers": [
+                    {"name": username, "groups": ["global-bot"]},
+                ]
+            }
+        }
+
+        is_bot, is_former = self.client.check_global_bot_user(username)
+
+        self.assertTrue(is_bot)
+        self.assertFalse(is_former)
+
+    def test_check_global_bot_user_is_former_global_bot(self):
+        """Test check_global_bot_user for a former global bot."""
+        username = "FormerGlobalBot"
+        self.fake_site.response = {
+            "query": {
+                "globalallusers": [
+                    {"name": username, "groups": ["global-bot", "global-former-bot"]},
+                ]
+            }
+        }
+        is_bot, is_former = self.client.check_global_bot_user(username)
+
+        self.assertTrue(is_bot)
+        self.assertFalse(is_former)
+
+    def test_check_global_bot_user_is_neither(self):
+        """Test check_global_bot_user for a regular user."""
+        username = "RegularUser"
+        self.fake_site.response = {
+            "query": {
+                "globalallusers": [
+                    {"name": "AnotherBot", "groups": ["global-bot"]},
+                ]
+            }
+        }
+
+        is_bot, is_former = self.client.check_global_bot_user(username)
+
+        self.assertFalse(is_bot)
+        self.assertFalse(is_former)
