@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 import pywikibot
 from django.db import transaction
 from django.utils import timezone as dj_timezone
-from pywikibot.data.superset import SupersetQuery
 from review_statistics.services import StatisticsClient
+from review_statistics.wiki_replica_connection import WikiReplicaConnection
 
 from .parsers import (
     parse_optional_int,
@@ -186,8 +186,16 @@ GROUP BY r.rev_id
 ORDER BY fp_pending_since, rev_id DESC
 """
 
-        superset = SupersetQuery(site=self.site)
-        payload = superset.query(sql_query)
+        # Use direct SQL connection to wiki replica (like Week 4-5 statistics)
+        # This is more reliable than Superset which appears to be broken/deprecated
+        connection_manager = WikiReplicaConnection(self.wiki)
+
+        try:
+            payload = connection_manager.execute_query(sql_query)
+        except Exception as e:
+            logger.error("Failed to fetch pending pages from wiki replica: %s", e)
+            raise RuntimeError(f"Failed to fetch pending pages: {e}") from e
+
         pages: list[PendingPage] = []
         pages_by_id: dict[int, PendingPage] = {}
 

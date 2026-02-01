@@ -238,11 +238,72 @@
         .btn-submit:hover:not(:disabled) {
             background: #0056b3;
         }
+
+        .user-info {
+            background: white;
+            border-radius: 8px;
+            padding: 20px 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .role-admin {
+            background: #dc3545;
+            color: white;
+        }
+
+        .role-reviewer {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .role-public {
+            background: #6c757d;
+            color: white;
+        }
+
+        .permission-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
     <div id="app" class="container">
         <h1>🤖 PendingChangesBot Control Panel</h1>
+
+        <!-- User Info Display -->
+        <div class="user-info" v-if="userPermissions">
+            <div>
+                <strong v-if="userPermissions.username">User: [[ userPermissions.username ]]</strong>
+                <strong v-else>Not logged in</strong>
+                <span style="margin-left: 10px; color: #666; font-size: 14px;">
+                    [[ userPermissions.wiki ]]
+                </span>
+            </div>
+            <div>
+                <span class="user-badge" :class="roleBadgeClass">
+                    [[ userPermissions.role ]]
+                </span>
+            </div>
+        </div>
 
         <!-- Status Display -->
         <div class="status-box">
@@ -278,10 +339,13 @@
         <!-- Control Buttons -->
         <div class="controls">
             <h2>Bot Control</h2>
+            <div v-if="!canStartStopBot" class="permission-warning">
+                ⚠ You need ADMIN role to start/stop the bot. Current role: [[ userPermissions?.role || 'unknown' ]]
+            </div>
             <div class="button-group">
                 <button
                     @click="startBot"
-                    :disabled="isRunning || loading"
+                    :disabled="isRunning || loading || !canStartStopBot"
                     class="btn-start">
                     <span v-if="loading && action === 'start'" class="loader"></span>
                     <span v-else>▶ Start Bot</span>
@@ -289,7 +353,7 @@
 
                 <button
                     @click="stopBot"
-                    :disabled="!isRunning || loading"
+                    :disabled="!isRunning || loading || !canStartStopBot"
                     class="btn-stop">
                     <span v-if="loading && action === 'stop'" class="loader"></span>
                     <span v-else>⏹ Stop Bot</span>
@@ -316,7 +380,11 @@
                 Manually trigger a review for a specific page. This will check the page against bot rules and optionally approve it.
             </p>
 
-            <form @submit.prevent="triggerManualReview">
+            <div v-if="!canManualReview" class="permission-warning">
+                ⚠ You need REVIEWER or ADMIN role to manually review pages. Current role: [[ userPermissions?.role || 'unknown' ]]
+            </div>
+
+            <form @submit.prevent="triggerManualReview" v-if="canManualReview">
                 <div class="form-group">
                     <label for="page_title">Page Title *</label>
                     <input
@@ -374,6 +442,7 @@
                         last_activity: null,
                         error_message: ''
                     },
+                    userPermissions: null,
                     loading: false,
                     action: '',
                     message: '',
@@ -402,9 +471,39 @@
                 },
                 reviewMessageClass() {
                     return `message-${this.reviewMessageType}`;
+                },
+                canStartStopBot() {
+                    return this.userPermissions?.permissions?.can_start_stop_bot || false;
+                },
+                canManualReview() {
+                    return this.userPermissions?.permissions?.can_manual_review || false;
+                },
+                roleBadgeClass() {
+                    const role = this.userPermissions?.role || 'public';
+                    return `role-${role}`;
                 }
             },
             methods: {
+                async fetchUserPermissions() {
+                    try {
+                        const response = await fetch('/bot-control/api/user/permissions/');
+                        const data = await response.json();
+                        this.userPermissions = data;
+                    } catch (error) {
+                        console.error('Failed to fetch user permissions:', error);
+                        // Set default public permissions on error
+                        this.userPermissions = {
+                            username: null,
+                            role: 'public',
+                            permissions: {
+                                can_start_stop_bot: false,
+                                can_manual_review: false,
+                                can_change_settings: false,
+                                can_view_status: true
+                            }
+                        };
+                    }
+                },
                 async fetchStatus() {
                     try {
                         const response = await fetch('/bot-control/api/status/');
@@ -429,6 +528,10 @@
                         if (response.ok) {
                             this.botStatus = data.status;
                             this.showMessage(data.message, 'success');
+                        } else if (response.status === 401) {
+                            this.showMessage('❌ Authentication required. Please log in.', 'error');
+                        } else if (response.status === 403) {
+                            this.showMessage(`❌ ${data.detail || 'Insufficient permissions'}`, 'error');
                         } else {
                             this.showMessage(data.error || 'Failed to start bot', 'error');
                         }
@@ -453,6 +556,10 @@
                         if (response.ok) {
                             this.botStatus = data.status;
                             this.showMessage(data.message, 'success');
+                        } else if (response.status === 401) {
+                            this.showMessage('❌ Authentication required. Please log in.', 'error');
+                        } else if (response.status === 403) {
+                            this.showMessage(`❌ ${data.detail || 'Insufficient permissions'}`, 'error');
                         } else {
                             this.showMessage(data.error || 'Failed to stop bot', 'error');
                         }
@@ -505,6 +612,10 @@
                             // Clear form on success
                             this.manualReview.page_title = '';
                             this.manualReview.revision_id = '';
+                        } else if (response.status === 401) {
+                            this.showReviewMessage('❌ Authentication required. Please log in.', 'error');
+                        } else if (response.status === 403) {
+                            this.showReviewMessage(`❌ ${data.detail || 'Insufficient permissions'}`, 'error');
                         } else {
                             this.showReviewMessage('❌ ' + (data.error || 'Failed to trigger review'), 'error');
                         }
@@ -521,6 +632,9 @@
                 }
             },
             mounted() {
+                // Fetch user permissions first
+                this.fetchUserPermissions();
+
                 // Fetch initial status
                 this.fetchStatus();
 

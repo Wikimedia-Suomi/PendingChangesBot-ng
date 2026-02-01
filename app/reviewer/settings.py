@@ -28,19 +28,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
+# Check if running on Toolforge (set via environment variable)
+IS_TOOLFORGE = os.environ.get("IS_TOOLFORGE", "false").lower() == "true"
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-xs^j(8v6+dxl01-37si+&q*msl6c&qu!-5aj0aso7ov8i(%5lr",
-)
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
-
-# ALLOWED_HOSTS configuration
-# Default to "*" for development, but should be set explicitly in production
-ALLOWED_HOSTS_STR = os.getenv("ALLOWED_HOSTS", "*")
-ALLOWED_HOSTS: list[str] = [host.strip() for host in ALLOWED_HOSTS_STR.split(",")]
+if IS_TOOLFORGE:
+    SECRET_KEY = os.environ.get(
+        "DJANGO_SECRET_KEY",
+        "django-insecure-xs^j(8v6+dxl01-37si+&q*msl6c&qu!-5aj0aso7ov8i(%5lr",
+    )
+    DEBUG = False
+    ALLOWED_HOSTS = [
+        "pendingchangesbot.toolforge.org",
+        ".toolforge.org",
+    ]
+else:
+    SECRET_KEY = "django-insecure-xs^j(8v6+dxl01-37si+&q*msl6c&qu!-5aj0aso7ov8i(%5lr"  # noqa: S105
+    DEBUG = True
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
 
 # Application definition
@@ -67,6 +72,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "bot_control.middleware.AuditLoggingMiddleware",
 ]
 
 ROOT_URLCONF = "reviewer.urls"
@@ -93,19 +99,12 @@ WSGI_APPLICATION = "reviewer.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-# Check if running on Toolforge
-TOOLFORGE_DEPLOYMENT = os.getenv("TOOLFORGE_DEPLOYMENT", "false").lower() in ("true", "1", "yes")
-
-if TOOLFORGE_DEPLOYMENT:
-    # Toolforge production database (MariaDB)
-    db_name = os.environ.get("TOOLSDB_NAME", "s57224__pendingchangesbot")
-
+if IS_TOOLFORGE:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
-            "NAME": db_name,
+            "NAME": "s57224__pendingchangesbot",
             "HOST": "tools.db.svc.wikimedia.cloud",
-            "PORT": "3306",
             "OPTIONS": {
                 "read_default_file": os.path.expanduser("~/replica.my.cnf"),
                 "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
@@ -113,6 +112,17 @@ if TOOLFORGE_DEPLOYMENT:
             },
         }
     }
+
+    # CSRF trusted origins for Toolforge
+    CSRF_TRUSTED_ORIGINS = [
+        "https://pendingchangesbot.toolforge.org",
+    ]
+
+    # Secure cookie settings for production
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 else:
     # Local development database (SQLite)
     DATABASES = {

@@ -4,35 +4,38 @@ PendingChangesBot Background Runner
 This script runs the bot in the background, checking for pending changes
 and performing auto-reviews based on configured rules.
 """
+
 import os
 import sys
 import time
-import django
 from pathlib import Path
+
+import django
 
 # Add the app directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Setup Django environment
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'reviewer.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "reviewer.settings")
 django.setup()
 
-from bot_control.models import BotStatus
-from django.utils import timezone
+from django.utils import timezone  # noqa: E402
+
+from bot_control.models import BotStatus  # noqa: E402
 
 
 def log(message):
     """Print timestamped log message"""
-    timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
     log_message = f"[{timestamp}] {message}"
     print(log_message, flush=True)
 
     # Also write to log file
-    log_dir = Path(__file__).parent.parent.parent / 'logs'
+    log_dir = Path(__file__).parent.parent.parent / "logs"
     log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / 'bot_runner.log'
-    with open(log_file, 'a') as f:
-        f.write(log_message + '\n')
+    log_file = log_dir / "bot_runner.log"
+    with open(log_file, "a") as f:
+        f.write(log_message + "\n")
 
 
 def should_continue():
@@ -95,8 +98,8 @@ def run_bot():
                     status = BotStatus.get_current_status()
                     status.error_message = str(e)
                     status.save()
-                except:
-                    pass
+                except Exception:  # noqa: S110
+                    pass  # Ignore errors when updating status
 
             # Wait before next cycle (30 seconds)
             log("Waiting 30 seconds before next cycle...")
@@ -118,13 +121,13 @@ def run_bot():
             status.is_running = False
             status.stopped_at = timezone.now()
             status.save()
-        except:
-            pass
+        except Exception:  # noqa: S110
+            pass  # Ignore errors when updating status
     finally:
         log("=" * 60)
         log("PendingChangesBot stopped!")
         log("=" * 60)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_bot()
