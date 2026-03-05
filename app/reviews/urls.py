@@ -22,4 +22,9 @@ urlpatterns = [
     path("api/checks/", views.api_available_checks, name="api_available_checks"),
     path("api/wikis/<int:pk>/checks/", views.api_enabled_checks, name="api_enabled_checks"),
     path("api/wikis/fetch-diff/", views.fetch_diff, name="fetch_diff"),
+    path(
+        "api/wikis/<int:pk>/flagged-status/",
+        views.api_flagged_status,
+        name="api_flagged_status",
+    ),
 ]

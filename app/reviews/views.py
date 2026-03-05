@@ -20,7 +20,7 @@ from .models import (
     Wiki,
     WikiConfiguration,
 )
-from .services import WikiClient
+from .services import FlaggedRevsClient, WikiClient
 
 logger = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 1
@@ -545,6 +545,47 @@ def api_enabled_checks(request: HttpRequest, pk: int) -> JsonResponse:
             "all_checks": all_check_ids,
         }
     )
+
+
+@require_GET
+def api_flagged_status(request: HttpRequest, pk: int) -> JsonResponse:
+    """Return the FlaggedRevs status for the given pages."""
+    wiki = _get_wiki(pk)
+    client = WikiClient(wiki)
+    fr_client = FlaggedRevsClient(client.site)
+
+    page_ids_raw = request.GET.get("pageids", "")
+    titles_raw = request.GET.get("titles", "")
+
+    page_ids: list[int] = []
+    titles: list[str] = []
+
+    if page_ids_raw:
+        for pid in page_ids_raw.split("|"):
+            try:
+                page_ids.append(int(pid.strip()))
+            except ValueError:
+                continue
+    elif titles_raw:
+        titles = [t.strip() for t in titles_raw.split("|") if t.strip()]
+
+    if not page_ids and not titles:
+        return JsonResponse({"error": "Provide pageids or titles parameter"}, status=400)
+
+    statuses = fr_client.get_flagged_status(page_ids=page_ids or None, titles=titles or None)
+    payload = [
+        {
+            "pageid": s.pageid,
+            "title": s.title,
+            "stable_revid": s.stable_revid,
+            "pending_since": s.pending_since,
+            "has_pending_changes": s.has_pending_changes,
+            "level": s.level,
+            "protection_level": s.protection_level,
+        }
+        for s in statuses
+    ]
+    return JsonResponse({"pages": payload})
 
 
 def fetch_diff(request):

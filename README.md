@@ -92,11 +92,11 @@ Vue.js interface for reviewing the results.
    python manage.py runserver 8080
    ```
 
-## Configuring Pywikibot Superset OAuth
+## Configuring Pywikibot
 
-Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
-Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
-the steps below once per user account that will run PendingChangesBot:
+Pywikibot is used to interact with MediaWiki APIs (FlaggedRevs, page info, etc.).
+Statistics data is fetched via direct SQL connections to wiki replica databases
+(Superset is no longer used).
 
 1. **Move to app directory**
    All pywikibot and manage.py commands should be run in the app directory.
@@ -134,12 +134,6 @@ the steps below once per user account that will run PendingChangesBot:
 
    The command should report `Logged in on metawiki` and create a persistent login
    cookie at `~/.pywikibot/pywikibot.lwp`.
-
-4. **Approve Superset's OAuth client**
-   - While still logged in to Meta-Wiki in your browser, open
-     <https://superset.wmcloud.org/login/>.
-   - Authorize the OAuth request for Superset. After approval you should be redirected
-     to Superset's interface.
 
 ## Running the database migrations
 
@@ -307,7 +301,3 @@ ruff check app/ --fix
 ```
 
 If you are working inside a virtual environment, ensure it is activated before executing the command.
-
-After these steps Pywikibot will be able to call Superset's SQL Lab API without running
-into `User not logged in` errors, and PendingChangesBot can fetch pending revisions
-successfully.

@@ -2778,6 +2778,45 @@ createApp({
       await loadData();
     }
 
+    // Export functions
+    function exportData(format) {
+      const params = new URLSearchParams();
+      params.set('format', format);
+
+      // Add current filters
+      if (state.selectedWikis.length === 1) {
+        params.set('wiki', state.selectedWikis[0]);
+      }
+      if (state.startDate) {
+        params.set('start_date', state.startDate);
+      }
+      if (state.endDate) {
+        params.set('end_date', state.endDate);
+      }
+
+      const url = `/api/flaggedrevs-statistics/export/?${params.toString()}`;
+      window.open(url, '_blank');
+    }
+
+    function exportActivity(format) {
+      const params = new URLSearchParams();
+      params.set('format', format);
+
+      // Add current filters
+      if (state.selectedWikis.length === 1) {
+        params.set('wiki', state.selectedWikis[0]);
+      }
+      if (state.startDate) {
+        params.set('start_date', state.startDate);
+      }
+      if (state.endDate) {
+        params.set('end_date', state.endDate);
+      }
+
+      const url = `/api/flaggedrevs-activity/export/?${params.toString()}`;
+      window.open(url, '_blank');
+    }
+
     // URL management
     function updateUrl() {
       const params = new URLSearchParams();
@@ -3200,6 +3239,8 @@ createApp({
       loadData,
       refreshData,
       updateUrl,
+      exportData,
+      exportActivity,
     };
   }
 }).mount('#app');

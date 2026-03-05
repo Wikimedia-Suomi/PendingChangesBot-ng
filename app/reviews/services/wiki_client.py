@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 import pywikibot
 from django.db import transaction
 from django.utils import timezone as dj_timezone
-from pywikibot.data.superset import SupersetQuery
 from review_statistics.services import StatisticsClient
+from review_statistics.wiki_replica_connection import WikiReplicaConnection
 
 from .parsers import (
     parse_optional_int,
@@ -147,14 +147,14 @@ SELECT
    rev_len,
    rev_parent_id,
    rev_deleted,
-   rev_sha1,
+   content_sha1 as rev_sha1,
    comment_text,
    a.actor_name,
    a.actor_user,
    group_concat(DISTINCT(ctd_name)) AS change_tags,
    group_concat(DISTINCT(ug_group)) AS user_groups,
    group_concat(DISTINCT(ufg_group)) AS user_former_groups,
-   group_concat(DISTINCT(cl_to)) AS page_categories,
+   group_concat(DISTINCT(cat.cat_title)) AS page_categories,
    rc_bot,
    rc_patrolled,
    pp_value as wikibase_item
@@ -169,11 +169,14 @@ FROM
    ,
    page AS p
        LEFT JOIN categorylinks ON cl_from = page_id
+       LEFT JOIN category AS cat ON cat.cat_id = categorylinks.cl_target_id
        LEFT JOIN page_props ON pp_page = page_id AND pp_propname="wikibase_item",
    comment_revision,
    actor_revision AS a
    LEFT JOIN user_groups ON a.actor_user=ug_user
-   LEFT JOIN user_former_groups ON a.actor_user=ufg_user
+   LEFT JOIN user_former_groups ON a.actor_user=ufg_user,
+   slots,
+   content
 WHERE
    fp_pending_since IS NOT NULL
    AND r.rev_page=fp_page_id
@@ -182,12 +185,22 @@ WHERE
    AND r.rev_id>=fp_stable
    AND r.rev_actor=a.actor_id
    AND r.rev_comment_id=comment_id
+   AND slot_revision_id=r.rev_id
+   AND slot_content_id=content_id
 GROUP BY r.rev_id
 ORDER BY fp_pending_since, rev_id DESC
 """
 
-        superset = SupersetQuery(site=self.site)
-        payload = superset.query(sql_query)
+        # Use direct SQL connection to wiki replica (like Week 4-5 statistics)
+        # This is more reliable than Superset which appears to be broken/deprecated
+        connection_manager = WikiReplicaConnection(self.wiki)
+
+        try:
+            payload = connection_manager.execute_query(sql_query)
+        except Exception as e:
+            logger.error("Failed to fetch pending pages from wiki replica: %s", e)
+            raise RuntimeError(f"Failed to fetch pending pages: {e}") from e
+
         pages: list[PendingPage] = []
         pages_by_id: dict[int, PendingPage] = {}
 
@@ -323,6 +336,60 @@ ORDER BY fp_pending_since, rev_id DESC
             ]
         )
         return profile
+
+    def get_pending_changes_status(
+        self, page_ids: list[int] | None = None, titles: list[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Query the FlaggedRevs API for the flagged status of pages.
+
+        Uses ``action=query&prop=info|flagged`` to retrieve the current review
+        state of one or more pages, including stable revision, pending revision,
+        and protection settings.
+
+        Args:
+            page_ids: List of page IDs to query.
+            titles: List of page titles to query (used if *page_ids* is empty).
+
+        Returns:
+            A list of dicts, each containing:
+            - pageid, title, stable_revid, pending_since, flagged (raw API data)
+        """
+        if not page_ids and not titles:
+            return []
+
+        params: dict[str, Any] = {
+            "action": "query",
+            "prop": "info|flagged",
+            "formatversion": 2,
+        }
+        if page_ids:
+            params["pageids"] = "|".join(str(pid) for pid in page_ids)
+        else:
+            params["titles"] = "|".join(titles or [])
+
+        request = self.site.simple_request(**params)
+        try:
+            response = request.submit()
+        except Exception:
+            logger.exception("Failed to query flagged status for %s", self.wiki.code)
+            return []
+
+        pages = response.get("query", {}).get("pages", [])
+        results: list[dict[str, Any]] = []
+        for page in pages:
+            flagged = page.get("flagged", {})
+            results.append(
+                {
+                    "pageid": page.get("pageid"),
+                    "title": page.get("title", ""),
+                    "stable_revid": flagged.get("stable_revid"),
+                    "pending_since": flagged.get("pending_since"),
+                    "protection_level": flagged.get("protection_level"),
+                    "level": flagged.get("level"),
+                    "flagged": flagged,
+                }
+            )
+        return results
 
     def refresh(self) -> list[PendingPage]:
         return self.fetch_pending_pages()

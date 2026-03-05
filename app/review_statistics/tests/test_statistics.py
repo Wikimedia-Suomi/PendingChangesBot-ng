@@ -418,3 +418,106 @@ class StatisticsFilteringTests(TestCase):
         # Note: batches_fetched is 2 because pagination fetches once with data,
         # then fetches again (gets empty) to confirm no more data exists
         self.assertEqual(result["batches_fetched"], 2)
+
+
+class StatisticsExportTests(TestCase):
+    """Tests for the statistics export functionality."""
+
+    def setUp(self):
+        self.client = Client()
+        self.wiki = Wiki.objects.create(
+            name="Test Wiki",
+            code="test",
+            family="wikipedia",
+            api_endpoint="https://test.wikipedia.org/w/api.php",
+        )
+        WikiConfiguration.objects.create(wiki=self.wiki)
+
+        # Create test data
+        base_time = datetime(2025, 1, 10, 12, 0, 0, tzinfo=timezone.utc)
+        ReviewStatisticsCache.objects.create(
+            wiki=self.wiki,
+            reviewer_name="Reviewer1",
+            reviewed_user_name="User1",
+            page_title="Page1",
+            page_id=1,
+            reviewed_revision_id=10,
+            pending_revision_id=9,
+            reviewed_timestamp=base_time,
+            pending_timestamp=base_time - timedelta(days=2),
+            review_delay_days=2,
+        )
+        ReviewStatisticsCache.objects.create(
+            wiki=self.wiki,
+            reviewer_name="Reviewer2",
+            reviewed_user_name="User2",
+            page_title="Page2",
+            page_id=2,
+            reviewed_revision_id=20,
+            pending_revision_id=19,
+            reviewed_timestamp=base_time + timedelta(days=1),
+            pending_timestamp=base_time - timedelta(days=1),
+            review_delay_days=2,
+        )
+
+    def test_export_json_format(self):
+        """Test exporting statistics as JSON."""
+        response = self.client.get(
+            reverse("api_statistics_export", args=[self.wiki.pk]) + "?format=json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/json", response["Content-Type"])
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn(".json", response["Content-Disposition"])
+
+        data = response.json()
+        self.assertEqual(data["wiki"], "test")
+        self.assertEqual(data["count"], 2)
+        self.assertEqual(len(data["records"]), 2)
+
+    def test_export_csv_format(self):
+        """Test exporting statistics as CSV."""
+        response = self.client.get(
+            reverse("api_statistics_export", args=[self.wiki.pk]) + "?format=csv"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/csv", response["Content-Type"])
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn(".csv", response["Content-Disposition"])
+
+        # Parse CSV content
+        content = response.content.decode("utf-8")
+        lines = content.strip().split("\n")
+        # Header + 2 data rows
+        self.assertEqual(len(lines), 3)
+        # Check header
+        self.assertIn("reviewer_name", lines[0])
+        self.assertIn("reviewed_user_name", lines[0])
+
+    def test_export_with_reviewer_filter(self):
+        """Test exporting with reviewer filter."""
+        response = self.client.get(
+            reverse("api_statistics_export", args=[self.wiki.pk])
+            + "?format=json&reviewer=Reviewer1"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["records"][0]["reviewer_name"], "Reviewer1")
+
+    def test_export_default_format(self):
+        """Test that default export format is JSON."""
+        response = self.client.get(
+            reverse("api_statistics_export", args=[self.wiki.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/json", response["Content-Type"])
+
+    def test_export_limit(self):
+        """Test that export respects limit parameter."""
+        response = self.client.get(
+            reverse("api_statistics_export", args=[self.wiki.pk]) + "?format=json&limit=1"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["count"], 1)

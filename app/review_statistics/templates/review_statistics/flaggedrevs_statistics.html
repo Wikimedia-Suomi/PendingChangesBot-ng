@@ -7,9 +7,9 @@
     <title>FlaggedRevs Statistics</title>
     <link rel="stylesheet" href="{% static 'css/bulma.0.9.4.min.css' %}" />
     <link rel="stylesheet" href="{% static 'css/main.css' %}" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://tools-static.wmflabs.org/cdnjs/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <script src="https://tools-static.wmflabs.org/cdnjs/ajax/libs/vue/3.5.13/vue.global.prod.min.js"></script>
+    <script src="https://tools-static.wmflabs.org/cdnjs/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
     <style>
       .is-selected {
         background-color: #ff3860 !important;
@@ -143,6 +143,40 @@
                 <button class="button is-info" @click="refreshData" :class="{'is-loading': state.loading}">
                   Refresh Data
                 </button>
+                <div class="dropdown is-hoverable">
+                  <div class="dropdown-trigger">
+                    <button class="button is-success" aria-haspopup="true" aria-controls="export-menu">
+                      <span class="icon is-small">
+                        <i class="fas fa-download"></i>
+                      </span>
+                      <span>Export</span>
+                      <span class="icon is-small">
+                        <i class="fas fa-angle-down"></i>
+                      </span>
+                    </button>
+                  </div>
+                  <div class="dropdown-menu" id="export-menu" role="menu">
+                    <div class="dropdown-content">
+                      <a class="dropdown-item" @click="exportData('json')">
+                        <span class="icon is-small"><i class="fas fa-file-code"></i></span>
+                        Export as JSON
+                      </a>
+                      <a class="dropdown-item" @click="exportData('csv')">
+                        <span class="icon is-small"><i class="fas fa-file-csv"></i></span>
+                        Export as CSV
+                      </a>
+                      <hr class="dropdown-divider">
+                      <a class="dropdown-item" @click="exportActivity('json')">
+                        <span class="icon is-small"><i class="fas fa-file-code"></i></span>
+                        Export Activity (JSON)
+                      </a>
+                      <a class="dropdown-item" @click="exportActivity('csv')">
+                        <span class="icon is-small"><i class="fas fa-file-csv"></i></span>
+                        Export Activity (CSV)
+                      </a>
+                    </div>
+                  </div>
+                </div>
                 <div class="has-text-grey is-size-7 ml-3" style="display: flex; align-items: center;">
                   <span class="icon is-small">
                     <i class="fas fa-clock"></i>

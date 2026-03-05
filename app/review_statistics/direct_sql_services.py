@@ -5,12 +5,11 @@ This implementation follows Zache's recommendation:
 - Opens connections using DNS names when needed
 - Closes connections immediately after use
 - Avoids exhausting the connection pool
+- Uses parameterized queries to prevent SQL injection
 
 This replaces the Pywikibot SupersetQuery approach with direct SQL for better
 connection management in production.
 """
-
-# ruff: noqa: S608
 
 from __future__ import annotations
 
@@ -23,6 +22,13 @@ if TYPE_CHECKING:
     from reviews.models import Wiki
 
 logger = logging.getLogger(__name__)
+
+# Whitelist of allowed resolution groupings (safe SQL expressions, not user input)
+RESOLUTION_GROUPS = {
+    "yearly": "FLOOR(d/10000)",
+    "daily": "d",
+    "monthly": "FLOOR(d/100)",
+}
 
 
 class DirectSQLStatisticsClient:
@@ -58,20 +64,16 @@ class DirectSQLStatisticsClient:
         Returns:
             List of dictionaries containing statistics data
         """
-        # Determine resolution grouping
-        if resolution == "yearly":
-            resolution_group = "FLOOR(d/10000)"  # Group by year
-        elif resolution == "daily":
-            resolution_group = "d"  # Group by day
-        else:  # monthly (default)
-            resolution_group = "FLOOR(d/100)"  # Group by month
+        resolution_group = RESOLUTION_GROUPS.get(resolution, RESOLUTION_GROUPS["monthly"])
 
-        # Build date filter
-        date_filter = f"WHERE total_ns0.d >= {start_date_filter}"
+        # Build parameterized date filter
+        params: list[Any] = [start_date_filter]
+        date_filter = "WHERE total_ns0.d >= %s"
         if end_date_filter:
-            date_filter += f" AND total_ns0.d <= {end_date_filter}"
+            date_filter += " AND total_ns0.d <= %s"
+            params.append(end_date_filter)
 
-        sql_query = f"""  # noqa: S608
+        sql_query = f"""
 SELECT
     {resolution_group} as yearmonth,
     AVG(totalPages_ns0) AS totalPages_ns0_avg,
@@ -138,7 +140,7 @@ ORDER BY yearmonth
         )
 
         try:
-            results = self.connection_manager.execute_query(sql_query)
+            results = self.connection_manager.execute_query_with_params(sql_query, tuple(params))
             logger.info(
                 "Fetched %d records of FlaggedRevs statistics for %s",
                 len(results),
@@ -172,20 +174,16 @@ ORDER BY yearmonth
         Returns:
             List of dictionaries containing activity data
         """
-        # Determine resolution grouping
-        if resolution == "yearly":
-            resolution_group = "FLOOR(d/10000)"  # Group by year
-        elif resolution == "daily":
-            resolution_group = "d"  # Group by day
-        else:  # monthly (default)
-            resolution_group = "FLOOR(d/100)"  # Group by month
+        resolution_group = RESOLUTION_GROUPS.get(resolution, RESOLUTION_GROUPS["monthly"])
 
-        # Build date filter
-        date_filter = ""
+        # Build parameterized date filter
+        params: list[Any] = [start_date_filter]
+        end_date_clause = ""
         if end_date_filter:
-            date_filter = f"AND fr_timestamp <= {end_date_filter}"
+            end_date_clause = "AND fr_timestamp <= %s"
+            params.append(end_date_filter)
 
-        sql_query = f"""  # noqa: S608
+        sql_query = f"""
 SELECT
     {resolution_group} as yearmonth,
     AVG(number_of_reviewers) AS number_of_reviewers_avg,
@@ -201,9 +199,9 @@ FROM
   FROM
       flaggedrevs
   WHERE
-      fr_flags NOT LIKE "%auto%"
-      AND fr_timestamp >= {start_date_filter}
-      {date_filter}
+      fr_flags NOT LIKE "%%auto%%"
+      AND fr_timestamp >= %s
+      {end_date_clause}
   GROUP BY d
 ) as t
 GROUP BY yearmonth
@@ -217,7 +215,7 @@ ORDER BY yearmonth
         )
 
         try:
-            results = self.connection_manager.execute_query(sql_query)
+            results = self.connection_manager.execute_query_with_params(sql_query, tuple(params))
             logger.info(
                 "Fetched %d records of review activity for %s",
                 len(results),
@@ -252,21 +250,27 @@ ORDER BY yearmonth
         Returns:
             List of dictionaries containing review statistics
         """
-        # Build WHERE clause
+        # Build WHERE clause with parameterized values
         where_clauses = [
             "lg.log_namespace = 0",
             "lg.log_type = 'review'",
             "lg.log_action IN ('approve', 'approve2')",
         ]
+        params: list[Any] = []
 
         if min_timestamp:
-            where_clauses.append(f"lg.log_timestamp > BINARY('{min_timestamp}')")
+            where_clauses.append("lg.log_timestamp > BINARY(%s)")
+            params.append(min_timestamp)
         if min_log_id:
-            where_clauses.append(f"lg.log_id > {min_log_id}")
+            where_clauses.append("lg.log_id > %s")
+            params.append(min_log_id)
 
         where_clause = " AND ".join(where_clauses)
 
-        sql_query = f"""  # noqa: S608
+        # LIMIT is also parameterized
+        params.append(limit)
+
+        sql_query = f"""
 SELECT
     l.log_id,
     l.log_page       AS page_id,
@@ -277,7 +281,7 @@ SELECT
     r.rev_id         AS pending_revision_id,
     l.log_timestamp  AS reviewed_timestamp,
     r.rev_timestamp  AS pending_timestamp,
-    TIMESTAMPDIFF(DAY, r.rev_timestamp, l.log_timestamp) AS review_delay_days
+    GREATEST(0, TIMESTAMPDIFF(DAY, CAST(r.rev_timestamp AS DATETIME), CAST(l.log_timestamp AS DATETIME))) AS review_delay_days
 FROM (
     SELECT
         log_id,
@@ -305,7 +309,7 @@ FROM (
     WHERE
         {where_clause}
     ORDER BY lg.log_id ASC
-    LIMIT {limit}
+    LIMIT %s
 ) AS l
 INNER JOIN flaggedrevs AS fr
   ON fr.fr_rev_id = l.reviewed_revision_id
@@ -331,7 +335,7 @@ ORDER BY l.log_id ASC
         )
 
         try:
-            results = self.connection_manager.execute_query(sql_query)
+            results = self.connection_manager.execute_query_with_params(sql_query, tuple(params))
             logger.info(
                 "Fetched %d review records from logging table for %s",
                 len(results),

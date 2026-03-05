@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PendingChangesBot — Audit Logs</title>
+    {% verbatim %}
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container { max-width: 1100px; margin: 0 auto; }
+        h1 { color: #333; margin-bottom: 10px; text-align: center; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
+        a { color: #3366cc; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Filters */
+        .filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+        .filter-group { display: flex; flex-direction: column; }
+        .filter-group label { font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; }
+        .filter-group input, .filter-group select {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .filter-group input:focus, .filter-group select:focus {
+            outline: none;
+            border-color: #3366cc;
+            box-shadow: 0 0 0 2px rgba(51, 102, 204, 0.2);
+        }
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .btn-primary { background: #3366cc; color: white; }
+        .btn-primary:hover { background: #2a57b0; }
+        .btn-secondary { background: #e0e0e0; color: #333; }
+        .btn-secondary:hover { background: #d0d0d0; }
+        .btn-export { background: #28a745; color: white; }
+        .btn-export:hover { background: #218838; }
+
+        /* Table */
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th {
+            background: #f8f9fa;
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap;
+            color: #333;
+        }
+        td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+            vertical-align: middle;
+        }
+        tr:hover td { background: #f8f9fa; }
+
+        .method-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 700;
+            color: white;
+        }
+        .method-GET { background: #28a745; }
+        .method-POST { background: #007bff; }
+        .method-PUT { background: #ffc107; color: #333; }
+        .method-DELETE { background: #dc3545; }
+        .method-PATCH { background: #17a2b8; }
+
+        .status-2xx { color: #28a745; font-weight: 600; }
+        .status-3xx { color: #ffc107; font-weight: 600; }
+        .status-4xx { color: #fd7e14; font-weight: 600; }
+        .status-5xx { color: #dc3545; font-weight: 600; }
+
+        .role-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .role-admin { background: #ffeeba; color: #856404; }
+        .role-reviewer { background: #c3e6cb; color: #155724; }
+        .role-public { background: #d6d8db; color: #383d41; }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            font-size: 14px;
+            color: #666;
+        }
+        .page-controls { display: flex; gap: 8px; }
+        .page-btn {
+            padding: 6px 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .page-btn:hover:not(:disabled) { background: #f0f0f0; }
+        .page-btn:disabled { opacity: 0.5; cursor: default; }
+
+        .loading { text-align: center; padding: 40px; color: #999; }
+        .empty-state { text-align: center; padding: 40px; color: #999; }
+        .nav-links { text-align: center; margin-bottom: 20px; font-size: 14px; }
+        .nav-links a { margin: 0 10px; }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1>📋 Audit Logs</h1>
+        <p class="subtitle">Public transparency log of all server requests</p>
+
+        <div class="nav-links">
+            <a href="/bot-control/">← Bot Control Panel</a>
+            <a href="/statistics/">Statistics Dashboard</a>
+        </div>
+
+        <!-- Filters -->
+        <div class="card">
+            <div class="filters">
+                <div class="filter-group">
+                    <label>Search path</label>
+                    <input type="text" v-model="filters.q" placeholder="/api/..." @keyup.enter="search">
+                </div>
+                <div class="filter-group">
+                    <label>Method</label>
+                    <select v-model="filters.method">
+                        <option value="">All</option>
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="DELETE">DELETE</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Status</label>
+                    <select v-model="filters.status">
+                        <option value="">All</option>
+                        <option value="2xx">2xx Success</option>
+                        <option value="3xx">3xx Redirect</option>
+                        <option value="4xx">4xx Client Error</option>
+                        <option value="5xx">5xx Server Error</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>User</label>
+                    <input type="text" v-model="filters.user" placeholder="username" @keyup.enter="search">
+                </div>
+                <div class="filter-group">
+                    <label>From</label>
+                    <input type="date" v-model="filters.date_from">
+                </div>
+                <div class="filter-group">
+                    <label>To</label>
+                    <input type="date" v-model="filters.date_to">
+                </div>
+                <button class="btn btn-primary" @click="search">Search</button>
+                <button class="btn btn-secondary" @click="resetFilters">Reset</button>
+                <button class="btn btn-export" @click="exportCSV">Export CSV</button>
+            </div>
+        </div>
+
+        <!-- Results table -->
+        <div class="card">
+            <div v-if="loading" class="loading">Loading audit logs...</div>
+            <div v-else-if="logs.length === 0" class="empty-state">No audit logs found matching your filters.</div>
+            <div v-else class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Method</th>
+                            <th>Path</th>
+                            <th>Status</th>
+                            <th>User</th>
+                            <th>Role</th>
+                            <th>Time (ms)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="log in logs" :key="log.timestamp + log.path">
+                            <td>{{ formatTime(log.timestamp) }}</td>
+                            <td><span :class="'method-badge method-' + log.method">{{ log.method }}</span></td>
+                            <td :title="log.query_params ? log.path + '?' + log.query_params : log.path">
+                                {{ log.path }}<span v-if="log.query_params" style="color:#999">?…</span>
+                            </td>
+                            <td><span :class="statusClass(log.status_code)">{{ log.status_code }}</span></td>
+                            <td>{{ log.username }}</td>
+                            <td><span :class="'role-badge role-' + log.role">{{ log.role }}</span></td>
+                            <td>{{ log.response_time_ms != null ? log.response_time_ms.toFixed(1) : '—' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="pagination" v-if="pagination.total > 0">
+                <span>Showing {{ (pagination.page - 1) * pagination.per_page + 1 }}–{{ Math.min(pagination.page * pagination.per_page, pagination.total) }} of {{ pagination.total }}</span>
+                <div class="page-controls">
+                    <button class="page-btn" :disabled="pagination.page <= 1" @click="goToPage(1)">First</button>
+                    <button class="page-btn" :disabled="pagination.page <= 1" @click="goToPage(pagination.page - 1)">Prev</button>
+                    <span style="padding: 6px 8px;">Page {{ pagination.page }} / {{ pagination.total_pages }}</span>
+                    <button class="page-btn" :disabled="pagination.page >= pagination.total_pages" @click="goToPage(pagination.page + 1)">Next</button>
+                    <button class="page-btn" :disabled="pagination.page >= pagination.total_pages" @click="goToPage(pagination.total_pages)">Last</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://tools-static.wmflabs.org/cdnjs/ajax/libs/vue/3.5.13/vue.global.prod.min.js"></script>
+    {% endverbatim %}
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    logs: [],
+                    loading: true,
+                    pagination: { page: 1, per_page: 50, total: 0, total_pages: 0 },
+                    filters: {
+                        q: '',
+                        method: '',
+                        status: '',
+                        user: '',
+                        date_from: '',
+                        date_to: '',
+                    },
+                };
+            },
+            mounted() {
+                this.fetchLogs();
+            },
+            methods: {
+                async fetchLogs() {
+                    this.loading = true;
+                    const params = new URLSearchParams();
+                    params.set('page', this.pagination.page);
+                    params.set('per_page', this.pagination.per_page);
+                    if (this.filters.q) params.set('q', this.filters.q);
+                    if (this.filters.method) params.set('method', this.filters.method);
+                    if (this.filters.status) params.set('status', this.filters.status);
+                    if (this.filters.user) params.set('user', this.filters.user);
+                    if (this.filters.date_from) params.set('date_from', this.filters.date_from);
+                    if (this.filters.date_to) params.set('date_to', this.filters.date_to);
+
+                    try {
+                        const resp = await fetch(`/bot-control/api/audit-logs/?${params}`);
+                        const data = await resp.json();
+                        this.logs = data.logs;
+                        this.pagination = data.pagination;
+                    } catch (err) {
+                        console.error('Failed to fetch audit logs:', err);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                search() {
+                    this.pagination.page = 1;
+                    this.fetchLogs();
+                },
+                resetFilters() {
+                    this.filters = { q: '', method: '', status: '', user: '', date_from: '', date_to: '' };
+                    this.pagination.page = 1;
+                    this.fetchLogs();
+                },
+                goToPage(page) {
+                    this.pagination.page = page;
+                    this.fetchLogs();
+                },
+                formatTime(iso) {
+                    const d = new Date(iso);
+                    return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                },
+                statusClass(code) {
+                    if (code < 300) return 'status-2xx';
+                    if (code < 400) return 'status-3xx';
+                    if (code < 500) return 'status-4xx';
+                    return 'status-5xx';
+                },
+                exportCSV() {
+                    const params = new URLSearchParams();
+                    params.set('per_page', '200');
+                    if (this.filters.q) params.set('q', this.filters.q);
+                    if (this.filters.method) params.set('method', this.filters.method);
+                    if (this.filters.status) params.set('status', this.filters.status);
+                    if (this.filters.user) params.set('user', this.filters.user);
+                    if (this.filters.date_from) params.set('date_from', this.filters.date_from);
+                    if (this.filters.date_to) params.set('date_to', this.filters.date_to);
+
+                    fetch(`/bot-control/api/audit-logs/?${params}`)
+                        .then(r => r.json())
+                        .then(data => {
+                            const header = 'timestamp,method,path,status_code,username,role,response_time_ms\n';
+                            const rows = data.logs.map(l =>
+                                `"${l.timestamp}","${l.method}","${l.path}",${l.status_code},"${l.username}","${l.role}",${l.response_time_ms ?? ''}`
+                            ).join('\n');
+                            const blob = new Blob([header + rows], { type: 'text/csv' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = 'audit_logs.csv';
+                            a.click();
+                            URL.revokeObjectURL(url);
+                        });
+                },
+            },
+        }).mount('#app');
+    </script>
+</body>
+</html>

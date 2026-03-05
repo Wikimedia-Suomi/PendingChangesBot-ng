@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import csv
 import json
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
 from http import HTTPStatus
+from io import StringIO
 
 from django.db.models import Count
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -316,22 +318,22 @@ def api_statistics_charts(request: HttpRequest, pk: int) -> JsonResponse:
     ]
 
     average_delay_over_time = [
-        {"date": date, "avg_delay": sum(delays) / len(delays) if delays else 0}
+        {"date": date, "avg_delay": sum(d for d in delays if d >= 0) / max(1, sum(1 for d in delays if d >= 0))}
         for date, delays in sorted(delays_by_date.items())
     ]
 
     delay_percentiles = [
         {
             "date": date,
-            "p10": calculate_percentile(delays, 10),
-            "p50": calculate_percentile(delays, 50),
-            "p90": calculate_percentile(delays, 90),
+            "p10": calculate_percentile([d for d in delays if d >= 0], 10),
+            "p50": calculate_percentile([d for d in delays if d >= 0], 50),
+            "p90": calculate_percentile([d for d in delays if d >= 0], 90),
         }
         for date, delays in sorted(delays_by_date.items())
     ]
 
-    # Calculate overall statistics
-    all_delays = [delay for delays in delays_by_date.values() for delay in delays]
+    # Calculate overall statistics (exclude negative delays from bad legacy data)
+    all_delays = [delay for delays in delays_by_date.values() for delay in delays if delay >= 0]
     overall_stats = {
         "avg_delay": sum(all_delays) / len(all_delays) if all_delays else 0,
         "p10": calculate_percentile(all_delays, 10),
@@ -629,3 +631,238 @@ def flaggedrevs_statistics_page(request: HttpRequest) -> HttpResponse:
     wikis = Wiki.objects.all().order_by("code")
     wikis_json = json.dumps([{"code": w.code, "name": w.name} for w in wikis])
     return render(request, "review_statistics/flaggedrevs_statistics.html", {"wikis": wikis_json})
+
+
+@require_GET
+def api_statistics_export(request: HttpRequest, pk: int) -> HttpResponse:
+    """Export review statistics for a wiki in JSON or CSV format.
+
+    Query parameters:
+        format: 'json' (default) or 'csv'
+        reviewer: Filter by reviewer username
+        reviewed_user: Filter by reviewed user username
+        time_filter: 'all' (default), 'day', or 'week'
+        exclude_auto_reviewers: 'true' or 'false' (default)
+        limit: Maximum number of records (default: 10000)
+    """
+    wiki = _get_wiki(pk)
+
+    # Get filter parameters
+    export_format = request.GET.get("format", "json").lower()
+    reviewer_filter = request.GET.get("reviewer", "").strip()
+    reviewed_user_filter = request.GET.get("reviewed_user", "").strip()
+    time_filter = request.GET.get("time_filter", "all").strip()
+    exclude_auto_reviewers = request.GET.get("exclude_auto_reviewers", "false").lower() == "true"
+    limit = min(int(request.GET.get("limit", 10000)), 50000)  # Cap at 50k records
+
+    # Build query
+    statistics_qs = ReviewStatisticsCache.objects.filter(wiki=wiki)
+
+    # Apply time filter
+    cutoff = get_time_filter_cutoff(time_filter)
+    if cutoff:
+        statistics_qs = statistics_qs.filter(reviewed_timestamp__gte=cutoff)
+
+    # Apply reviewer filter
+    if reviewer_filter:
+        statistics_qs = statistics_qs.filter(reviewer_name__iexact=reviewer_filter)
+
+    # Apply reviewed user filter
+    if reviewed_user_filter:
+        statistics_qs = statistics_qs.filter(reviewed_user_name__iexact=reviewed_user_filter)
+
+    # Apply auto-reviewer exclusion filter
+    if exclude_auto_reviewers:
+        auto_reviewers = EditorProfile.objects.filter(wiki=wiki, is_autoreviewed=True).values_list(
+            "username", flat=True
+        )
+        statistics_qs = statistics_qs.exclude(reviewed_user_name__in=auto_reviewers)
+
+    # Get records - use only() to fetch only needed fields for better performance
+    records = statistics_qs.only(
+        "reviewer_name",
+        "reviewed_user_name",
+        "page_title",
+        "page_id",
+        "reviewed_revision_id",
+        "pending_revision_id",
+        "reviewed_timestamp",
+        "pending_timestamp",
+        "review_delay_days",
+    ).order_by("-reviewed_timestamp")[:limit]
+
+    # Build data list
+    data = [
+        {
+            "reviewer_name": record.reviewer_name,
+            "reviewed_user_name": record.reviewed_user_name,
+            "page_title": record.page_title,
+            "page_id": record.page_id,
+            "reviewed_revision_id": record.reviewed_revision_id,
+            "pending_revision_id": record.pending_revision_id,
+            "reviewed_timestamp": record.reviewed_timestamp.isoformat(),
+            "pending_timestamp": record.pending_timestamp.isoformat(),
+            "review_delay_days": record.review_delay_days,
+        }
+        for record in records
+    ]
+
+    if export_format == "csv":
+        return _export_csv(
+            data,
+            filename=f"review_statistics_{wiki.code}.csv",
+            fieldnames=[
+                "reviewer_name",
+                "reviewed_user_name",
+                "page_title",
+                "page_id",
+                "reviewed_revision_id",
+                "pending_revision_id",
+                "reviewed_timestamp",
+                "pending_timestamp",
+                "review_delay_days",
+            ],
+        )
+
+    # Default to JSON
+    response = JsonResponse({"wiki": wiki.code, "records": data, "count": len(data)})
+    response["Content-Disposition"] = f'attachment; filename="review_statistics_{wiki.code}.json"'
+    return response
+
+
+@require_GET
+def api_flaggedrevs_statistics_export(request: HttpRequest) -> HttpResponse:
+    """Export FlaggedRevs statistics in JSON or CSV format.
+
+    Query parameters:
+        format: 'json' (default) or 'csv'
+        wiki: Filter by wiki code
+        start_date: Start date filter (YYYY-MM-DD)
+        end_date: End date filter (YYYY-MM-DD)
+    """
+    export_format = request.GET.get("format", "json").lower()
+    wiki_code = request.GET.get("wiki")
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+
+    queryset = FlaggedRevsStatistics.objects.select_related("wiki")
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    if start_date:
+        queryset = queryset.filter(date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(date__lte=end_date)
+
+    statistics = queryset.order_by("date")
+
+    data = [
+        {
+            "wiki": stat.wiki.code,
+            "date": stat.date.isoformat(),
+            "total_pages_ns0": stat.total_pages_ns0,
+            "synced_pages_ns0": stat.synced_pages_ns0,
+            "reviewed_pages_ns0": stat.reviewed_pages_ns0,
+            "pending_lag_average": stat.pending_lag_average,
+            "pending_changes": stat.pending_changes,
+        }
+        for stat in statistics
+    ]
+
+    if export_format == "csv":
+        filename = f"flaggedrevs_statistics_{wiki_code or 'all'}.csv"
+        return _export_csv(
+            data,
+            filename=filename,
+            fieldnames=[
+                "wiki",
+                "date",
+                "total_pages_ns0",
+                "synced_pages_ns0",
+                "reviewed_pages_ns0",
+                "pending_lag_average",
+                "pending_changes",
+            ],
+        )
+
+    # Default to JSON
+    response = JsonResponse({"data": data, "count": len(data)})
+    filename = f"flaggedrevs_statistics_{wiki_code or 'all'}.json"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@require_GET
+def api_flaggedrevs_activity_export(request: HttpRequest) -> HttpResponse:
+    """Export FlaggedRevs activity data in JSON or CSV format.
+
+    Query parameters:
+        format: 'json' (default) or 'csv'
+        wiki: Filter by wiki code
+        start_date: Start date filter (YYYY-MM-DD)
+        end_date: End date filter (YYYY-MM-DD)
+    """
+    export_format = request.GET.get("format", "json").lower()
+    wiki_code = request.GET.get("wiki")
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+
+    queryset = ReviewActivity.objects.select_related("wiki")
+
+    if wiki_code:
+        queryset = queryset.filter(wiki__code=wiki_code)
+
+    if start_date:
+        queryset = queryset.filter(date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(date__lte=end_date)
+
+    activities = queryset.order_by("date")
+
+    data = [
+        {
+            "wiki": activity.wiki.code,
+            "date": activity.date.isoformat(),
+            "number_of_reviewers": activity.number_of_reviewers,
+            "number_of_reviews": activity.number_of_reviews,
+            "number_of_pages": activity.number_of_pages,
+            "reviews_per_reviewer": activity.reviews_per_reviewer,
+        }
+        for activity in activities
+    ]
+
+    if export_format == "csv":
+        filename = f"flaggedrevs_activity_{wiki_code or 'all'}.csv"
+        return _export_csv(
+            data,
+            filename=filename,
+            fieldnames=[
+                "wiki",
+                "date",
+                "number_of_reviewers",
+                "number_of_reviews",
+                "number_of_pages",
+                "reviews_per_reviewer",
+            ],
+        )
+
+    # Default to JSON
+    response = JsonResponse({"data": data, "count": len(data)})
+    filename = f"flaggedrevs_activity_{wiki_code or 'all'}.json"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+def _export_csv(data: list[dict], filename: str, fieldnames: list[str]) -> HttpResponse:
+    """Helper function to export data as CSV."""
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(data)
+
+    response = HttpResponse(output.getvalue(), content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

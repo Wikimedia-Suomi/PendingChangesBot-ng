@@ -21,9 +21,19 @@ urlpatterns = [
         name="api_statistics_clear_and_reload",
     ),
     path(
+        "api/wikis/<int:pk>/statistics/export/",
+        views.api_statistics_export,
+        name="api_statistics_export",
+    ),
+    path(
         "api/flaggedrevs-statistics/",
         views.api_flaggedrevs_statistics,
         name="api_flaggedrevs_statistics",
+    ),
+    path(
+        "api/flaggedrevs-statistics/export/",
+        views.api_flaggedrevs_statistics_export,
+        name="api_flaggedrevs_statistics_export",
     ),
     path(
         "api/flaggedrevs-statistics/available-months/",
@@ -34,6 +44,11 @@ urlpatterns = [
         "api/flaggedrevs-activity/",
         views.api_flaggedrevs_activity,
         name="api_flaggedrevs_activity",
+    ),
+    path(
+        "api/flaggedrevs-activity/export/",
+        views.api_flaggedrevs_activity_export,
+        name="api_flaggedrevs_activity_export",
     ),
     path(
         "flaggedrevs-statistics/",

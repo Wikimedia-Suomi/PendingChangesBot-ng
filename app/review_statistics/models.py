@@ -86,6 +86,10 @@ class FlaggedRevsStatistics(models.Model):
         unique_together = ("wiki", "date")
         ordering = ["-date"]
         verbose_name_plural = "FlaggedRevs Statistics"
+        indexes = [
+            models.Index(fields=["wiki", "-date"]),
+            models.Index(fields=["date"]),
+        ]
 
     def save(self, *args, **kwargs):
         if self.reviewed_pages_ns0 is not None and self.synced_pages_ns0 is not None:
@@ -115,6 +119,10 @@ class ReviewActivity(models.Model):
         unique_together = ("wiki", "date")
         ordering = ["-date"]
         verbose_name_plural = "Review Activity"
+        indexes = [
+            models.Index(fields=["wiki", "-date"]),
+            models.Index(fields=["date"]),
+        ]
 
     def save(self, *args, **kwargs):
         if self.number_of_reviewers > 0:

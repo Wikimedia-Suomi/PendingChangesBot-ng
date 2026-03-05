@@ -161,6 +161,21 @@ createApp({
         excludeAutoReviewers: false,
         chartData: null,
       },
+      botStatus: {
+        is_running: false,
+        process_id: null,
+        started_at: null,
+        stopped_at: null,
+        last_activity: null,
+        error_message: "",
+        loading: false,
+      },
+      botActivity: {
+        loading: false,
+        summary: null,
+        activities: [],
+        error: "",
+      },
       reviewResults: {},
       runningReviews: {},
       runningBulkReview: false,
@@ -724,16 +739,41 @@ createApp({
           },
           options: {
             responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+              mode: 'index',
+              intersect: false,
+            },
             plugins: {
               title: {
                 display: true,
                 text: "Reviewers Over Time",
+                font: { size: 14, weight: 'bold' },
+              },
+              tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleFont: { size: 13 },
+                bodyFont: { size: 12 },
+                padding: 12,
+                cornerRadius: 6,
+              },
+              legend: {
+                position: 'bottom',
+                labels: { usePointStyle: true },
               },
             },
             scales: {
               y: {
                 beginAtZero: true,
+                grid: { color: 'rgba(0, 0, 0, 0.05)' },
               },
+              x: {
+                grid: { display: false },
+              },
+            },
+            animation: {
+              duration: 750,
+              easing: 'easeOutQuart',
             },
           },
         });
@@ -751,22 +791,50 @@ createApp({
                 label: "Reviews Per Day",
                 data: chartData.pending_reviews_per_day.map((d) => d.count),
                 borderColor: "rgb(75, 192, 192)",
-                backgroundColor: "rgba(75, 192, 192, 0.6)",
+                backgroundColor: "rgba(75, 192, 192, 0.7)",
+                borderWidth: 1,
+                borderRadius: 4,
+                hoverBackgroundColor: "rgba(75, 192, 192, 0.9)",
               },
             ],
           },
           options: {
             responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+              mode: 'index',
+              intersect: false,
+            },
             plugins: {
               title: {
                 display: true,
-                text: "Pending Reviews Per Day",
+                text: "Reviews Per Day",
+                font: { size: 14, weight: 'bold' },
+              },
+              tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleFont: { size: 13 },
+                bodyFont: { size: 12 },
+                padding: 12,
+                cornerRadius: 6,
+              },
+              legend: {
+                position: 'bottom',
+                labels: { usePointStyle: true },
               },
             },
             scales: {
               y: {
                 beginAtZero: true,
+                grid: { color: 'rgba(0, 0, 0, 0.05)' },
               },
+              x: {
+                grid: { display: false },
+              },
+            },
+            animation: {
+              duration: 750,
+              easing: 'easeOutQuart',
             },
           },
         });
@@ -810,20 +878,51 @@ createApp({
           },
           options: {
             responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+              mode: 'index',
+              intersect: false,
+            },
             plugins: {
               title: {
                 display: true,
                 text: "Average Review Delay Over Time",
+                font: { size: 14, weight: 'bold' },
+              },
+              tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleFont: { size: 13 },
+                bodyFont: { size: 12 },
+                padding: 12,
+                cornerRadius: 6,
+                callbacks: {
+                  label: function(context) {
+                    return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + ' days';
+                  }
+                }
+              },
+              legend: {
+                position: 'bottom',
+                labels: { usePointStyle: true },
               },
             },
             scales: {
               y: {
                 beginAtZero: true,
+                grid: { color: 'rgba(0, 0, 0, 0.05)' },
                 title: {
                   display: true,
                   text: "Days",
+                  font: { size: 12 },
                 },
               },
+              x: {
+                grid: { display: false },
+              },
+            },
+            animation: {
+              duration: 750,
+              easing: 'easeOutQuart',
             },
           },
         });
@@ -838,47 +937,81 @@ createApp({
             labels: chartData.delay_percentiles.map((d) => d.date),
             datasets: [
               {
-                label: "P10 (Lower Bound)",
+                label: "P10 (Fast Reviews)",
                 data: chartData.delay_percentiles.map((d) => d.p10),
-                borderColor: "rgb(153, 102, 255)",
-                backgroundColor: "rgba(153, 102, 255, 0.1)",
+                borderColor: "rgb(76, 175, 80)",
+                backgroundColor: "rgba(76, 175, 80, 0.1)",
                 fill: false,
-                tension: 0.1,
+                tension: 0.3,
+                borderWidth: 2,
               },
               {
                 label: "P50 (Median)",
                 data: chartData.delay_percentiles.map((d) => d.p50),
-                borderColor: "rgb(255, 99, 132)",
-                backgroundColor: "rgba(255, 99, 132, 0.2)",
+                borderColor: "rgb(33, 150, 243)",
+                backgroundColor: "rgba(33, 150, 243, 0.15)",
                 fill: "-1",
-                tension: 0.1,
+                tension: 0.3,
+                borderWidth: 2,
               },
               {
-                label: "P90 (Upper Bound)",
+                label: "P90 (Slow Reviews)",
                 data: chartData.delay_percentiles.map((d) => d.p90),
-                borderColor: "rgb(255, 205, 86)",
-                backgroundColor: "rgba(255, 205, 86, 0.1)",
+                borderColor: "rgb(244, 67, 54)",
+                backgroundColor: "rgba(244, 67, 54, 0.1)",
                 fill: false,
-                tension: 0.1,
+                tension: 0.3,
+                borderWidth: 2,
               },
             ],
           },
           options: {
             responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+              mode: 'index',
+              intersect: false,
+            },
             plugins: {
               title: {
                 display: true,
-                text: "Review Delay Percentiles (P10, P50, P90)",
+                text: "Review Delay Distribution (Percentiles)",
+                font: { size: 14, weight: 'bold' },
+              },
+              tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleFont: { size: 13 },
+                bodyFont: { size: 12 },
+                padding: 12,
+                cornerRadius: 6,
+                callbacks: {
+                  label: function(context) {
+                    return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + ' days';
+                  }
+                }
+              },
+              legend: {
+                position: 'bottom',
+                labels: { usePointStyle: true },
               },
             },
             scales: {
               y: {
                 beginAtZero: true,
+                grid: { color: 'rgba(0, 0, 0, 0.05)' },
                 title: {
                   display: true,
                   text: "Days",
+                  font: { size: 12 },
                 },
               },
+              x: {
+                grid: { display: false },
+              },
+            },
+            animation: {
+              duration: 750,
+              easing: 'easeOutQuart',
             },
           },
         });
@@ -961,6 +1094,25 @@ createApp({
       } finally {
         state.statistics.clearing = false;
       }
+    }
+
+    function exportStatistics(format) {
+      if (!state.selectedWikiId) {
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set('format', format);
+
+      // Add current filters
+      if (state.statistics.timeFilter && state.statistics.timeFilter !== 'all') {
+        params.set('time_filter', state.statistics.timeFilter);
+      }
+      if (state.statistics.excludeAutoReviewers) {
+        params.set('exclude_auto_reviewers', 'true');
+      }
+
+      const url = `/api/wikis/${state.selectedWikiId}/statistics/export/?${params.toString()}`;
+      window.open(url, '_blank');
     }
 
     function buildUserPageUrl(username) {
@@ -1220,6 +1372,59 @@ createApp({
       }
     }
 
+    async function fetchBotStatus() {
+      state.botStatus.loading = true;
+      try {
+        const response = await fetch('/bot-control/api/status/');
+        if (response.ok) {
+          const data = await response.json();
+          state.botStatus.is_running = data.is_running;
+          state.botStatus.process_id = data.process_id;
+          state.botStatus.started_at = data.started_at;
+          state.botStatus.stopped_at = data.stopped_at;
+          state.botStatus.last_activity = data.last_activity;
+          state.botStatus.error_message = data.error_message || "";
+        }
+      } catch (error) {
+        console.error('Failed to fetch bot status:', error);
+      } finally {
+        state.botStatus.loading = false;
+      }
+    }
+
+    function getBotStatusClass() {
+      return state.botStatus.is_running ? 'is-success' : 'is-danger';
+    }
+
+    function getBotStatusText() {
+      return state.botStatus.is_running ? 'Running' : 'Stopped';
+    }
+
+    async function fetchBotActivity() {
+      state.botActivity.loading = true;
+      state.botActivity.error = "";
+      try {
+        const wiki = currentWiki.value ? currentWiki.value.code : "";
+        const params = new URLSearchParams();
+        if (wiki) {
+          params.set('wiki', wiki);
+        }
+        params.set('days', '7');
+
+        const response = await fetch(`/bot-control/api/activity/summary/?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          state.botActivity.summary = data.summary;
+          state.botActivity.activities = data.daily_activity || [];
+        }
+      } catch (error) {
+        console.error('Failed to fetch bot activity:', error);
+        state.botActivity.error = error.message;
+      } finally {
+        state.botActivity.loading = false;
+      }
+    }
+
     onMounted(() => {
       syncForms();
       loadAvailableChecks();
@@ -1237,6 +1442,13 @@ createApp({
         if (state.selectedWikiId) {
           loadStatistics();
         }
+        // Fetch bot status on statistics page
+        fetchBotStatus();
+        fetchBotActivity();
+        // Auto-refresh bot status every 10 seconds
+        setInterval(fetchBotStatus, 10000);
+        // Refresh bot activity every 30 seconds
+        setInterval(fetchBotActivity, 30000);
       }
     });
 
@@ -1259,6 +1471,7 @@ createApp({
       loadStatistics,
       refreshStatistics,
       clearAndReloadStatistics,
+      exportStatistics,
       setTimeFilter,
       formatTitle,
       buildLatestRevisionUrl,
@@ -1277,6 +1490,10 @@ createApp({
       formatDuration,
       formatDecision,
       saveDiffsToLocalStorage,
+      fetchBotStatus,
+      getBotStatusClass,
+      getBotStatusText,
+      fetchBotActivity,
     };
   },
 }).mount("#app");

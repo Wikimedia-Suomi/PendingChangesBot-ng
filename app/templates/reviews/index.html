@@ -11,7 +11,7 @@
       rel="stylesheet"
       href="https://fi.wikipedia.org/w/load.php?modules=mediawiki.diff.styles&only=styles"
     />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://tools-static.wmflabs.org/cdnjs/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
   </head>
   <body>
     {% verbatim %}
@@ -334,7 +334,7 @@
     {% endverbatim %}
 
     {{ initial_wikis|json_script:"initial-wikis" }}
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://tools-static.wmflabs.org/cdnjs/ajax/libs/vue/3.5.13/vue.global.prod.min.js"></script>
     <script src="{% static 'reviews/app.js' %}"></script>
   </body>
 </html>

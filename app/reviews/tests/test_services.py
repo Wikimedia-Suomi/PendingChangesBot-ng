@@ -56,11 +56,11 @@ class WikiClientTests(TestCase):
         )
         self.site_patcher.start()
         self.addCleanup(self.site_patcher.stop)
-        self.superset_patcher = mock.patch("reviews.services.wiki_client.SupersetQuery")
-        self.mock_superset_cls = self.superset_patcher.start()
-        self.addCleanup(self.superset_patcher.stop)
-        self.mock_superset = self.mock_superset_cls.return_value
-        self.mock_superset.query.return_value = []
+        self.replica_patcher = mock.patch("reviews.services.wiki_client.WikiReplicaConnection")
+        self.mock_replica_cls = self.replica_patcher.start()
+        self.addCleanup(self.replica_patcher.stop)
+        self.mock_replica = self.mock_replica_cls.return_value
+        self.mock_replica.execute_query.return_value = []
 
     def test_parse_categories_extracts_unique_names(self):
         wikitext = (
@@ -70,7 +70,7 @@ class WikiClientTests(TestCase):
         self.assertEqual(categories, ["Example", "Second"])
 
     def test_fetch_pending_pages_caches_pages(self):
-        self.mock_superset.query.return_value = [
+        self.mock_replica.execute_query.return_value = [
             {
                 "fp_page_id": 123,
                 "page_title": "Example",
@@ -98,7 +98,7 @@ class WikiClientTests(TestCase):
         self.assertEqual(page.pageid, 123)
         self.assertEqual(page.stable_revid, 10)
         self.assertIsNotNone(page.pending_since)
-        sql_argument = self.mock_superset.query.call_args[0][0]
+        sql_argument = self.mock_replica.execute_query.call_args[0][0]
         self.assertIn("LIMIT 10) AS fp", sql_argument)
         self.assertIn("r.rev_id>=fp_stable", sql_argument)
         revision = PendingRevision.objects.get()
@@ -112,7 +112,7 @@ class WikiClientTests(TestCase):
         self.assertEqual(revision.superset_data["page_categories"], ["Foo", "Bar"])
 
     def test_fetch_pending_pages_includes_stable_revision_record(self):
-        self.mock_superset.query.return_value = [
+        self.mock_replica.execute_query.return_value = [
             {
                 "fp_page_id": 555,
                 "page_title": "WithStable",
@@ -150,7 +150,7 @@ class WikiClientTests(TestCase):
         self.assertEqual(page.stable_revid, 30)
 
     def test_fetch_pending_pages_hydrates_editor_profile(self):
-        self.mock_superset.query.return_value = [
+        self.mock_replica.execute_query.return_value = [
             {
                 "fp_page_id": 222,
                 "page_title": "Profile",
@@ -180,9 +180,9 @@ class WikiClientTests(TestCase):
 
 
 class RefreshWorkflowTests(TestCase):
-    @mock.patch("reviews.services.wiki_client.SupersetQuery")
+    @mock.patch("reviews.services.wiki_client.WikiReplicaConnection")
     @mock.patch("reviews.services.wiki_client.pywikibot.Site")
-    def test_refresh_handles_errors(self, mock_site, mock_superset):
+    def test_refresh_handles_errors(self, mock_site, mock_replica):
         wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",
@@ -191,14 +191,14 @@ class RefreshWorkflowTests(TestCase):
         fake_site = FakeSite()
         fake_site.response = {"query": {"pages": []}}
         mock_site.return_value = fake_site
-        mock_superset.return_value.query.side_effect = RuntimeError("boom")
+        mock_replica.return_value.execute_query.side_effect = RuntimeError("boom")
         client = WikiClient(wiki)
         with self.assertRaises(RuntimeError):
             client.refresh()
 
-    @mock.patch("reviews.services.wiki_client.SupersetQuery")
+    @mock.patch("reviews.services.wiki_client.WikiReplicaConnection")
     @mock.patch("reviews.services.wiki_client.pywikibot.Site")
-    def test_refresh_does_not_call_pywikibot_requests(self, mock_site, mock_superset):
+    def test_refresh_does_not_call_pywikibot_requests(self, mock_site, mock_replica):
         wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",
@@ -206,7 +206,7 @@ class RefreshWorkflowTests(TestCase):
         )
         fake_site = FakeSite()
         mock_site.return_value = fake_site
-        mock_superset.return_value.query.return_value = [
+        mock_replica.return_value.execute_query.return_value = [
             {
                 "fp_page_id": 1,
                 "page_title": "Page",
@@ -291,3 +291,145 @@ class FormerBotTests(TestCase):
 
         self.assertFalse(profile.is_bot)
         self.assertFalse(profile.is_former_bot)
+
+
+class PendingChangesStatusTests(TestCase):
+    """Tests for WikiClient.get_pending_changes_status()."""
+
+    def setUp(self):
+        self.wiki = Wiki.objects.create(
+            name="Finnish Wikipedia",
+            code="fi",
+            api_endpoint="https://fi.wikipedia.org/w/api.php",
+        )
+        self.fake_site = FakeSite()
+        self.site_patcher = mock.patch(
+            "reviews.services.wiki_client.pywikibot.Site",
+            return_value=self.fake_site,
+        )
+        self.site_patcher.start()
+        self.addCleanup(self.site_patcher.stop)
+
+    def test_returns_empty_list_when_no_ids_or_titles(self):
+        client = WikiClient(self.wiki)
+        result = client.get_pending_changes_status()
+        self.assertEqual(result, [])
+        self.assertEqual(self.fake_site.requests, [])
+
+    def test_queries_by_page_ids(self):
+        self.fake_site.response = {
+            "query": {
+                "pages": [
+                    {
+                        "pageid": 123,
+                        "title": "Helsinki",
+                        "flagged": {
+                            "stable_revid": 100,
+                            "pending_since": "2026-01-15T10:00:00Z",
+                            "level": "sighted",
+                            "protection_level": "autoconfirmed",
+                        },
+                    }
+                ]
+            }
+        }
+        client = WikiClient(self.wiki)
+        results = client.get_pending_changes_status(page_ids=[123])
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["pageid"], 123)
+        self.assertEqual(results[0]["title"], "Helsinki")
+        self.assertEqual(results[0]["stable_revid"], 100)
+        self.assertEqual(results[0]["pending_since"], "2026-01-15T10:00:00Z")
+        self.assertEqual(results[0]["level"], "sighted")
+
+        req = self.fake_site.requests[0]
+        self.assertEqual(req["action"], "query")
+        self.assertEqual(req["prop"], "info|flagged")
+        self.assertEqual(req["pageids"], "123")
+
+    def test_queries_by_titles(self):
+        self.fake_site.response = {
+            "query": {
+                "pages": [
+                    {
+                        "pageid": 456,
+                        "title": "Tampere",
+                        "flagged": {
+                            "stable_revid": 200,
+                        },
+                    }
+                ]
+            }
+        }
+        client = WikiClient(self.wiki)
+        results = client.get_pending_changes_status(titles=["Tampere"])
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["title"], "Tampere")
+
+        req = self.fake_site.requests[0]
+        self.assertEqual(req["titles"], "Tampere")
+
+    def test_page_ids_takes_precedence_over_titles(self):
+        self.fake_site.response = {"query": {"pages": [{"pageid": 1, "title": "A", "flagged": {}}]}}
+        client = WikiClient(self.wiki)
+        client.get_pending_changes_status(page_ids=[1], titles=["B"])
+
+        req = self.fake_site.requests[0]
+        self.assertIn("pageids", req)
+        self.assertNotIn("titles", req)
+
+    def test_multiple_pages(self):
+        self.fake_site.response = {
+            "query": {
+                "pages": [
+                    {"pageid": 10, "title": "Page1", "flagged": {"stable_revid": 50}},
+                    {"pageid": 20, "title": "Page2", "flagged": {"stable_revid": 60}},
+                ]
+            }
+        }
+        client = WikiClient(self.wiki)
+        results = client.get_pending_changes_status(page_ids=[10, 20])
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["stable_revid"], 50)
+        self.assertEqual(results[1]["stable_revid"], 60)
+
+        req = self.fake_site.requests[0]
+        self.assertEqual(req["pageids"], "10|20")
+
+    def test_page_without_flagged_data(self):
+        self.fake_site.response = {
+            "query": {
+                "pages": [
+                    {"pageid": 999, "title": "Unflagged"},
+                ]
+            }
+        }
+        client = WikiClient(self.wiki)
+        results = client.get_pending_changes_status(page_ids=[999])
+
+        self.assertEqual(len(results), 1)
+        self.assertIsNone(results[0]["stable_revid"])
+        self.assertIsNone(results[0]["pending_since"])
+        self.assertEqual(results[0]["flagged"], {})
+
+    def test_api_error_returns_empty_list(self):
+        class ErrorRequest:
+            def submit(self):
+                raise RuntimeError("API unavailable")
+
+        original = self.fake_site.simple_request
+
+        def error_request(**kwargs):
+            self.fake_site.requests.append(kwargs)
+            return ErrorRequest()
+
+        self.fake_site.simple_request = error_request
+
+        client = WikiClient(self.wiki)
+        results = client.get_pending_changes_status(page_ids=[123])
+
+        self.assertEqual(results, [])
+        self.fake_site.simple_request = original
