@@ -1,0 +1,55 @@
+{
+  "statistics": {
+    "total_tested": 50,
+    "valid_results": 48,
+    "errors": 2,
+    "agreements": 40,
+    "disagreements": 8,
+    "agreement_rate": 0.833,
+    "similarity_approvals": 15,
+    "wordlevel_approvals": 23,
+    "similarity_only_approvals": 0,
+    "wordlevel_only_approvals": 8
+  },
+  "results": [
+    {
+      "revid": 12345678,
+      "pageid": 98765,
+      "page_title": "Example Article",
+      "user": "ExampleUser",
+      "timestamp": "2025-01-15T10:30:00+00:00",
+      "similarity_superseded": true,
+      "wordlevel_superseded": true,
+      "agreement": true,
+      "addition_count": 3,
+      "significant_addition_count": 2,
+      "diff_url": "https://fi.wikipedia.org/w/index.php?diff=12345678&oldid=12345600"
+    },
+    {
+      "revid": 12345679,
+      "pageid": 98766,
+      "page_title": "Another Article",
+      "user": "AnotherUser",
+      "timestamp": "2025-01-15T11:15:00+00:00",
+      "similarity_superseded": false,
+      "wordlevel_superseded": true,
+      "agreement": false,
+      "addition_count": 5,
+      "significant_addition_count": 4,
+      "diff_url": "https://fi.wikipedia.org/w/index.php?diff=12345679&oldid=12345650"
+    },
+    {
+      "revid": 12345680,
+      "pageid": 98767,
+      "page_title": "Third Example",
+      "user": "ThirdUser",
+      "timestamp": "2025-01-15T12:00:00+00:00",
+      "similarity_superseded": false,
+      "wordlevel_superseded": false,
+      "agreement": true,
+      "addition_count": 7,
+      "significant_addition_count": 6,
+      "diff_url": "https://fi.wikipedia.org/w/index.php?diff=12345680&oldid=12345670"
+    }
+  ]
+}
