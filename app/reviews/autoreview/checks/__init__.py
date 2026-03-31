@@ -8,6 +8,7 @@ from .broken_wikicode import check_broken_wikicode_indicators
 from .invalid_isbn import check_invalid_isbn
 from .manual_unapproval import check_manual_unapproval
 from .ores_scores import check_ores_scores
+from .reference_only_edit import check_reference_only_edit
 from .render_errors import check_render_errors
 from .revert_detection import check_revert_detection
 from .superseded_additions import check_superseded_additions
@@ -73,6 +74,12 @@ AVAILABLE_CHECKS = [
         "name": "ISBN checksum validation",
         "function": check_invalid_isbn,
         "priority": 9,
+    },
+    {
+        "id": "reference-only-edit",
+        "name": "Reference-only edit",
+        "function": check_reference_only_edit,
+        "priority": 8.5,
     },
     {
         "id": "superseded-additions",
