@@ -85,8 +85,9 @@ def _check_by_wikidata(page: Any) -> bool:  # pywikibot Page has no stubs
             if birth.year:
                 age: int = datetime.now().year - birth.year
                 return age < 130
-        except Exception:
-            return True
+        except Exception as e:
+            logger.warning(f"Error checking birth date from Wikidata: {e}")
+            return False
 
     return True
 

@@ -30,6 +30,7 @@ class WikiConfiguration(models.Model):
     )
     superseded_similarity_threshold = models.FloatField(
         default=0.2,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
         help_text=(
             "Similarity threshold (0.0-1.0) for detecting superseded additions. "
             "Lower values are more strict. If text additions from a pending revision "
