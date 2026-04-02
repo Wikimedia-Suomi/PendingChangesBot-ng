@@ -65,6 +65,32 @@ class WikiConfiguration(models.Model):
         validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
         help_text=("ORES goodfaith threshold for living person biographies (stricter). "),
     )
+
+    # Lift Wing ML Model Configuration
+    ml_model_type = models.CharField(
+        max_length=50,
+        default='revertrisk_language_agnostic',
+        choices=[
+            ('revertrisk_language_agnostic', 'Revert Risk (language-agnostic, 250+ languages)'),
+            ('revertrisk_multilingual', 'Revert Risk (multilingual, 47 languages, higher accuracy)'),
+            ('damaging', 'Damaging Edit Detection (47 languages)'),
+            ('goodfaith', 'Good Faith Prediction (47 languages)'),
+            ('articlequality', 'Article Quality Assessment (wiki-specific)'),
+            ('articletopic', 'Article Topic Classification (wiki-specific)'),
+        ],
+        help_text="Which Wikimedia Lift Wing ML model to use for this wiki. Check compatibility with your wiki language!"
+    )
+
+    ml_model_threshold = models.FloatField(
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        help_text=(
+            "Threshold for Lift Wing ML model score (0.0-1.0). "
+            "Edits with a score above this threshold will not be auto-approved. "
+            "Set to 0.0 to disable Lift Wing ML model checking."
+        ),
+    )
+
     enabled_checks = models.JSONField(
         default=_get_default_enabled_checks,
         blank=True,
